@@ -1476,7 +1476,17 @@ window.Studio = (() => {
     snapshotLabel("Transform"); syncSelectionUi();
   }
 
-  function selectAll() {
+  async function selectAll() {
+    if(pixelSelectionEnabled()){
+      const target=ensurePixelSelectionTarget();
+      if(!target){$("selectionStatus").textContent="Pixels: сначала выберите image layer.";return}
+      const bounds=target.getBoundingRect();
+      combinePixelSelection(createPixelRectMask(bounds));
+      await renderPixelSelectionOverlay();
+      updatePixelSelectionButtons();
+      $("selectionStatus").textContent="Pixel selection: all active layer bounds";
+      return;
+    }
     const objects = realObjects().filter(object => object.selectable !== false && object.visible !== false);
     if (!objects.length) return;
     const selection = new F.ActiveSelection(objects,{ canvas });
@@ -1484,6 +1494,7 @@ window.Studio = (() => {
   }
 
   function clearSelection() {
+    clearPixelSelection();
     canvas.discardActiveObject(); canvas.requestRenderAll(); syncSelectionUi();
   }
 
@@ -1553,8 +1564,12 @@ window.Studio = (() => {
     canvas.requestRenderAll();
   }
 
-  function finishLasso() {
+  async function finishLasso() {
     if (!state.lassoHelper || state.lassoPoints.length < 3) return;
+    if(pixelSelectionEnabled()){
+      await finishPixelLasso();
+      return;
+    }
     const selected = realObjects().filter(object => lassoIntersectsObject(object,state.lassoPoints));
     canvas.remove(state.lassoHelper); state.lassoHelper=null;
     applyObjectSelection(selected);
