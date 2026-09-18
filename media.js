@@ -198,6 +198,64 @@ window.Media = (() => {
           artwork
         };
       }
+    },
+    wikidata: {
+      label: "Wikidata",
+      enabled: () => true,
+      async search(query) {
+        const url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=" +
+          encodeURIComponent(query) + "&language=ru&uselang=ru&type=item&limit=15&format=json&origin=*";
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Wikidata HTTP " + response.status);
+        const data = await response.json();
+        const likelyMedia = (data.search || []).filter(item => {
+          const text = ((item.description || "") + " " + (item.label || "")).toLowerCase();
+          return /film|movie|телесериал|сериал|television|tv series|animated|мультфильм|cinema/.test(text);
+        });
+        return (likelyMedia.length ? likelyMedia : (data.search || []).slice(0,8)).map(item => ({
+          provider: "Wikidata",
+          providerKey: "wikidata",
+          id: item.id,
+          title: item.label || item.id,
+          originalTitle: item.label || item.id,
+          year: "",
+          type: "metadata",
+          poster: "",
+          overview: item.description || "",
+          sourceUrl: "https://www.wikidata.org/wiki/" + item.id,
+          raw: item
+        }));
+      },
+      async details(item) {
+        const url = "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=" + encodeURIComponent(item.id) +
+          "&props=claims|labels|descriptions&languages=ru|en&format=json&origin=*";
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Wikidata HTTP " + response.status);
+        const data = await response.json();
+        const entity = data.entities?.[item.id] || {};
+        const claims = entity.claims || {};
+        const claimValue = pid => claims[pid]?.[0]?.mainsnak?.datavalue?.value;
+        const timeValue = pid => {
+          const value = claimValue(pid);
+          return value?.time ? String(value.time).replace(/^\+/,"").split("T")[0] : "";
+        };
+        const imdb = claimValue("P345") || "";
+        const tmdbMovie = claimValue("P4947") || "";
+        const tmdbTv = claimValue("P4983") || "";
+        const official = claimValue("P856") || "";
+        return {
+          overview: entity.descriptions?.ru?.value || entity.descriptions?.en?.value || item.overview || "",
+          meta: {
+            Wikidata: item.id,
+            IMDb: imdb,
+            "TMDB Movie": tmdbMovie,
+            "TMDB TV": tmdbTv,
+            "Release date": timeValue("P577"),
+            "Official website": official
+          },
+          artwork: []
+        };
+      }
     }
   };
 
@@ -339,7 +397,7 @@ window.Media = (() => {
   function refreshProviderState() {
     $("omdbProviderChip").classList.toggle("active", !!APP.cfg.omdb);
     $("tmdbProviderChip").classList.toggle("active", !!APP.cfg.tmdb);
-    const enabled = ["TVmaze"];
+    const enabled = ["TVmaze","Wikidata"];
     if (APP.cfg.omdb) enabled.push("OMDb");
     if (APP.cfg.tmdb) enabled.push("TMDB");
     status("Активные providers: " + enabled.join(", ") + ".");
