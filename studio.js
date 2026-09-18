@@ -346,9 +346,10 @@ window.Studio = (() => {
     return blurred;
   }
 
-  function serialize() {
+  function serialize(id="autosave", title="Autosave") {
     return {
-      id:"autosave",
+      id,
+      title,
       version:3,
       width:state.width,
       height:state.height,
@@ -361,12 +362,30 @@ window.Studio = (() => {
   async function saveNow() {
     try {
       APP.setAutosaveState("Сохраняю...");
-      await SkoomaStore.saveProject(serialize());
+      await SkoomaStore.saveProject(serialize("autosave","Autosave"));
       APP.setAutosaveState("Сохранено");
     } catch (error) {
       APP.setAutosaveState("Ошибка autosave");
       console.error(error);
     }
+  }
+
+  async function saveManualProject() {
+    const suggested="Skooma Project "+new Date().toLocaleString();
+    const title=window.prompt("Название проекта",suggested);
+    if(title===null)return;
+    const project=serialize("project-"+Date.now(),title.trim()||suggested);
+    await SkoomaStore.saveProject(project);
+    await SkoomaStore.saveProject(serialize("autosave","Autosave"));
+    APP.setAutosaveState("Проект сохранён");
+    return project;
+  }
+
+  async function loadProjectById(id) {
+    const project=await SkoomaStore.getProject(id);
+    if(!project)throw new Error("Проект не найден");
+    await loadProjectObject(project,true);
+    return project;
   }
 
   function scheduleAutosave() {
@@ -1370,7 +1389,7 @@ window.Studio = (() => {
   }
 
   function exportProjectJson() {
-    const project={ ...serialize(),id:"project",assets:APP.assets || [] };
+    const project={ ...serialize("project-export","Exported project"),assets:APP.assets || [] };
     const blob=new Blob([JSON.stringify(project,null,2)],{ type:"application/json" });
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");a.href=url;a.download="skooma-project.json";a.click();
@@ -1579,7 +1598,7 @@ window.Studio = (() => {
   setTimeout(fitToViewport,50);
 
   return {
-    canvas,fitToViewport,setTool,addImageFromUrl,setBackgroundFromUrl,importFile,fileToDataUrl,newDocument,saveNow,
+    canvas,fitToViewport,setTool,addImageFromUrl,setBackgroundFromUrl,importFile,fileToDataUrl,newDocument,saveNow,saveManualProject,loadProjectById,
     exportImage,exportProjectJson,importProjectJson,undo,redo
   };
 })();
