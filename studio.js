@@ -1,48 +1,809 @@
+window.Studio = (() => {
+  const $ = id => document.getElementById(id);
+  const qsa = (selector, root = document) => [...root.querySelectorAll(selector)];
+  const F = window.fabric;
 
-window.Studio=(()=>{
-const stage=$("stage"),ctx=stage.getContext("2d"),workspace=$("workspace");
-let nextId=1,generated=null,generatedPrompt="",scale=1;
-const S={doc:{w:1280,h:720},tool:"select",layers:[],selected:null,brush:{size:14,color:"#ffffff"},hist:[],hi:-1,drag:null,draw:null};
-const stat=(m,k="")=>{const e=$("studioStatus");e.textContent=m;e.className="status "+k};
-const dataUrl=blob=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(blob)});
-const img=src=>new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src});
-function fit(){const r=workspace.getBoundingClientRect();scale=Math.min((r.width-30)/S.doc.w,(r.height-30)/S.doc.h,1);if(!isFinite(scale)||scale<=0)scale=1;stage.style.width=Math.round(S.doc.w*scale)+"px";stage.style.height=Math.round(S.doc.h*scale)+"px";refreshStatus()}
-function checker(){ctx.fillStyle="#dfe4ea";ctx.fillRect(0,0,stage.width,stage.height);for(let y=0;y<stage.height;y+=16)for(let x=0;x<stage.width;x+=16){ctx.fillStyle=((x/16+y/16)%2===0)?"#eef2f5":"#cfd6df";ctx.fillRect(x,y,16,16)}}
-function textBounds(l){const t=document.createElement("canvas").getContext("2d");t.font=l.fontSize+"px Inter,system-ui,sans-serif";const a=String(l.text||"").split("\n");return{x:l.x,y:l.y,width:Math.max(...a.map(v=>t.measureText(v).width),1),height:a.length*Math.round(l.fontSize*1.18)}}
-function drawLayer(l){if(!l.visible)return;ctx.save();ctx.globalAlpha=l.opacity;if(l.type==="image")ctx.drawImage(l.image,l.x,l.y,l.w,l.h);else if(l.type==="text"){ctx.font=l.fontSize+"px Inter,system-ui,sans-serif";ctx.fillStyle=l.color;ctx.textBaseline="top";let y=l.y;for(const line of String(l.text||"").split("\n")){ctx.fillText(line,l.x,y);y+=Math.round(l.fontSize*1.18)}}else if(l.type==="drawing")ctx.drawImage(l.canvas,0,0);ctx.restore()}
-function render(){ctx.clearRect(0,0,stage.width,stage.height);checker();S.layers.forEach(drawLayer);const l=sel();if(l&&l.visible){const b=l.type==="text"?textBounds(l):{x:l.x,y:l.y,width:l.w,height:l.h};ctx.save();ctx.strokeStyle="#679cff";ctx.lineWidth=2;ctx.setLineDash([8,6]);ctx.strokeRect(b.x,b.y,b.width,b.height);ctx.restore()}}
-function sel(){return S.layers.find(x=>x.id===S.selected)||null}
-function select(id){S.selected=id;refreshUI();render()}
-function serLayer(l){const c={id:l.id,type:l.type,name:l.name,visible:l.visible,opacity:l.opacity,x:l.x,y:l.y,w:l.w,h:l.h};if(l.type==="image")return{...c,src:l.src};if(l.type==="text")return{...c,text:l.text,fontSize:l.fontSize,color:l.color};if(l.type==="drawing")return{...c,data:l.canvas.toDataURL("image/png")};return c}
-function snap(){return{doc:{...S.doc},selected:S.selected,nextId,layers:S.layers.map(serLayer)}}
-async function restore(s){S.doc={...s.doc};S.selected=s.selected;nextId=s.nextId||1;S.layers=[];for(const l of s.layers){if(l.type==="image"){S.layers.push({...l,image:await img(l.src)})}else if(l.type==="text")S.layers.push({...l});else if(l.type==="drawing"){const im=await img(l.data),c=document.createElement("canvas");c.width=s.doc.w;c.height=s.doc.h;c.getContext("2d").drawImage(im,0,0);S.layers.push({...l,canvas:c})}}stage.width=S.doc.w;stage.height=S.doc.h;$("docWidth").value=S.doc.w;$("docHeight").value=S.doc.h;fit();render();refreshUI()}
-function push(label){if(S.hi<S.hist.length-1)S.hist=S.hist.slice(0,S.hi+1);S.hist.push({label,s:snap()});S.hi=S.hist.length-1;historyUI()}
-async function undo(){if(S.hi<=0)return;S.hi--;await restore(S.hist[S.hi].s);historyUI()}
-async function redo(){if(S.hi>=S.hist.length-1)return;S.hi++;await restore(S.hist[S.hi].s);historyUI()}
-function historyUI(){const w=$("historyList");w.innerHTML="";S.hist.forEach((h,i)=>{const d=document.createElement("div");d.className="history-item"+(i===S.hi?" current":"");d.textContent=h.label;w.appendChild(d)})}
-async function addImage(src,name="Изображение"){const image=await img(src),k=Math.min(S.doc.w*.82/image.width,S.doc.h*.82/image.height,1),w=Math.round(image.width*k),h=Math.round(image.height*k);const l={id:nextId++,type:"image",name,visible:true,opacity:1,x:Math.round((S.doc.w-w)/2),y:Math.round((S.doc.h-h)/2),w,h,src,image};S.layers.push(l);select(l.id);push("Добавлен слой: "+name);render();refreshUI();return l}
-function addText(){const text=window.prompt("Текст слоя","Новый текст")||"Новый текст";const l={id:nextId++,type:"text",name:"Текст",visible:true,opacity:1,x:100,y:100,w:320,h:80,text,fontSize:48,color:"#ffffff"};S.layers.push(l);select(l.id);push("Добавлен текст");render();refreshUI()}
-function addDrawing(){const c=document.createElement("canvas");c.width=S.doc.w;c.height=S.doc.h;const l={id:nextId++,type:"drawing",name:"Кисть",visible:true,opacity:1,x:0,y:0,w:S.doc.w,h:S.doc.h,canvas:c};S.layers.push(l);select(l.id);push("Добавлен слой рисования");return l}
-function duplicate(){const l=sel();if(!l)return;const s=serLayer(l);s.id=nextId++;s.name=l.name+" копия";if(l.type==="image")img(s.src).then(image=>{S.layers.push({...s,image,x:s.x+20,y:s.y+20});select(s.id);push("Дублирован слой");render();refreshUI()});else if(l.type==="drawing"){img(s.data).then(im=>{const c=document.createElement("canvas");c.width=S.doc.w;c.height=S.doc.h;c.getContext("2d").drawImage(im,0,0);S.layers.push({...s,canvas:c});select(s.id);push("Дублирован слой");render();refreshUI()})}else{S.layers.push({...s,x:s.x+20,y:s.y+20});select(s.id);push("Дублирован слой");render();refreshUI()}}
-function remove(){const l=sel();if(!l)return;S.layers=S.layers.filter(x=>x.id!==l.id);S.selected=S.layers.at(-1)?.id||null;push("Удалён слой");render();refreshUI()}
-function layersUI(){const w=$("layerList");w.innerHTML="";if(!S.layers.length){w.innerHTML='<div class="hint">Слоёв нет.</div>';return}[...S.layers].reverse().forEach(l=>{const r=document.createElement("div");r.className="layer-item"+(l.id===S.selected?" active":"");const eye=document.createElement("button");eye.className="mini";eye.textContent=l.visible?"👁":"🚫";eye.onclick=e=>{e.stopPropagation();l.visible=!l.visible;push(l.visible?"Слой показан":"Слой скрыт");render();layersUI()};const m=document.createElement("div");m.innerHTML='<div class="layer-name">'+escapeHtml(l.name)+'</div><div class="layer-type">'+l.type+'</div>';const a=document.createElement("div"),up=document.createElement("button"),dn=document.createElement("button");up.className=dn.className="mini";up.textContent="↑";dn.textContent="↓";up.onclick=e=>{e.stopPropagation();const i=S.layers.indexOf(l);if(i<S.layers.length-1){[S.layers[i],S.layers[i+1]]=[S.layers[i+1],S.layers[i]];push("Слой поднят");render();layersUI()}};dn.onclick=e=>{e.stopPropagation();const i=S.layers.indexOf(l);if(i>0){[S.layers[i],S.layers[i-1]]=[S.layers[i-1],S.layers[i]];push("Слой опущен");render();layersUI()}};a.append(up,dn);r.append(eye,m,a);r.onclick=()=>select(l.id);w.appendChild(r)})}
-function propsUI(){const l=sel();$("noSelection").classList.toggle("hidden",!!l);$("propertiesPanel").classList.toggle("hidden",!l);if(!l)return;$("propName").value=l.name;$("propX").value=Math.round(l.x);$("propY").value=Math.round(l.y);$("propWidth").value=Math.round(l.w);$("propHeight").value=Math.round(l.h);$("propOpacity").value=l.opacity;$("textProps").classList.toggle("hidden",l.type!=="text");if(l.type==="text"){$("propText").value=l.text;$("propFontSize").value=l.fontSize;$("propTextColor").value=l.color}}
-function refreshStatus(){$("leftStatus").textContent="Инструмент: "+(S.tool==="select"?"выбор":"кисть");$("rightStatus").textContent=S.doc.w+" x "+S.doc.h+" | "+Math.round(scale*100)+"%"}
-function refreshUI(){layersUI();propsUI();refreshStatus()}
-function point(e){const r=stage.getBoundingClientRect();return{x:(e.clientX-r.left)*stage.width/r.width,y:(e.clientY-r.top)*stage.height/r.height}}
-function hit(p){for(let i=S.layers.length-1;i>=0;i--){const l=S.layers[i];if(!l.visible)continue;if(l.type==="drawing"){const d=l.canvas.getContext("2d").getImageData(Math.max(0,Math.floor(p.x)),Math.max(0,Math.floor(p.y)),1,1).data;if(d[3]>10)return l;continue}const b=l.type==="text"?textBounds(l):{x:l.x,y:l.y,width:l.w,height:l.h};if(p.x>=b.x&&p.x<=b.x+b.width&&p.y>=b.y&&p.y<=b.y+b.height)return l}return null}
-stage.onpointerdown=e=>{const p=point(e);stage.setPointerCapture(e.pointerId);if(S.tool==="select"){const l=hit(p);if(l){select(l.id);S.drag={id:l.id,dx:p.x-l.x,dy:p.y-l.y}}else select(null)}else{let l=sel();if(!l||l.type!=="drawing")l=addDrawing();const b=l.canvas.getContext("2d");b.strokeStyle=S.brush.color;b.lineWidth=S.brush.size;b.lineCap="round";b.lineJoin="round";b.beginPath();b.moveTo(p.x,p.y);S.draw={id:l.id};render()}};
-stage.onpointermove=e=>{const p=point(e);if(S.drag){const l=S.layers.find(x=>x.id===S.drag.id);if(l){l.x=Math.round(p.x-S.drag.dx);l.y=Math.round(p.y-S.drag.dy);render();propsUI()}}else if(S.draw){const l=S.layers.find(x=>x.id===S.draw.id);if(l){const b=l.canvas.getContext("2d");b.lineTo(p.x,p.y);b.stroke();render()}}};
-stage.onpointerup=()=>{if(S.drag){S.drag=null;push("Перемещён слой");refreshUI()}if(S.draw){S.draw=null;push("Рисование");refreshUI()}};
-async function generate(){const p=$("prompt").value.trim();if(!p)return stat("Введи промпт.","err");const b=$("generateBtn");b.disabled=true;b.textContent="Генерация...";stat("Puter AI...");try{const [rw,rh]=$("ratio").value.split(":").map(Number);const el=await puter.ai.txt2img(p,{model:$("model").value,quality:$("quality").value,ratio:{w:rw,h:rh},test_mode:$("testMode").checked});generated=el.src;generatedPrompt=p;$("previewBox").innerHTML="";$("previewBox").appendChild(el);$("addGeneratedBtn").disabled=false;$("downloadBtn").disabled=false;await addImage(generated,"AI: "+p.slice(0,26));stat("Готово. Добавлено как слой.","ok")}catch(e){stat("Ошибка: "+(e?.message||e?.msg||String(e)),"err")}finally{b.disabled=false;b.textContent="Сгенерировать и добавить как слой"}}
-$("generateBtn").onclick=generate;$("addGeneratedBtn").onclick=()=>generated&&addImage(generated,"AI: "+generatedPrompt.slice(0,26));$("downloadBtn").onclick=()=>{if(!generated)return;const a=document.createElement("a");a.href=generated;a.download="ai-result.png";a.click()};
-$("reference").onchange=async e=>{const f=e.target.files?.[0];if(!f)return;await addImage(await dataUrl(f),f.name);e.target.value=""};$("addTextBtn").onclick=addText;$("duplicateLayerBtn").onclick=duplicate;$("deleteLayerBtn").onclick=remove;$("undoBtn").onclick=undo;$("redoBtn").onclick=redo;$("fitBtn").onclick=fit;
-$("exportBtn").onclick=()=>{render();const a=document.createElement("a");a.href=stage.toDataURL("image/png");a.download="skooma-studio.png";a.click()};$("clearBtn").onclick=()=>{if(confirm("Удалить все слои?")){S.layers=[];S.selected=null;push("Холст очищен");render();refreshUI()}};
-$("resizeDocBtn").onclick=()=>{const w=Math.max(64,+$("docWidth").value||1280),h=Math.max(64,+$("docHeight").value||720),ow=S.doc.w,oh=S.doc.h;S.doc={w,h};stage.width=w;stage.height=h;for(const l of S.layers)if(l.type==="drawing"){const old=l.canvas,c=document.createElement("canvas");c.width=w;c.height=h;c.getContext("2d").drawImage(old,0,0,ow,oh,0,0,w,h);l.canvas=c;l.w=w;l.h=h}fit();push("Размер документа изменён");render();refreshUI()};
-$("applyPropsBtn").onclick=()=>{const l=sel();if(!l)return;l.name=$("propName").value.trim()||l.name;l.x=+$("propX").value||0;l.y=+$("propY").value||0;l.opacity=+$("propOpacity").value;if(l.type!=="drawing"){l.w=Math.max(1,+$("propWidth").value||l.w);l.h=Math.max(1,+$("propHeight").value||l.h)}if(l.type==="text"){l.text=$("propText").value;l.fontSize=Math.max(8,+$("propFontSize").value||48);l.color=$("propTextColor").value}push("Свойства изменены");render();refreshUI()};
-$("brushColor").oninput=e=>S.brush.color=e.target.value;$("brushSize").oninput=e=>{$("brushSizeValue").textContent=e.target.value;S.brush.size=+e.target.value};qsa(".tool-btn").forEach(b=>b.onclick=()=>{qsa(".tool-btn").forEach(x=>x.classList.remove("primary"));b.classList.add("primary");S.tool=b.dataset.tool;refreshUI()});
-window.addEventListener("resize",fit);window.addEventListener("keydown",e=>{const m=e.ctrlKey||e.metaKey;if(m&&e.key.toLowerCase()==="z"&&!e.shiftKey){e.preventDefault();undo()}else if((m&&e.key.toLowerCase()==="y")||(m&&e.shiftKey&&e.key.toLowerCase()==="z")){e.preventDefault();redo()}else if(e.key==="Delete")remove()});
-stage.width=S.doc.w;stage.height=S.doc.h;fit();render();push("Начальное состояние");refreshUI();
-return{fit,addImage};
+  if (!F) {
+    console.error("Fabric.js failed to load.");
+    return {};
+  }
+
+  F.FabricObject.customProperties = ["name", "assetId", "source", "kind"];
+
+  const canvas = new F.Canvas("studioCanvas", {
+    preserveObjectStacking: true,
+    selection: true,
+    backgroundColor: null,
+    fireRightClick: true,
+    stopContextMenu: true
+  });
+
+  const state = {
+    width: 1280,
+    height: 720,
+    transparent: true,
+    tool: "move",
+    viewScale: 1,
+    panX: 0,
+    panY: 0,
+    isPanning: false,
+    lastPointer: null,
+    history: [],
+    historyIndex: -1,
+    historyMuted: false,
+    autosaveTimer: null,
+    restoring: false
+  };
+
+  const MAX_HISTORY = 35;
+
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function objectName(object) {
+    if (object.name) return object.name;
+    if (object instanceof F.IText || object instanceof F.Textbox) return "Text";
+    if (object instanceof F.FabricImage) return "Image";
+    if (object instanceof F.Rect) return "Rectangle";
+    if (object instanceof F.Ellipse) return "Ellipse";
+    if (object instanceof F.Path) return object.globalCompositeOperation === "destination-out" ? "Eraser stroke" : "Brush stroke";
+    return "Object";
+  }
+
+  function objectKind(object) {
+    if (object.kind) return object.kind;
+    if (object instanceof F.IText || object instanceof F.Textbox) return "text";
+    if (object instanceof F.FabricImage) return "image";
+    if (object instanceof F.Rect) return "shape";
+    if (object instanceof F.Ellipse) return "shape";
+    if (object instanceof F.Path) return "drawing";
+    return "object";
+  }
+
+  function assignObjectMetadata(object, name, extra = {}) {
+    object.name = name || objectName(object);
+    object.kind = extra.kind || objectKind(object);
+    if (extra.assetId) object.assetId = extra.assetId;
+    if (extra.source) object.source = extra.source;
+    object.set({
+      transparentCorners: false,
+      cornerColor: "#6f7dff",
+      cornerStrokeColor: "#ffffff",
+      borderColor: "#6f7dff",
+      cornerStyle: "circle",
+      padding: 1
+    });
+    return object;
+  }
+
+  function setDocumentSize(width, height) {
+    state.width = width;
+    state.height = height;
+    canvas.setDimensions({ width, height });
+    $("docStatus").textContent = width + " × " + height;
+    fitToViewport();
+  }
+
+  function applyViewTransform() {
+    const wrapper = canvas.wrapperEl;
+    if (!wrapper) return;
+    wrapper.style.transformOrigin = "center center";
+    wrapper.style.transform = "translate(" + state.panX + "px," + state.panY + "px) scale(" + state.viewScale + ")";
+    $("zoomStatus").textContent = Math.round(state.viewScale * 100) + "%";
+  }
+
+  function fitToViewport() {
+    const viewport = $("canvasViewport");
+    if (!viewport || !canvas.wrapperEl) return;
+    const rect = viewport.getBoundingClientRect();
+    const scale = Math.min((rect.width - 48) / state.width, (rect.height - 48) / state.height, 1);
+    state.viewScale = Math.max(0.05, Number.isFinite(scale) ? scale : 1);
+    state.panX = 0;
+    state.panY = 0;
+    applyViewTransform();
+  }
+
+  function setZoom(next) {
+    state.viewScale = Math.max(0.05, Math.min(6, next));
+    applyViewTransform();
+  }
+
+  function setContext(name) {
+    ["contextDefault", "contextBrush", "contextText", "contextMove"].forEach(id => $(id).classList.add("hidden"));
+    $(name).classList.remove("hidden");
+  }
+
+  function setTool(tool) {
+    state.tool = tool;
+    qsa(".tool-button[data-tool]").forEach(btn => btn.classList.toggle("active", btn.dataset.tool === tool));
+    canvas.isDrawingMode = false;
+    canvas.selection = tool === "move";
+    canvas.skipTargetFind = ["brush", "eraser", "hand", "zoom"].includes(tool);
+    canvas.defaultCursor = tool === "hand" ? "grab" : tool === "zoom" ? "zoom-in" : "default";
+
+    if (tool === "brush" || tool === "eraser") {
+      canvas.isDrawingMode = true;
+      const brush = new F.PencilBrush(canvas);
+      brush.width = Math.max(1, Number($("brushSize").value) || 18);
+      const opacity = Math.max(0.05, Number($("brushOpacity").value) || 1);
+      brush.color = tool === "eraser" ? "rgba(0,0,0," + opacity + ")" : hexToRgba($("brushColor").value, opacity);
+      canvas.freeDrawingBrush = brush;
+      setContext("contextBrush");
+    } else if (tool === "text") {
+      setContext("contextText");
+    } else if (tool === "move") {
+      setContext(canvas.getActiveObject() ? "contextMove" : "contextDefault");
+    } else {
+      setContext("contextDefault");
+    }
+
+    const labels = {
+      move: "Move (V)", brush: "Brush (B)", eraser: "Eraser (E)", text: "Text (T)",
+      rect: "Rectangle (R)", ellipse: "Ellipse (O)", hand: "Hand (H)", zoom: "Zoom (Z)"
+    };
+    $("toolStatus").textContent = labels[tool] || tool;
+  }
+
+  function hexToRgba(hex, alpha) {
+    const raw = hex.replace("#", "");
+    const full = raw.length === 3 ? raw.split("").map(x => x + x).join("") : raw;
+    const n = parseInt(full, 16);
+    return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + alpha + ")";
+  }
+
+  function serialize() {
+    return {
+      id: "autosave",
+      version: 2,
+      width: state.width,
+      height: state.height,
+      transparent: state.transparent,
+      canvas: canvas.toJSON(["name", "assetId", "source", "kind"]),
+      updatedAt: Date.now()
+    };
+  }
+
+  async function saveNow() {
+    try {
+      APP.setAutosaveState("Сохраняю...");
+      await SkoomaStore.saveProject(serialize());
+      APP.setAutosaveState("Сохранено");
+    } catch (error) {
+      APP.setAutosaveState("Ошибка autosave");
+      console.error(error);
+    }
+  }
+
+  function scheduleAutosave() {
+    clearTimeout(state.autosaveTimer);
+    APP.setAutosaveState("Изменено");
+    state.autosaveTimer = setTimeout(saveNow, 700);
+  }
+
+  function snapshotLabel(label) {
+    if (state.historyMuted || state.restoring) return;
+    const snap = {
+      label,
+      width: state.width,
+      height: state.height,
+      transparent: state.transparent,
+      json: canvas.toJSON(["name", "assetId", "source", "kind"])
+    };
+    if (state.historyIndex < state.history.length - 1) {
+      state.history = state.history.slice(0, state.historyIndex + 1);
+    }
+    state.history.push(snap);
+    if (state.history.length > MAX_HISTORY) state.history.shift();
+    state.historyIndex = state.history.length - 1;
+    renderHistory();
+    scheduleAutosave();
+  }
+
+  async function restoreSnapshot(snapshot) {
+    if (!snapshot) return;
+    state.restoring = true;
+    state.historyMuted = true;
+    state.width = snapshot.width;
+    state.height = snapshot.height;
+    state.transparent = snapshot.transparent;
+    canvas.setDimensions({ width: state.width, height: state.height });
+    canvas.backgroundColor = state.transparent ? null : "#ffffff";
+    await canvas.loadFromJSON(snapshot.json);
+    canvas.getObjects().forEach(obj => assignObjectMetadata(obj, obj.name, obj));
+    canvas.requestRenderAll();
+    state.historyMuted = false;
+    state.restoring = false;
+    renderLayers();
+    renderProperties();
+    fitToViewport();
+    $("docStatus").textContent = state.width + " × " + state.height;
+  }
+
+  async function undo() {
+    if (state.historyIndex <= 0) return;
+    state.historyIndex -= 1;
+    await restoreSnapshot(state.history[state.historyIndex]);
+    renderHistory();
+  }
+
+  async function redo() {
+    if (state.historyIndex >= state.history.length - 1) return;
+    state.historyIndex += 1;
+    await restoreSnapshot(state.history[state.historyIndex]);
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const list = $("historyList");
+    list.innerHTML = "";
+    state.history.forEach((entry, index) => {
+      const row = document.createElement("div");
+      row.className = "history-item" + (index === state.historyIndex ? " current" : "");
+      row.textContent = entry.label;
+      list.appendChild(row);
+    });
+  }
+
+  function selectionSummary() {
+    const active = canvas.getActiveObject();
+    if (!active) return "Ничего не выбрано";
+    const count = active.type === "activeselection" ? active.size() : 1;
+    return count > 1 ? "Выбрано объектов: " + count : objectName(active);
+  }
+
+  function updateContextTransform() {
+    const active = canvas.getActiveObject();
+    if (!active || active.type === "activeselection") {
+      if (state.tool === "move") setContext("contextDefault");
+      return;
+    }
+    $("ctxX").value = Math.round(active.left || 0);
+    $("ctxY").value = Math.round(active.top || 0);
+    $("ctxW").value = Math.round(active.getScaledWidth());
+    $("ctxH").value = Math.round(active.getScaledHeight());
+    $("ctxAngle").value = Math.round(active.angle || 0);
+    if (state.tool === "move") setContext("contextMove");
+  }
+
+  function renderLayers() {
+    const list = $("layersList");
+    list.innerHTML = "";
+    const objects = canvas.getObjects();
+    if (!objects.length) {
+      list.innerHTML = '<div class="empty-state">Слоёв пока нет.</div>';
+      return;
+    }
+    [...objects].reverse().forEach(object => {
+      const row = document.createElement("div");
+      row.className = "layer-row" + (canvas.getActiveObject() === object ? " active" : "");
+      row.draggable = true;
+      row.dataset.objectIndex = objects.indexOf(object);
+
+      const eye = document.createElement("button");
+      eye.className = "layer-eye";
+      eye.textContent = object.visible === false ? "○" : "●";
+      eye.title = "Visibility";
+      eye.onclick = event => {
+        event.stopPropagation();
+        object.visible = object.visible === false;
+        canvas.requestRenderAll();
+        snapshotLabel(object.visible ? "Показан слой" : "Скрыт слой");
+        renderLayers();
+      };
+
+      const thumb = document.createElement("div");
+      thumb.className = "layer-thumb";
+      try {
+        thumb.style.backgroundImage = "url(" + object.toDataURL({ format: "png", multiplier: 0.15 }) + ")";
+        thumb.style.backgroundSize = "cover";
+        thumb.style.backgroundPosition = "center";
+      } catch {}
+
+      const meta = document.createElement("div");
+      meta.className = "layer-meta";
+      meta.innerHTML = '<div class="layer-name">' + APP.escapeHtml(objectName(object)) + '</div><div class="layer-type">' +
+        APP.escapeHtml(objectKind(object)) + '</div>';
+
+      const lock = document.createElement("button");
+      lock.className = "layer-lock";
+      lock.textContent = object.lockMovementX ? "🔒" : "🔓";
+      lock.title = "Lock";
+      lock.onclick = event => {
+        event.stopPropagation();
+        const locked = !object.lockMovementX;
+        object.set({
+          lockMovementX: locked,
+          lockMovementY: locked,
+          lockScalingX: locked,
+          lockScalingY: locked,
+          lockRotation: locked,
+          selectable: !locked
+        });
+        snapshotLabel(locked ? "Слой заблокирован" : "Слой разблокирован");
+        renderLayers();
+      };
+
+      row.append(eye, thumb, meta, lock);
+      row.onclick = () => {
+        canvas.setActiveObject(object);
+        canvas.requestRenderAll();
+        syncSelectionUi();
+      };
+
+      row.ondragstart = event => {
+        event.dataTransfer.setData("text/x-skooma-layer", String(objects.indexOf(object)));
+      };
+      row.ondragover = event => event.preventDefault();
+      row.ondrop = event => {
+        event.preventDefault();
+        const from = Number(event.dataTransfer.getData("text/x-skooma-layer"));
+        const target = objects.indexOf(object);
+        const moving = canvas.item(from);
+        if (moving && from !== target) {
+          canvas.moveObjectTo(moving, target);
+          canvas.requestRenderAll();
+          snapshotLabel("Изменён порядок слоёв");
+          renderLayers();
+        }
+      };
+
+      list.appendChild(row);
+    });
+  }
+
+  function renderProperties() {
+    const active = canvas.getActiveObject();
+    const empty = $("emptyProperties");
+    const panel = $("objectProperties");
+    if (!active || active.type === "activeselection") {
+      empty.classList.remove("hidden");
+      panel.classList.add("hidden");
+      return;
+    }
+    empty.classList.add("hidden");
+    panel.classList.remove("hidden");
+    $("propName").value = objectName(active);
+    $("propX").value = Math.round(active.left || 0);
+    $("propY").value = Math.round(active.top || 0);
+    $("propWidth").value = Math.round(active.getScaledWidth());
+    $("propHeight").value = Math.round(active.getScaledHeight());
+    $("propAngle").value = Math.round(active.angle || 0);
+    $("propOpacity").value = active.opacity ?? 1;
+  }
+
+  function syncSelectionUi() {
+    $("selectionStatus").textContent = selectionSummary();
+    renderLayers();
+    renderProperties();
+    updateContextTransform();
+  }
+
+  async function addImageFromUrl(src, name = "Image", asset = null) {
+    try {
+      const image = await F.FabricImage.fromURL(src, { crossOrigin: "anonymous" });
+      const maxW = state.width * 0.8;
+      const maxH = state.height * 0.8;
+      const scale = Math.min(maxW / image.width, maxH / image.height, 1);
+      image.set({
+        left: (state.width - image.width * scale) / 2,
+        top: (state.height - image.height * scale) / 2,
+        scaleX: scale,
+        scaleY: scale
+      });
+      assignObjectMetadata(image, name, {
+        assetId: asset?.id,
+        source: asset?.source || "image",
+        kind: "image"
+      });
+      canvas.add(image);
+      canvas.setActiveObject(image);
+      canvas.requestRenderAll();
+      snapshotLabel("Добавлено изображение");
+      syncSelectionUi();
+      return image;
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  }
+
+  async function importSvg(file) {
+    const text = await file.text();
+    const parsed = await F.loadSVGFromString(text);
+    const objects = (parsed.objects || []).filter(Boolean);
+    if (!objects.length) throw new Error("SVG не содержит объектов.");
+    const group = F.util.groupSVGElements(objects, parsed.options || {});
+    const maxW = state.width * 0.8;
+    const maxH = state.height * 0.8;
+    const scale = Math.min(maxW / group.width, maxH / group.height, 1);
+    group.set({
+      left: (state.width - group.width * scale) / 2,
+      top: (state.height - group.height * scale) / 2,
+      scaleX: scale,
+      scaleY: scale
+    });
+    assignObjectMetadata(group, file.name || "SVG", { source: "upload", kind: "vector" });
+    canvas.add(group);
+    canvas.setActiveObject(group);
+    canvas.requestRenderAll();
+    snapshotLabel("Импортирован SVG");
+    syncSelectionUi();
+  }
+
+  async function importFile(file) {
+    if (file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg")) {
+      await importSvg(file);
+      return;
+    }
+    const src = await fileToDataUrl(file);
+    const asset = await APP.addAsset({ name: file.name, src, source: "upload", kind: "image" });
+    await addImageFromUrl(src, file.name, asset);
+  }
+
+  function addTextAt(x = state.width / 2 - 120, y = state.height / 2 - 30) {
+    const text = new F.IText("Новый текст", {
+      left: x,
+      top: y,
+      fill: $("textColor").value,
+      fontSize: Math.max(8, Number($("textSize").value) || 48),
+      textAlign: $("textAlign").value,
+      fontFamily: "Inter, Arial, sans-serif"
+    });
+    assignObjectMetadata(text, "Text", { kind: "text", source: "studio" });
+    canvas.add(text);
+    canvas.setActiveObject(text);
+    text.enterEditing();
+    text.selectAll();
+    snapshotLabel("Добавлен текст");
+    syncSelectionUi();
+  }
+
+  function addRectAt(x = state.width / 2 - 100, y = state.height / 2 - 60) {
+    const rect = new F.Rect({ left: x, top: y, width: 200, height: 120, fill: "#6f7dff", rx: 4, ry: 4 });
+    assignObjectMetadata(rect, "Rectangle", { kind: "shape", source: "studio" });
+    canvas.add(rect);
+    canvas.setActiveObject(rect);
+    snapshotLabel("Добавлен прямоугольник");
+    syncSelectionUi();
+  }
+
+  function addEllipseAt(x = state.width / 2 - 90, y = state.height / 2 - 60) {
+    const ellipse = new F.Ellipse({ left: x, top: y, rx: 90, ry: 60, fill: "#4dd3aa" });
+    assignObjectMetadata(ellipse, "Ellipse", { kind: "shape", source: "studio" });
+    canvas.add(ellipse);
+    canvas.setActiveObject(ellipse);
+    snapshotLabel("Добавлен эллипс");
+    syncSelectionUi();
+  }
+
+  function duplicateActive() {
+    const active = canvas.getActiveObject();
+    if (!active || active.type === "activeselection") return;
+    active.clone(["name", "assetId", "source", "kind"]).then(clone => {
+      clone.set({ left: (active.left || 0) + 24, top: (active.top || 0) + 24 });
+      clone.name = objectName(active) + " copy";
+      canvas.add(clone);
+      canvas.setActiveObject(clone);
+      canvas.requestRenderAll();
+      snapshotLabel("Дублирован слой");
+      syncSelectionUi();
+    });
+  }
+
+  function deleteActive() {
+    const active = canvas.getActiveObject();
+    if (!active) return;
+    if (active.type === "activeselection") {
+      active.getObjects().forEach(obj => canvas.remove(obj));
+      canvas.discardActiveObject();
+    } else {
+      canvas.remove(active);
+    }
+    canvas.requestRenderAll();
+    snapshotLabel("Удалён слой");
+    syncSelectionUi();
+  }
+
+  function applyProperties() {
+    const active = canvas.getActiveObject();
+    if (!active || active.type === "activeselection") return;
+    const width = Math.max(1, Number($("propWidth").value) || active.getScaledWidth());
+    const height = Math.max(1, Number($("propHeight").value) || active.getScaledHeight());
+    active.name = $("propName").value.trim() || objectName(active);
+    active.set({
+      left: Number($("propX").value) || 0,
+      top: Number($("propY").value) || 0,
+      angle: Number($("propAngle").value) || 0,
+      opacity: Math.max(0, Math.min(1, Number($("propOpacity").value) || 0))
+    });
+    if (active.width) active.scaleX = width / active.width;
+    if (active.height) active.scaleY = height / active.height;
+    active.setCoords();
+    canvas.requestRenderAll();
+    snapshotLabel("Изменены свойства");
+    syncSelectionUi();
+  }
+
+  function applyContextTransform() {
+    const active = canvas.getActiveObject();
+    if (!active || active.type === "activeselection") return;
+    const width = Math.max(1, Number($("ctxW").value) || active.getScaledWidth());
+    const height = Math.max(1, Number($("ctxH").value) || active.getScaledHeight());
+    active.set({
+      left: Number($("ctxX").value) || 0,
+      top: Number($("ctxY").value) || 0,
+      angle: Number($("ctxAngle").value) || 0
+    });
+    if (active.width) active.scaleX = width / active.width;
+    if (active.height) active.scaleY = height / active.height;
+    active.setCoords();
+    canvas.requestRenderAll();
+    snapshotLabel("Transform");
+    syncSelectionUi();
+  }
+
+  async function generateAi() {
+    const prompt = $("aiPrompt").value.trim();
+    if (!prompt) {
+      $("aiStatus").textContent = "Введите промпт.";
+      $("aiStatus").className = "drawer-status error";
+      return;
+    }
+    const button = $("generateAiBtn");
+    button.disabled = true;
+    button.textContent = "Генерация...";
+    $("aiStatus").textContent = "Puter AI...";
+    $("aiStatus").className = "drawer-status";
+    try {
+      const [w, h] = $("aiRatio").value.split(":").map(Number);
+      const result = await puter.ai.txt2img(prompt, {
+        model: $("aiModel").value,
+        quality: $("aiQuality").value,
+        ratio: { w, h },
+        test_mode: $("aiTestMode").checked
+      });
+      const src = result.src;
+      const asset = await APP.addAsset({
+        name: "AI: " + prompt.slice(0, 32),
+        src,
+        source: "Puter / " + $("aiModel").selectedOptions[0].text,
+        kind: "generated"
+      });
+      await addImageFromUrl(src, asset.name, asset);
+      $("aiStatus").textContent = "Готово. Результат добавлен новым слоем.";
+      $("aiStatus").className = "drawer-status ok";
+      APP.refreshPuterState();
+    } catch (error) {
+      $("aiStatus").textContent = "Ошибка: " + (error?.message || error?.msg || String(error));
+      $("aiStatus").className = "drawer-status error";
+    } finally {
+      button.disabled = false;
+      button.textContent = "Сгенерировать";
+    }
+  }
+
+  async function newDocument(width, height, transparent = true) {
+    state.historyMuted = true;
+    canvas.clear();
+    state.transparent = transparent;
+    canvas.backgroundColor = transparent ? null : "#ffffff";
+    setDocumentSize(width, height);
+    canvas.requestRenderAll();
+    state.historyMuted = false;
+    state.history = [];
+    state.historyIndex = -1;
+    snapshotLabel("Новый документ");
+    syncSelectionUi();
+  }
+
+  async function loadAutosave() {
+    try {
+      const project = await SkoomaStore.getProject("autosave");
+      if (!project?.canvas) {
+        snapshotLabel("Начальное состояние");
+        return;
+      }
+      state.restoring = true;
+      state.historyMuted = true;
+      state.width = project.width || 1280;
+      state.height = project.height || 720;
+      state.transparent = project.transparent !== false;
+      canvas.setDimensions({ width: state.width, height: state.height });
+      canvas.backgroundColor = state.transparent ? null : "#ffffff";
+      await canvas.loadFromJSON(project.canvas);
+      canvas.getObjects().forEach(obj => assignObjectMetadata(obj, obj.name, obj));
+      canvas.requestRenderAll();
+      state.historyMuted = false;
+      state.restoring = false;
+      state.history = [];
+      state.historyIndex = -1;
+      snapshotLabel("Восстановлен autosave");
+      syncSelectionUi();
+      fitToViewport();
+    } catch (error) {
+      console.error("Autosave restore failed", error);
+      snapshotLabel("Начальное состояние");
+    }
+  }
+
+  function exportImage(format = "png") {
+    const mimeFormat = format === "jpg" ? "jpeg" : format;
+    const data = canvas.toDataURL({ format: mimeFormat, quality: 0.92, multiplier: 1 });
+    const a = document.createElement("a");
+    a.href = data;
+    a.download = "skooma-export." + (format === "jpeg" ? "jpg" : format);
+    a.click();
+  }
+
+  function bindEvents() {
+    canvas.on("selection:created", syncSelectionUi);
+    canvas.on("selection:updated", syncSelectionUi);
+    canvas.on("selection:cleared", syncSelectionUi);
+    canvas.on("object:modified", () => {
+      snapshotLabel("Изменён объект");
+      syncSelectionUi();
+    });
+    canvas.on("path:created", event => {
+      const path = event.path;
+      if (!path) return;
+      if (state.tool === "eraser") {
+        path.globalCompositeOperation = "destination-out";
+        path.selectable = false;
+        path.evented = false;
+      }
+      assignObjectMetadata(path, state.tool === "eraser" ? "Eraser stroke" : "Brush stroke", {
+        kind: "drawing",
+        source: "studio"
+      });
+      snapshotLabel(state.tool === "eraser" ? "Ластик" : "Кисть");
+      renderLayers();
+    });
+
+    canvas.on("mouse:down", event => {
+      const pointer = event.e;
+      if (state.tool === "hand") {
+        state.isPanning = true;
+        state.lastPointer = { x: pointer.clientX, y: pointer.clientY };
+        canvas.defaultCursor = "grabbing";
+      } else if (state.tool === "zoom") {
+        setZoom(state.viewScale * (pointer.altKey ? 0.85 : 1.15));
+      } else if (state.tool === "text" && !event.target) {
+        const point = canvas.getScenePoint(event.e);
+        addTextAt(point.x, point.y);
+        setTool("move");
+      } else if (state.tool === "rect" && !event.target) {
+        const point = canvas.getScenePoint(event.e);
+        addRectAt(point.x, point.y);
+        setTool("move");
+      } else if (state.tool === "ellipse" && !event.target) {
+        const point = canvas.getScenePoint(event.e);
+        addEllipseAt(point.x, point.y);
+        setTool("move");
+      }
+    });
+
+    canvas.on("mouse:move", event => {
+      if (!state.isPanning || !state.lastPointer) return;
+      const pointer = event.e;
+      state.panX += pointer.clientX - state.lastPointer.x;
+      state.panY += pointer.clientY - state.lastPointer.y;
+      state.lastPointer = { x: pointer.clientX, y: pointer.clientY };
+      applyViewTransform();
+    });
+
+    canvas.on("mouse:up", () => {
+      if (state.isPanning) {
+        state.isPanning = false;
+        state.lastPointer = null;
+        canvas.defaultCursor = "grab";
+      }
+    });
+
+    $("canvasViewport").addEventListener("wheel", event => {
+      if (!event.ctrlKey && state.tool !== "zoom") return;
+      event.preventDefault();
+      setZoom(state.viewScale * (event.deltaY < 0 ? 1.08 : 0.92));
+    }, { passive: false });
+
+    $("canvasViewport").addEventListener("dragover", event => event.preventDefault());
+    $("canvasViewport").addEventListener("drop", async event => {
+      event.preventDefault();
+      const assetId = event.dataTransfer.getData("application/x-skooma-asset");
+      if (assetId) {
+        const asset = APP.getAsset(assetId);
+        if (asset) await addImageFromUrl(asset.src, asset.name, asset);
+        return;
+      }
+      const file = event.dataTransfer.files?.[0];
+      if (file) await importFile(file);
+    });
+
+    document.addEventListener("paste", async event => {
+      if ($("editorSelect").value !== "skooma") return;
+      const item = [...(event.clipboardData?.items || [])].find(entry => entry.type.startsWith("image/"));
+      if (!item) return;
+      const file = item.getAsFile();
+      if (file) await importFile(file);
+    });
+
+    qsa(".tool-button[data-tool]").forEach(btn => btn.onclick = () => setTool(btn.dataset.tool));
+
+    $("brushSize").oninput = () => {
+      if (state.tool === "brush" || state.tool === "eraser") setTool(state.tool);
+    };
+    $("brushOpacity").oninput = () => {
+      if (state.tool === "brush" || state.tool === "eraser") setTool(state.tool);
+    };
+    $("brushColor").oninput = () => {
+      if (state.tool === "brush") setTool("brush");
+    };
+
+    $("generateAiBtn").onclick = generateAi;
+    $("duplicateBtn").onclick = duplicateActive;
+    $("deleteBtn").onclick = deleteActive;
+    $("undoBtn").onclick = undo;
+    $("redoBtn").onclick = redo;
+    $("applyPropertiesBtn").onclick = applyProperties;
+    $("applyTransformBtn").onclick = applyContextTransform;
+
+    window.addEventListener("resize", fitToViewport);
+    window.addEventListener("keydown", event => {
+      const tag = document.activeElement?.tagName?.toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select" || canvas.getActiveObject()?.isEditing;
+      const mod = event.ctrlKey || event.metaKey;
+
+      if (mod && event.key.toLowerCase() === "z" && !event.shiftKey) {
+        event.preventDefault(); undo(); return;
+      }
+      if ((mod && event.key.toLowerCase() === "y") || (mod && event.shiftKey && event.key.toLowerCase() === "z")) {
+        event.preventDefault(); redo(); return;
+      }
+      if (mod && event.key.toLowerCase() === "d") {
+        event.preventDefault(); duplicateActive(); return;
+      }
+      if (mod && event.key.toLowerCase() === "s") {
+        event.preventDefault(); saveNow(); return;
+      }
+      if (!typing && event.key === "Delete") {
+        event.preventDefault(); deleteActive(); return;
+      }
+      if (typing) return;
+
+      const key = event.key.toLowerCase();
+      if (key === "v") setTool("move");
+      else if (key === "b") setTool("brush");
+      else if (key === "e") setTool("eraser");
+      else if (key === "t") setTool("text");
+      else if (key === "r") setTool("rect");
+      else if (key === "o") setTool("ellipse");
+      else if (key === "h") setTool("hand");
+      else if (key === "z") setTool("zoom");
+    });
+  }
+
+  bindEvents();
+  setDocumentSize(state.width, state.height);
+  setTool("move");
+  loadAutosave();
+  setTimeout(fitToViewport, 50);
+
+  return {
+    canvas,
+    fitToViewport,
+    setTool,
+    addImageFromUrl,
+    importFile,
+    fileToDataUrl,
+    newDocument,
+    saveNow,
+    exportImage,
+    undo,
+    redo
+  };
 })();
-function escapeHtml(v){return String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]))}
