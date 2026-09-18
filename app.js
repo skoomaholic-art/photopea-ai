@@ -12,6 +12,7 @@ window.APP = (() => {
     jampea: { name: "Jampea", url: "https://jampea.com/", embed: false }
   };
   let assets = [];
+  let assetFilter = "all";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, c => ({
@@ -149,13 +150,17 @@ window.APP = (() => {
 
   function renderAssets() {
     const targets = [$("assetGridDrawer"), $("assetGridInspector")];
+    const filtered = assetFilter === "all" ? assets : assets.filter(asset => {
+      if (assetFilter === "upload") return asset.source === "upload";
+      return asset.kind === assetFilter;
+    });
     targets.forEach(target => {
       target.innerHTML = "";
-      if (!assets.length) {
-        target.innerHTML = '<div class="empty-state">Assets пока нет.</div>';
+      if (!filtered.length) {
+        target.innerHTML = '<div class="empty-state">Нет assets в этой категории.</div>';
         return;
       }
-      assets.forEach(asset => target.appendChild(makeAssetCard(asset)));
+      filtered.forEach(asset => target.appendChild(makeAssetCard(asset)));
     });
   }
 
@@ -208,6 +213,13 @@ window.APP = (() => {
       event.target.value = "";
     };
     $("saveProjectBtn").onclick = () => window.Studio?.saveNow();
+    $("projectExportBtn").onclick = () => window.Studio?.exportProjectJson();
+    $("projectImportBtn").onclick = () => $("projectInput").click();
+    $("projectInput").onchange = async event => {
+      const file = event.target.files?.[0];
+      if (file) await window.Studio?.importProjectJson(file);
+      event.target.value = "";
+    };
 
     qsa(".modal-close").forEach(btn => btn.onclick = () => closeModal(btn));
     qsa(".modal-backdrop").forEach(backdrop => backdrop.onclick = event => {
@@ -240,6 +252,11 @@ window.APP = (() => {
     $("clearAssetsBtn").onclick = () => {
       if (confirm("Очистить Asset Library?")) removeAllAssets();
     };
+    qsa(".asset-filter").forEach(btn => btn.onclick = () => {
+      assetFilter = btn.dataset.kind || "all";
+      qsa(".asset-filter").forEach(item => item.classList.toggle("active", item === btn));
+      renderAssets();
+    });
   }
 
   bindUi();
@@ -258,6 +275,8 @@ window.APP = (() => {
     selectInspector,
     switchEditor,
     setAutosaveState,
-    refreshPuterState
+    refreshPuterState,
+    get assets() { return assets; },
+    get assetFilter() { return assetFilter; }
   };
 })();
