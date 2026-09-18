@@ -1,40 +1,61 @@
-# Photopea AI Bridge
+# Skooma Multitool
 
-Статический веб-инструмент для генерации изображений через Puter.js и передачи результата прямо в Photopea.
+Единое браузерное рабочее пространство для графики, AI-генерации и поиска медиаматериалов.
 
-## Что умеет
+## Что уже есть
 
-- генерация изображения по промпту через `puter.ai.txt2img()`
-- опциональный референс для image-to-image
-- выбор модели, формата и качества
-- тестовый режим Puter
-- предпросмотр результата
-- скачивание PNG
-- отправка результата или референса в Photopea через `postMessage()`
-- встроенный Photopea в iframe
-- не требует собственного API-ключа Puter
+- **Studio** - собственный canvas-редактор без зависимости от Photopea:
+  - слои;
+  - импорт изображений;
+  - текстовые слои;
+  - кисть;
+  - перемещение;
+  - порядок и видимость слоёв;
+  - opacity;
+  - изменение размера документа;
+  - undo / redo;
+  - PNG export;
+  - AI-генерация через Puter как новый слой.
+- **AI** - проверенные в текущем проекте GPT Image 1 Mini и Grok Imagine.
+- **Photopea** - отдельная вкладка редактора.
+- **Vectorpea** - отдельная вкладка векторного редактора.
+- **Jampea** - отдельная вкладка MIDI / музыкального редактора.
+- **Perchance** - отдельная вкладка text-to-image plugin.
+- **Media Finder**:
+  - TMDB movie search;
+  - TMDB posters, backdrops and logos;
+  - fanart.tv artwork by TMDB ID;
+  - Kinorium search and public-page reading through Jina Reader;
+  - добавление найденного изображения прямо в Studio.
 
-## Важно про "бесплатно"
+## API и ключи
 
-GitHub Pages только хостит интерфейс и сам изображения не генерирует. Генерацию выполняет Puter.js. Puter использует модель User-Pays: собственный API-ключ разработчика не нужен, но реальная генерация может зависеть от лимитов, кредитов и правил аккаунта Puter. Для бесплатной проверки есть переключатель тестового режима.
+Ключи не хранятся в репозитории. Они вводятся в разделе **Настройки** и сохраняются в localStorage браузера.
 
-Документация Puter:
-https://docs.puter.com/AI/txt2img/
+- TMDB - API Read Access Token.
+- fanart.tv - Project или Personal API key.
+- Jina Reader - ключ необязателен для базовых запросов, но может понадобиться для больших лимитов.
 
-Документация Photopea Live API:
-https://www.photopea.com/api/live
+## Почему Kinorium сделан иначе
+
+Публичный официальный Kinorium API в ходе проверки не найден. Поэтому мультитул не выдаёт scraping за официальный API. Для открытых страниц используется Jina Reader, а поиск ограничивается доменами Kinorium.
+
+## Структура
+
+- `index.html` - shell мультитула.
+- `styles.css` - единый интерфейс.
+- `app.js` - вкладки, настройки и общая логика.
+- `studio.js` - собственный редактор.
+- `media.js` - TMDB, fanart.tv, Kinorium/Jina.
 
 ## GitHub Pages
 
-В репозитории открой:
+Проект публикуется GitHub Actions workflow из ветки `main`.
 
-`Settings -> Pages -> Build and deployment -> Source -> Deploy from a branch`
+Сайт:
 
-Выбери:
+https://skoomaholic-art.github.io/photopea-ai/
 
-- Branch: `main`
-- Folder: `/ (root)`
+## Следующие этапы
 
-После сохранения сайт будет доступен примерно по адресу:
-
-`https://skoomaholic-art.github.io/photopea-ai/`
+PSD/SVG-парсинг, маски, blend modes, crop/selection, нормальная трансформация с handles, smart-object-подобные слои, backend для секретов, Perchance bridge через собственный Perchance generator и postMessage.
