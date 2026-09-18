@@ -25,6 +25,29 @@ window.Media = (() => {
     return claims?.[pid]?.[0]?.mainsnak?.datavalue?.value;
   }
 
+  function claimEntityIds(claims,pid,limit=12) {
+    return (claims?.[pid]||[]).map(row=>row?.mainsnak?.datavalue?.value?.id).filter(Boolean).slice(0,limit);
+  }
+
+  async function wikidataLabels(ids) {
+    const unique=[...new Set(ids.filter(Boolean))];
+    if(!unique.length)return{};
+    const key="wikidata:labels:"+unique.sort().join("|");
+    return cached(key,async()=>{
+      const url="https://www.wikidata.org/w/api.php?action=wbgetentities&ids="+
+        encodeURIComponent(unique.join("|"))+"&props=labels&languages=ru|en&format=json&origin=*";
+      const response=await fetch(url);
+      if(!response.ok)throw new Error("Wikidata labels HTTP "+response.status);
+      const data=await response.json();
+      const result={};
+      for(const id of unique){
+        const entity=data.entities?.[id];
+        result[id]=entity?.labels?.ru?.value||entity?.labels?.en?.value||id;
+      }
+      return result;
+    },24*60*60*1000);
+  }
+
   async function cached(key, producer, ttlMs = 20 * 60 * 1000) {
     try {
       const hit = await SkoomaStore.getCache("media:" + key);
@@ -254,17 +277,31 @@ window.Media = (() => {
         const claims=entity.claims||{};
         const time=claimValue(claims,"P577");
         const official=claimValue(claims,"P856");
+        const originalTitle=claimValue(claims,"P1476")?.text||"";
+        const countryIds=claimEntityIds(claims,"P495",5);
+        const directorIds=claimEntityIds(claims,"P57",6);
+        const castIds=claimEntityIds(claims,"P161",12);
+        const labels=await wikidataLabels([...countryIds,...directorIds,...castIds]);
+        const imageName=claimValue(claims,"P18")||"";
+        const artwork=imageName?[{
+          url:"https://commons.wikimedia.org/wiki/Special:Redirect/file/"+encodeURIComponent(imageName),
+          kind:"image",source:"Wikimedia Commons"
+        }]:[];
         return {
           overview:entity.descriptions?.ru?.value||entity.descriptions?.en?.value||item.overview||"",
           meta:{
             Wikidata:item.id,
+            "Original title":originalTitle,
+            Country:countryIds.map(id=>labels[id]).join(", "),
+            Director:directorIds.map(id=>labels[id]).join(", "),
+            Cast:castIds.map(id=>labels[id]).join(", "),
             IMDb:claimValue(claims,"P345")||"",
             "TMDB Movie":claimValue(claims,"P4947")||"",
             "TMDB TV":claimValue(claims,"P4983")||"",
             "Release date":time?.time?String(time.time).replace(/^\+/,"").split("T")[0]:"",
             "Official website":official||""
           },
-          artwork:[]
+          artwork
         };
       }
     }
