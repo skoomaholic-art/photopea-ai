@@ -9,7 +9,7 @@ window.Studio = (() => {
     return {};
   }
 
-  F.FabricObject.customProperties = ["name", "assetId", "source", "kind", "helper"];
+  F.FabricObject.customProperties = ["name", "assetId", "source", "kind", "helper", "__skoomaLockRatio"];
 
   const canvas = new F.Canvas("studioCanvas", {
     preserveObjectStacking: true,
@@ -597,8 +597,30 @@ window.Studio = (() => {
     $("propAngle").value = Math.round(active.angle || 0);
     $("propOpacity").value = active.opacity ?? 1;
     $("propBlend").value = active.globalCompositeOperation || "source-over";
-    $("imageFilters").classList.toggle("hidden", !(active instanceof F.FabricImage));
-    if (active instanceof F.FabricImage) syncFilterControls(active);
+
+    const isImage = active instanceof F.FabricImage;
+    const isText = active instanceof F.IText || active instanceof F.Textbox;
+    const canStyle = !isImage && !(active instanceof F.Group);
+    $("styleProperties").classList.toggle("hidden", !canStyle);
+    if (canStyle) {
+      if (typeof active.fill === "string" && /^#[0-9a-f]{6}$/i.test(active.fill)) $("propFill").value = active.fill;
+      if (typeof active.stroke === "string" && /^#[0-9a-f]{6}$/i.test(active.stroke)) $("propStroke").value = active.stroke;
+      $("propStrokeWidth").value = Number(active.strokeWidth || 0);
+    }
+
+    $("textObjectProperties").classList.toggle("hidden", !isText);
+    if (isText) {
+      $("propTextContent").value = active.text || "";
+      $("propTextSize").value = Math.round(active.fontSize || 48);
+      $("propTextWeight").value = String(active.fontWeight || 400);
+      $("propTextLineHeight").value = active.lineHeight || 1.16;
+      $("propTextAlign").value = active.textAlign || "left";
+      $("propTextFont").value = active.fontFamily || "Inter, Arial, sans-serif";
+    }
+
+    $("maskProperties").classList.toggle("hidden", !active.clipPath);
+    $("imageFilters").classList.toggle("hidden", !isImage);
+    if (isImage) syncFilterControls(active);
   }
 
   function syncSelectionUi() {
@@ -921,6 +943,26 @@ window.Studio = (() => {
       opacity:Math.max(0,Math.min(1,Number($("propOpacity").value))),
       globalCompositeOperation:$("propBlend").value || "source-over"
     });
+
+    const isImage = active instanceof F.FabricImage;
+    const isText = active instanceof F.IText || active instanceof F.Textbox;
+    if (!isImage && !(active instanceof F.Group)) {
+      if ("fill" in active) active.fill = $("propFill").value;
+      active.stroke = Number($("propStrokeWidth").value) > 0 ? $("propStroke").value : null;
+      active.strokeWidth = Math.max(0, Number($("propStrokeWidth").value) || 0);
+    }
+    if (isText) {
+      active.set({
+        text:$("propTextContent").value,
+        fontSize:Math.max(8,Number($("propTextSize").value)||48),
+        fontWeight:$("propTextWeight").value,
+        lineHeight:Math.max(.5,Number($("propTextLineHeight").value)||1.16),
+        textAlign:$("propTextAlign").value,
+        fontFamily:$("propTextFont").value.trim() || "Inter, Arial, sans-serif",
+        fill:$("propFill").value
+      });
+    }
+
     if (active.width) active.scaleX = width / active.width;
     if (active.height) active.scaleY = height / active.height;
     active.setCoords(); canvas.requestRenderAll();
@@ -1685,6 +1727,12 @@ window.Studio = (() => {
     $("filterInvertBtn").onclick=()=>toggleImageFilter("invert");
     $("filterSharpenBtn").onclick=()=>toggleImageFilter("sharpen");
     $("filterResetBtn").onclick=resetImageFilters;
+    $("removeMaskBtn").onclick=()=>{
+      const active=canvas.getActiveObject();
+      if(!active||!active.clipPath)return;
+      active.clipPath=undefined;active.dirty=true;canvas.requestRenderAll();
+      snapshotLabel("Layer mask removed");renderProperties();
+    };
 
     window.addEventListener("resize",fitToViewport);
     window.addEventListener("keydown",event=>{
