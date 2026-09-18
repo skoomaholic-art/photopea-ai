@@ -1250,18 +1250,58 @@ window.Studio = (() => {
     $("selectionStatus").textContent="Color " + hex.toUpperCase();
   }
 
-  function fillTarget(target) {
-    if (!target || isHelper(target)) {
-      state.transparent=false;
-      canvas.backgroundColor=$("shapeFill").value;
-      canvas.requestRenderAll(); snapshotLabel("Изменён фон");
-      return;
+  function parseHexColor(hex) {
+    const raw=String(hex||"#000000").replace("#","");
+    const full=raw.length===3?raw.split("").map(v=>v+v).join(""):raw.padEnd(6,"0");
+    const value=parseInt(full,16)||0;
+    return {r:(value>>16)&255,g:(value>>8)&255,b:value&255};
+  }
+
+  async function rasterFloodFillAt(point) {
+    const source=renderFlatCanvas();
+    const ctx=source.getContext("2d",{willReadFrequently:true});
+    const imageData=ctx.getImageData(0,0,state.width,state.height);
+    const x=Math.max(0,Math.min(state.width-1,Math.floor(point.x)));
+    const y=Math.max(0,Math.min(state.height-1,Math.floor(point.y)));
+    const tolerance=Math.max(0,Math.min(255,Number($("wandTolerance").value)||32));
+    let mask=null;
+    try{
+      const buffer=imageData.data.buffer.slice(0);
+      const result=await runRasterWorker("magic-wand",{width:state.width,height:state.height,data:buffer,x,y,tolerance},[buffer]);
+      if(result)mask={data:new Uint8Array(result.data),bounds:result.bounds};
+    }catch{
+      if(MagicWand?.floodFill)mask=MagicWand.floodFill({data:imageData.data,width:state.width,height:state.height,bytes:4},x,y,tolerance,null,true);
     }
-    if ("fill" in target) {
-      target.set("fill",$("shapeFill").value);
-      canvas.requestRenderAll(); snapshotLabel("Fill");
-      syncSelectionUi();
+    if(!mask)return;
+    const bounds=mask.bounds?.minX!==undefined?mask.bounds:computeMaskBounds(mask.data,state.width,state.height);
+    if(!bounds)return;
+    const width=bounds.maxX-bounds.minX+1,height=bounds.maxY-bounds.minY+1;
+    const out=document.createElement("canvas");out.width=width;out.height=height;
+    const octx=out.getContext("2d");const data=octx.createImageData(width,height);
+    const color=parseHexColor($("shapeFill").value);
+    for(let yy=0;yy<height;yy++)for(let xx=0;xx<width;xx++){
+      const mi=(bounds.minY+yy)*state.width+(bounds.minX+xx);
+      if(!mask.data[mi])continue;
+      const p=(yy*width+xx)*4;
+      data.data[p]=color.r;data.data[p+1]=color.g;data.data[p+2]=color.b;data.data[p+3]=255;
     }
+    octx.putImageData(data,0,0);
+    const src=out.toDataURL("image/png");
+    const asset=await APP.addAsset({name:"Fill",src,source:"Studio",kind:"generated"});
+    await addImageFromUrl(src,"Fill",asset,{left:bounds.minX,top:bounds.minY,scaleX:1,scaleY:1});
+    snapshotLabel("Raster fill");
+  }
+
+  async function fillTarget(target,point) {
+    if (target && !isHelper(target) && !(target instanceof F.FabricImage) && !(target instanceof F.Path)) {
+      if ("fill" in target) {
+        target.set("fill",$("shapeFill").value);
+        canvas.requestRenderAll(); snapshotLabel("Fill");
+        syncSelectionUi();
+        return;
+      }
+    }
+    await rasterFloodFillAt(point);
   }
 
   function groupSelected() {
@@ -1626,7 +1666,7 @@ window.Studio = (() => {
       }else if(state.tool==="eyedropper"){
         eyedropAt(point);
       }else if(state.tool==="fill"){
-        fillTarget(event.target);
+        fillTarget(event.target,point);
       }
     });
 
