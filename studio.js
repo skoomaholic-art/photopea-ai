@@ -1313,6 +1313,12 @@ window.Studio = (() => {
     state.lassoPoints=[];
   }
 
+  function updateCropFields() {
+    if(!state.cropRect)return;
+    $("cropWidth").value=Math.max(1,Math.round(state.cropRect.getScaledWidth()));
+    $("cropHeight").value=Math.max(1,Math.round(state.cropRect.getScaledHeight()));
+  }
+
   function startCrop() {
     if (state.cropRect) canvas.remove(state.cropRect);
     const inset = Math.round(Math.min(state.width,state.height)*0.08);
@@ -1323,6 +1329,7 @@ window.Studio = (() => {
       excludeFromExport:true,helper:true,name:"Crop area"
     });
     canvas.add(state.cropRect); canvas.setActiveObject(state.cropRect); canvas.requestRenderAll();
+    updateCropFields();
   }
 
   function updateCropRatio() {
@@ -1336,7 +1343,20 @@ window.Studio = (() => {
     const ratio = rw/rh;
     const w = state.cropRect.getScaledWidth();
     state.cropRect.set({ scaleY:1,height:w/ratio });
-    state.cropRect.setCoords(); canvas.requestRenderAll();
+    state.cropRect.setCoords(); canvas.requestRenderAll(); updateCropFields();
+  }
+
+  function setCropDimensions() {
+    if(!state.cropRect)return;
+    const width=Math.max(1,Number($("cropWidth").value)||state.cropRect.getScaledWidth());
+    const height=Math.max(1,Number($("cropHeight").value)||state.cropRect.getScaledHeight());
+    state.cropRect.set({
+      scaleX:width/Math.max(1,state.cropRect.width),
+      scaleY:height/Math.max(1,state.cropRect.height)
+    });
+    state.cropRect.setCoords();
+    canvas.requestRenderAll();
+    updateCropFields();
   }
 
   function applyCrop() {
@@ -1906,10 +1926,12 @@ window.Studio = (() => {
     canvas.on("selection:updated",syncSelectionUi);
     canvas.on("selection:cleared",syncSelectionUi);
     canvas.on("object:modified",event=>{
+      if(event.target===state.cropRect){updateCropFields();return}
       if(isHelper(event.target))return;
       state.guides={v:[],h:[]};snapshotLabel("Изменён объект");syncSelectionUi();
     });
-    canvas.on("object:moving",event=>{if(!isHelper(event.target))snapObject(event.target)});
+    canvas.on("object:moving",event=>{if(event.target===state.cropRect){updateCropFields();return}if(!isHelper(event.target))snapObject(event.target)});
+    canvas.on("object:scaling",event=>{if(event.target===state.cropRect)updateCropFields()});
     canvas.on("after:render",drawGuides);
     canvas.on("path:created",async event=>{
       const path=event.path;if(!path)return;
@@ -2036,6 +2058,7 @@ window.Studio = (() => {
     $("wandToLayerBtn").onclick=wandToLayer;$("wandMaskBtn").onclick=wandToMask;
     $("wandCancelBtn").onclick=()=>{clearWand();canvas.requestRenderAll()};
     $("cropApplyBtn").onclick=applyCrop;$("cropCancelBtn").onclick=cancelCrop;$("cropRatio").onchange=updateCropRatio;
+    $("cropWidth").onchange=setCropDimensions;$("cropHeight").onchange=setCropDimensions;
 
     $("generateAiBtn").onclick=()=>generateAi(false);$("replaceWithAiBtn").onclick=()=>generateAi(true);
     $("generateVariationsBtn").onclick=generateVariations;
