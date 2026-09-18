@@ -25,6 +25,16 @@ window.Media = (() => {
     return claims?.[pid]?.[0]?.mainsnak?.datavalue?.value;
   }
 
+  async function cached(key, producer, ttlMs = 20 * 60 * 1000) {
+    try {
+      const hit = await SkoomaStore.getCache("media:" + key);
+      if (hit !== null && hit !== undefined) return hit;
+    } catch {}
+    const value = await producer();
+    try { await SkoomaStore.setCache("media:" + key, value, ttlMs); } catch {}
+    return value;
+  }
+
   const providers = {
     tvmaze: {
       label:"TVmaze",
@@ -365,7 +375,7 @@ window.Media = (() => {
     if(!provider)return;
     status("Загружаю детали...");
     try{
-      const details=await provider.details(item);
+      const details=await cached(item.providerKey+":details:"+item.id,()=>provider.details(item),30*60*1000);
       document.querySelectorAll(".media-detail-inline").forEach(node=>node.remove());
       const block=document.createElement("div");
       block.className="media-detail-inline";
@@ -410,7 +420,9 @@ window.Media = (() => {
     if(!query)return status("Введите название.","error");
     const active=Object.values(providers).filter(provider=>provider.enabled());
     status("Ищу: "+active.map(provider=>provider.label).join(", ")+"...");
-    const settled=await Promise.allSettled(active.map(provider=>provider.search(query)));
+    const settled=await Promise.allSettled(active.map(provider=>
+      cached(provider.label+":search:"+query.toLowerCase(),()=>provider.search(query),15*60*1000)
+    ));
     const items=[],errors=[];
     settled.forEach((result,index)=>{
       if(result.status==="fulfilled")items.push(...result.value);
@@ -445,6 +457,7 @@ window.Media = (() => {
     window.open(q?"https://www.imdb.com/find/?q="+encodeURIComponent(q):"https://www.imdb.com/","_blank","noopener");
   };
 
+  try{SkoomaStore.clearExpiredCache()}catch{}
   refreshProviderState();
   return {search,refreshProviderState,providers,materializeArtwork};
 })();
