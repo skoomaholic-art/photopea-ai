@@ -108,6 +108,12 @@
 
     <div id="contextSelection" class="context-row hidden">
       <span class="context-title" id="selectionContextTitle">Selection</span>
+      <label>Target
+        <select id="selectionTargetMode" class="compact-select">
+          <option value="objects">Objects</option>
+          <option value="pixels">Pixels</option>
+        </select>
+      </label>
       <label>Режим
         <select id="selectionMode" class="compact-select">
           <option value="replace">Replace</option>
@@ -116,7 +122,11 @@
           <option value="intersect">Intersect</option>
         </select>
       </label>
+      <label>Feather <input id="selectionFeather" class="compact-number" type="number" min="0" max="40" value="0"></label>
       <button id="selectAllBtn" class="toolbar-button">Select all</button>
+      <button id="selectionToLayerBtn" class="toolbar-button" disabled>Pixels → Layer</button>
+      <button id="selectionMaskBtn" class="toolbar-button" disabled>Pixels → Mask</button>
+      <button id="selectionDeletePixelsBtn" class="toolbar-button" disabled>Delete pixels</button>
       <button id="clearSelectionBtn" class="toolbar-button">Deselect</button>
     </div>
 
