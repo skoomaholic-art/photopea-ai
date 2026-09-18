@@ -2,17 +2,14 @@ window.Studio = (() => {
   const $ = id => document.getElementById(id);
   const qsa = (selector, root = document) => [...root.querySelectorAll(selector)];
   const F = window.fabric;
+  const MagicWand = window.MagicWand;
 
   if (!F) {
     console.error("Fabric.js failed to load.");
     return {};
   }
 
-  const CUSTOM_PROPS = [
-    "uuid", "name", "assetId", "source", "kind",
-    "originalSrc", "rasterSrc", "maskSrc", "maskBaseSrc"
-  ];
-  F.FabricObject.customProperties = CUSTOM_PROPS;
+  F.FabricObject.customProperties = ["name", "assetId", "source", "kind", "helper", "__skoomaLockRatio"];
 
   const canvas = new F.Canvas("studioCanvas", {
     preserveObjectStacking: true,
@@ -39,18 +36,33 @@ window.Studio = (() => {
     restoring: false,
     clipboard: null,
     previousTool: null,
-    guides: [],
-    eraser: null,
-    eraserPreview: null,
+    lassoPoints: [],
+    lassoHelper: null,
+    cropRect: null,
+    wand: null,
+    guides: { v: [], h: [] },
+    filterState: new WeakMap(),
+    lineStart: null,
+    lineHelper: null,
+    shapeStart: null,
+    shapeHelper: null,
+    penPoints: [],
+    penHelper: null,
+    aiReference: null,
+    lastAiSrc: null,
+    selectionBase: [],
+    adjustingSelection: false,
+    wandWorker: null,
+    wandWorkerSeq: 0,
+    wandWorkerPending: new Map(),
+    nodeTarget: null,
     nodeHandles: [],
-    nodeTarget: null
+    eraserTarget: null,
+    thumbCache: new WeakMap()
   };
 
-  const MAX_HISTORY = 35;
-
-  function docObjects() {
-    return canvas.getObjects().filter(object => !object.excludeFromExport);
-  }
+  const MAX_HISTORY = 40;
+  const SNAP = 6;
 
   function fileToDataUrl(file) {
     return new Promise((resolve, reject) => {
@@ -61,18 +73,14 @@ window.Studio = (() => {
     });
   }
 
-  function uid() {
-    return APP.uid("obj");
-  }
-
   function objectName(object) {
     if (object?.name) return object.name;
     if (object instanceof F.IText || object instanceof F.Textbox) return "Text";
     if (object instanceof F.FabricImage) return "Image";
     if (object instanceof F.Rect) return "Rectangle";
     if (object instanceof F.Ellipse) return "Ellipse";
-    if (object instanceof F.Path) return "Path";
     if (object instanceof F.Group) return "Group";
+    if (object instanceof F.Path) return object.globalCompositeOperation === "destination-out" ? "Eraser" : "Brush";
     return "Object";
   }
 
@@ -80,22 +88,25 @@ window.Studio = (() => {
     if (object?.kind) return object.kind;
     if (object instanceof F.IText || object instanceof F.Textbox) return "text";
     if (object instanceof F.FabricImage) return "image";
-    if (object instanceof F.Path) return "vector";
     if (object instanceof F.Group) return "group";
     if (object instanceof F.Rect || object instanceof F.Ellipse) return "shape";
+    if (object instanceof F.Path) return "drawing";
     return "object";
   }
 
+  function isHelper(object) {
+    return !!object?.helper || !!object?.excludeFromExport;
+  }
+
+  function realObjects() {
+    return canvas.getObjects().filter(object => !isHelper(object));
+  }
+
   function assignObjectMetadata(object, name, extra = {}) {
-    object.uuid = object.uuid || extra.uuid || uid();
     object.name = name || objectName(object);
     object.kind = extra.kind || objectKind(object);
-    if (extra.assetId !== undefined) object.assetId = extra.assetId;
-    if (extra.source !== undefined) object.source = extra.source;
-    if (extra.originalSrc !== undefined) object.originalSrc = extra.originalSrc;
-    if (extra.rasterSrc !== undefined) object.rasterSrc = extra.rasterSrc;
-    if (extra.maskSrc !== undefined) object.maskSrc = extra.maskSrc;
-    if (extra.maskBaseSrc !== undefined) object.maskBaseSrc = extra.maskBaseSrc;
+    if (extra.assetId) object.assetId = extra.assetId;
+    if (extra.source) object.source = extra.source;
     object.set({
       transparentCorners: false,
       cornerColor: "#6f7dff",
@@ -115,8 +126,40 @@ window.Studio = (() => {
     fitToViewport();
   }
 
-  function getDocumentSize() {
-    return { width: state.width, height: state.height };
+  function updateRulers() {
+    const viewport=$("canvasViewport"),rx=$("rulerX"),ry=$("rulerY"),wrapper=canvas.wrapperEl;
+    if(!viewport||!rx||!ry||!wrapper)return;
+    const vp=viewport.getBoundingClientRect(),fr=wrapper.getBoundingClientRect();
+    const dpr=Math.max(1,window.devicePixelRatio||1);
+    const rw=Math.max(1,Math.floor(vp.width-20)),rh=Math.max(1,Math.floor(vp.height-20));
+    rx.width=Math.floor(rw*dpr);rx.height=Math.floor(20*dpr);rx.style.width=rw+"px";rx.style.height="20px";
+    ry.width=Math.floor(20*dpr);ry.height=Math.floor(rh*dpr);ry.style.width="20px";ry.style.height=rh+"px";
+    const xctx=rx.getContext("2d"),yctx=ry.getContext("2d");
+    xctx.setTransform(dpr,0,0,dpr,0,0);yctx.setTransform(dpr,0,0,dpr,0,0);
+    xctx.clearRect(0,0,rw,20);yctx.clearRect(0,0,20,rh);
+    xctx.fillStyle="#0d141c";xctx.fillRect(0,0,rw,20);yctx.fillStyle="#0d141c";yctx.fillRect(0,0,20,rh);
+    const pxPerUnit=Math.max(.0001,state.viewScale);
+    const candidates=[10,20,50,100,200,500,1000];
+    const major=candidates.find(step=>step*pxPerUnit>=55)||1000;
+    const minor=major/5;
+    const originX=fr.left-vp.left-20;
+    const originY=fr.top-vp.top-20;
+    xctx.strokeStyle="#5f6c7b";xctx.fillStyle="#8fa0b3";xctx.font="9px system-ui";xctx.textBaseline="top";
+    yctx.strokeStyle="#5f6c7b";yctx.fillStyle="#8fa0b3";yctx.font="9px system-ui";
+    for(let x=0;x<=state.width;x+=minor){
+      const sx=originX+x*pxPerUnit;if(sx<0||sx>rw)continue;
+      const isMajor=Math.abs((x/major)-Math.round(x/major))<1e-6;
+      xctx.beginPath();xctx.moveTo(sx,isMajor?7:13);xctx.lineTo(sx,20);xctx.stroke();
+      if(isMajor)xctx.fillText(String(Math.round(x)),sx+2,1);
+    }
+    for(let y=0;y<=state.height;y+=minor){
+      const sy=originY+y*pxPerUnit;if(sy<0||sy>rh)continue;
+      const isMajor=Math.abs((y/major)-Math.round(y/major))<1e-6;
+      yctx.beginPath();yctx.moveTo(isMajor?7:13,sy);yctx.lineTo(20,sy);yctx.stroke();
+      if(isMajor){
+        yctx.save();yctx.translate(1,sy-2);yctx.rotate(-Math.PI/2);yctx.fillText(String(Math.round(y)),0,0);yctx.restore();
+      }
+    }
   }
 
   function applyViewTransform() {
@@ -125,132 +168,271 @@ window.Studio = (() => {
     wrapper.style.transformOrigin = "center center";
     wrapper.style.transform = "translate(" + state.panX + "px," + state.panY + "px) scale(" + state.viewScale + ")";
     $("zoomStatus").textContent = Math.round(state.viewScale * 100) + "%";
+    requestAnimationFrame(updateRulers);
   }
 
   function fitToViewport() {
     const viewport = $("canvasViewport");
     if (!viewport || !canvas.wrapperEl) return;
     const rect = viewport.getBoundingClientRect();
-    const next = Math.min((rect.width - 48) / state.width, (rect.height - 48) / state.height, 1);
-    state.viewScale = Math.max(0.05, Number.isFinite(next) ? next : 1);
+    const scale = Math.min((rect.width - 48) / state.width, (rect.height - 48) / state.height, 1);
+    state.viewScale = Math.max(0.05, Number.isFinite(scale) ? scale : 1);
     state.panX = 0;
     state.panY = 0;
     applyViewTransform();
-    refreshNodeHandles();
   }
 
   function setZoom(next) {
-    state.viewScale = Math.max(0.05, Math.min(6, next));
+    state.viewScale = Math.max(0.05, Math.min(8, next));
     applyViewTransform();
-    refreshNodeHandles();
   }
 
   function setContext(name) {
-    [
-      "contextDefault", "contextBrush", "contextText", "contextMove",
-      "contextSelection", "contextWand", "contextCrop", "contextNode"
-    ].forEach(id => $(id).classList.add("hidden"));
-    $(name).classList.remove("hidden");
+    ["contextDefault","contextBrush","contextText","contextMove","contextSelection","contextWand","contextCrop","contextShape"]
+      .forEach(id => $(id)?.classList.add("hidden"));
+    $(name)?.classList.remove("hidden");
   }
 
-  function getActiveImage() {
-    const active = canvas.getActiveObject();
-    return active instanceof F.FabricImage && !active.excludeFromExport ? active : null;
-  }
-
-  function clearTransient() {
-    clearGuides();
-    clearNodeHandles(false);
-    if (!selectionTools?.isSelectionTool(state.tool)) selectionTools?.clear();
-    if (state.eraserPreview) {
-      canvas.remove(state.eraserPreview);
-      state.eraserPreview = null;
+  function clearToolHelpers() {
+    if (state.lassoHelper) {
+      canvas.remove(state.lassoHelper);
+      state.lassoHelper = null;
     }
-    state.eraser = null;
+    if (state.cropRect) {
+      canvas.remove(state.cropRect);
+      state.cropRect = null;
+    }
+    if (state.lineHelper) {
+      canvas.remove(state.lineHelper);
+      state.lineHelper = null;
+      state.lineStart = null;
+    }
+    if (state.shapeHelper) {
+      canvas.remove(state.shapeHelper);
+      state.shapeHelper = null;
+      state.shapeStart = null;
+    }
+    if (state.penHelper) {
+      canvas.remove(state.penHelper);
+      state.penHelper = null;
+    }
+    state.penPoints = [];
+    exitNodeEdit();
+    clearWand();
+    state.lassoPoints = [];
+    $("canvasFrame").classList.remove("selection-mode","crop-mode","lasso-mode","wand-mode","eyedropper-mode","fill-mode");
   }
 
-  function setTool(tool) {
-    if (state.tool === "node" && tool !== "node") clearNodeHandles(true);
+  function setBrush(tool) {
+    canvas.isDrawingMode = true;
+    if (tool === "eraser") {
+      const active=canvas.getActiveObject();
+      state.eraserTarget=active && !(active instanceof F.ActiveSelection) && !isHelper(active) ? active : null;
+      if(state.eraserTarget) $("selectionStatus").textContent="Eraser: "+objectName(state.eraserTarget);
+    } else {
+      state.eraserTarget=null;
+    }
+    const brush = new F.PencilBrush(canvas);
+    const configuredSize = Math.max(1, Number($("brushSize").value) || 18);
+    const opacity = Math.max(0.05, Number($("brushOpacity").value) || 1);
+    const flow = Math.max(0.05, Number($("brushFlow").value) || 1);
+    const hardness = Math.max(0, Math.min(1, Number($("brushHardness").value) || 0));
+    brush.width = tool === "pencil" ? Math.min(4, configuredSize) : configuredSize;
+    brush.color = tool === "eraser" ? "rgba(255,255,255," + (opacity * flow) + ")" : hexToRgba($("brushColor").value, opacity * flow);
+    if (tool !== "pencil" && hardness < 0.98 && F.Shadow) {
+      brush.shadow = new F.Shadow({
+        color: tool === "eraser" ? "rgba(255,255,255," + (opacity * flow * .55) + ")" : hexToRgba($("brushColor").value, opacity * flow * .55),
+        blur: Math.max(0, (1 - hardness) * configuredSize * .7),
+        offsetX: 0,
+        offsetY: 0,
+        affectStroke: true
+      });
+    }
+    canvas.freeDrawingBrush = brush;
+    $("brushContextTitle").textContent = tool === "eraser" ? "Ластик" : tool === "pencil" ? "Карандаш" : "Кисть";
+    setContext("contextBrush");
+  }
+
+  function setTool(tool, preserveHelpers = false) {
+    if (!preserveHelpers) clearToolHelpers();
     state.tool = tool;
     qsa(".tool-button[data-tool]").forEach(btn => btn.classList.toggle("active", btn.dataset.tool === tool));
 
     canvas.isDrawingMode = false;
-    canvas.selection = tool === "move";
-    canvas.skipTargetFind = [
-      "brush", "eraser", "hand", "zoom", "marquee", "lasso", "wand", "crop", "node"
-    ].includes(tool);
-    canvas.defaultCursor = tool === "hand" ? "grab" :
-      tool === "zoom" ? "zoom-in" :
-      ["marquee", "lasso", "wand", "crop", "eraser"].includes(tool) ? "crosshair" : "default";
+    canvas.selection = false;
+    canvas.skipTargetFind = false;
+    canvas.defaultCursor = "default";
 
-    if (tool === "brush") {
-      const brush = new F.PencilBrush(canvas);
-      brush.width = Math.max(1, Number($("brushSize").value) || 18);
-      const opacity = Math.max(0.05, Number($("brushOpacity").value) || 1);
-      brush.color = hexToRgba($("brushColor").value, opacity);
-      canvas.freeDrawingBrush = brush;
-      canvas.isDrawingMode = true;
-      setContext("contextBrush");
-    } else if (tool === "eraser") {
-      setContext("contextBrush");
-    } else if (tool === "text") {
-      setContext("contextText");
-    } else if (tool === "move") {
+    if (tool === "move") {
+      canvas.selection = true;
       setContext(canvas.getActiveObject() ? "contextMove" : "contextDefault");
-    } else if (tool === "marquee" || tool === "lasso") {
+    } else if (tool === "marquee") {
+      canvas.selection = true;
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+      canvas.defaultCursor = "crosshair";
+      $("selectionContextTitle").textContent = "Rectangle Select";
+      $("canvasFrame").classList.add("selection-mode");
+      setContext("contextSelection");
+    } else if (tool === "lasso") {
+      canvas.skipTargetFind = true;
+      canvas.defaultCursor = "crosshair";
+      $("selectionContextTitle").textContent = "Lasso";
+      $("canvasFrame").classList.add("lasso-mode");
       setContext("contextSelection");
     } else if (tool === "wand") {
+      canvas.skipTargetFind = true;
+      canvas.defaultCursor = "crosshair";
+      $("canvasFrame").classList.add("wand-mode");
       setContext("contextWand");
     } else if (tool === "crop") {
+      canvas.skipTargetFind = false;
+      $("canvasFrame").classList.add("crop-mode");
+      startCrop();
       setContext("contextCrop");
+    } else if (["brush","pencil","eraser"].includes(tool)) {
+      setBrush(tool);
+    } else if (tool === "fill") {
+      canvas.defaultCursor = "crosshair";
+      $("canvasFrame").classList.add("fill-mode");
+      setContext("contextShape");
+    } else if (tool === "eyedropper") {
+      canvas.skipTargetFind = true;
+      canvas.defaultCursor = "crosshair";
+      $("canvasFrame").classList.add("eyedropper-mode");
+      setContext("contextDefault");
+    } else if (tool === "text") {
+      canvas.skipTargetFind = true;
+      setContext("contextText");
+    } else if (tool === "rect" || tool === "ellipse" || tool === "line" || tool === "pen") {
+      canvas.skipTargetFind = true;
+      canvas.defaultCursor = "crosshair";
+      setContext("contextShape");
     } else if (tool === "node") {
-      setContext("contextNode");
-      enterNodeMode();
-    } else {
+      setContext("contextShape");
+      enterNodeEdit();
+    } else if (tool === "image") {
+      $("fileInput").click();
+      setTool("move");
+      return;
+    } else if (tool === "hand") {
+      canvas.skipTargetFind = true;
+      canvas.defaultCursor = "grab";
+      setContext("contextDefault");
+    } else if (tool === "zoom") {
+      canvas.skipTargetFind = true;
+      canvas.defaultCursor = "zoom-in";
       setContext("contextDefault");
     }
 
-    const labels = {
-      move: "Move (V)",
-      marquee: "Rectangle Select (M)",
-      lasso: "Lasso (L)",
-      wand: "Magic Wand (W)",
-      crop: "Crop (C)",
-      brush: "Brush (B)",
-      eraser: "Raster Eraser (E)",
-      text: "Text (T)",
-      rect: "Rectangle (R)",
-      ellipse: "Ellipse (O)",
-      node: "Vector Nodes (N)",
-      hand: "Hand (H)",
-      zoom: "Zoom (Z)"
-    };
-    $("toolStatus").textContent = labels[tool] || tool;
+    $("toolStatus").textContent = {
+      move:"Move (V)", marquee:"Rectangle Select (M)", lasso:"Lasso (L)", wand:"Magic Wand (W)",
+      crop:"Crop (C)", brush:"Brush (B)", pencil:"Pencil (P)", eraser:"Eraser (E)",
+      fill:"Fill (G)", eyedropper:"Eyedropper (I)", text:"Text (T)",
+      rect:"Rectangle (R)", ellipse:"Ellipse (O)", line:"Line (N)", pen:"Pen (A)", node:"Node Edit (Q)", image:"Place Image (J)", hand:"Hand (H)", zoom:"Zoom (Z)"
+    }[tool] || tool;
   }
 
   function hexToRgba(hex, alpha) {
-    const raw = hex.replace("#", "");
+    const raw = String(hex || "#000000").replace("#","");
     const full = raw.length === 3 ? raw.split("").map(x => x + x).join("") : raw;
-    const n = parseInt(full, 16);
+    const n = parseInt(full,16);
     return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + alpha + ")";
   }
 
-  function serialize() {
+  function ensureWandWorker() {
+    if (state.wandWorker) return state.wandWorker;
+    try {
+      const worker = new Worker("raster-worker.js");
+      worker.onmessage = event => {
+        const { id, ok, result, error } = event.data || {};
+        const pending = state.wandWorkerPending.get(id);
+        if (!pending) return;
+        state.wandWorkerPending.delete(id);
+        ok ? pending.resolve(result) : pending.reject(new Error(error || "Raster worker error"));
+      };
+      worker.onerror = error => {
+        for (const pending of state.wandWorkerPending.values()) pending.reject(error);
+        state.wandWorkerPending.clear();
+        try { worker.terminate(); } catch {}
+        state.wandWorker = null;
+      };
+      state.wandWorker = worker;
+      return worker;
+    } catch {
+      return null;
+    }
+  }
+
+  function runRasterWorker(type, payload, transfer = []) {
+    const worker = ensureWandWorker();
+    if (!worker) return Promise.reject(new Error("Raster worker unavailable"));
+    const id = ++state.wandWorkerSeq;
+    return new Promise((resolve, reject) => {
+      state.wandWorkerPending.set(id, { resolve, reject });
+      worker.postMessage({ id, type, payload }, transfer);
+    });
+  }
+
+  function computeMaskBounds(maskData, width, height) {
+    let minX = width, minY = height, maxX = -1, maxY = -1;
+    for (let y = 0; y < height; y++) {
+      const row = y * width;
+      for (let x = 0; x < width; x++) {
+        if (!maskData[row + x]) continue;
+        minX = Math.min(minX, x); minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+      }
+    }
+    return maxX < 0 ? null : { minX, minY, maxX, maxY };
+  }
+
+  function featherMaskCanvas(mask, bounds, feather = 0, fullDocument = false) {
+    const minX = fullDocument ? 0 : bounds.minX;
+    const minY = fullDocument ? 0 : bounds.minY;
+    const width = fullDocument ? state.width : bounds.maxX - bounds.minX + 1;
+    const height = fullDocument ? state.height : bounds.maxY - bounds.minY + 1;
+    const raw = document.createElement("canvas");
+    raw.width = width; raw.height = height;
+    const rctx = raw.getContext("2d");
+    const image = rctx.createImageData(width, height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const srcX = x + minX, srcY = y + minY;
+        const selected = mask.data[srcY * state.width + srcX];
+        if (!selected) continue;
+        const p = (y * width + x) * 4;
+        image.data[p] = image.data[p + 1] = image.data[p + 2] = 255;
+        image.data[p + 3] = 255;
+      }
+    }
+    rctx.putImageData(image, 0, 0);
+    if (!feather) return raw;
+    const blurred = document.createElement("canvas");
+    blurred.width = width; blurred.height = height;
+    const bctx = blurred.getContext("2d");
+    bctx.filter = "blur(" + feather + "px)";
+    bctx.drawImage(raw, 0, 0);
+    return blurred;
+  }
+
+  function serialize(id="autosave", title="Autosave") {
     return {
-      id: "autosave",
-      version: 3,
-      width: state.width,
-      height: state.height,
-      transparent: state.transparent,
-      canvas: canvas.toJSON(CUSTOM_PROPS),
-      updatedAt: Date.now()
+      id,
+      title,
+      version:3,
+      width:state.width,
+      height:state.height,
+      transparent:state.transparent,
+      canvas:canvas.toJSON(["name","assetId","source","kind","helper"]),
+      updatedAt:Date.now()
     };
   }
 
   async function saveNow() {
     try {
       APP.setAutosaveState("Сохраняю...");
-      await SkoomaStore.saveProject(serialize());
+      await SkoomaStore.saveProject(serialize("autosave","Autosave"));
       APP.setAutosaveState("Сохранено");
     } catch (error) {
       APP.setAutosaveState("Ошибка autosave");
@@ -258,25 +440,42 @@ window.Studio = (() => {
     }
   }
 
+  async function saveManualProject() {
+    const suggested="Skooma Project "+new Date().toLocaleString();
+    const title=window.prompt("Название проекта",suggested);
+    if(title===null)return;
+    const project=serialize("project-"+Date.now(),title.trim()||suggested);
+    await SkoomaStore.saveProject(project);
+    await SkoomaStore.saveProject(serialize("autosave","Autosave"));
+    APP.setAutosaveState("Проект сохранён");
+    return project;
+  }
+
+  async function loadProjectById(id) {
+    const project=await SkoomaStore.getProject(id);
+    if(!project)throw new Error("Проект не найден");
+    await loadProjectObject(project,true);
+    return project;
+  }
+
   function scheduleAutosave() {
     clearTimeout(state.autosaveTimer);
     APP.setAutosaveState("Изменено");
-    state.autosaveTimer = setTimeout(saveNow, 700);
+    state.autosaveTimer = setTimeout(saveNow,700);
   }
 
   function snapshotLabel(label) {
     if (state.historyMuted || state.restoring) return;
     const snap = {
       label,
-      width: state.width,
-      height: state.height,
-      transparent: state.transparent,
-      json: canvas.toJSON(CUSTOM_PROPS)
+      width:state.width,
+      height:state.height,
+      transparent:state.transparent,
+      json:canvas.toJSON(["name","assetId","source","kind","helper"])
     };
-    if (state.historyIndex < state.history.length - 1) {
-      state.history = state.history.slice(0, state.historyIndex + 1);
-    }
+    if (state.historyIndex < state.history.length - 1) state.history = state.history.slice(0,state.historyIndex + 1);
     state.history.push(snap);
+    state.thumbCache=new WeakMap();
     if (state.history.length > MAX_HISTORY) state.history.shift();
     state.historyIndex = state.history.length - 1;
     renderHistory();
@@ -287,16 +486,13 @@ window.Studio = (() => {
     if (!snapshot) return;
     state.restoring = true;
     state.historyMuted = true;
-    selectionTools?.clear();
-    clearGuides();
-    clearNodeHandles(false);
     state.width = snapshot.width;
     state.height = snapshot.height;
     state.transparent = snapshot.transparent;
-    canvas.setDimensions({ width: state.width, height: state.height });
+    canvas.setDimensions({ width:state.width,height:state.height });
     canvas.backgroundColor = state.transparent ? null : "#ffffff";
     await canvas.loadFromJSON(snapshot.json);
-    docObjects().forEach(obj => assignObjectMetadata(obj, obj.name, obj));
+    canvas.getObjects().filter(object => !isHelper(object)).forEach(object => assignObjectMetadata(object,object.name,object));
     canvas.requestRenderAll();
     state.historyMuted = false;
     state.restoring = false;
@@ -320,10 +516,53 @@ window.Studio = (() => {
     renderHistory();
   }
 
+  async function applyEraserStroke(path) {
+    const target=state.eraserTarget;
+    if(!target || !canvas.getObjects().includes(target)) {
+      path.globalCompositeOperation="destination-out";
+      assignObjectMetadata(path,"Eraser",{kind:"drawing",source:"studio"});
+      snapshotLabel("Ластик");
+      renderLayers();
+      canvas.requestRenderAll();
+      return;
+    }
+
+    canvas.remove(path);
+    const temp=new F.StaticCanvas(null,{
+      width:state.width,height:state.height,backgroundColor:"#ffffff"
+    });
+    const clone=await path.clone(["name","assetId","source","kind"]);
+    clone.set({
+      globalCompositeOperation:"destination-out",
+      stroke:"#000000",
+      fill:null,
+      opacity:1,
+      selectable:false,evented:false
+    });
+    temp.add(clone);
+    temp.renderAll();
+    const maskUrl=temp.toDataURL({format:"png",multiplier:1});
+    temp.dispose();
+
+    const newMask=await F.FabricImage.fromURL(maskUrl);
+    newMask.set({
+      left:0,top:0,originX:"left",originY:"top",
+      absolutePositioned:true,selectable:false,evented:false
+    });
+    target.clipPath=target.clipPath
+      ? F.util.mergeClipPaths(target.clipPath,newMask)
+      : newMask;
+    target.dirty=true;
+    canvas.setActiveObject(target);
+    canvas.requestRenderAll();
+    snapshotLabel("Eraser mask");
+    syncSelectionUi();
+  }
+
   function renderHistory() {
     const list = $("historyList");
     list.innerHTML = "";
-    state.history.forEach((entry, index) => {
+    state.history.forEach((entry,index) => {
       const row = document.createElement("div");
       row.className = "history-item" + (index === state.historyIndex ? " current" : "");
       row.textContent = entry.label;
@@ -333,14 +572,14 @@ window.Studio = (() => {
 
   function selectionSummary() {
     const active = canvas.getActiveObject();
-    if (!active) return "Ничего не выбрано";
-    const count = active instanceof F.ActiveSelection ? active.getObjects().length : 1;
+    if (!active || isHelper(active)) return "Ничего не выбрано";
+    const count = active instanceof F.ActiveSelection ? active.getObjects().filter(o => !isHelper(o)).length : 1;
     return count > 1 ? "Выбрано объектов: " + count : objectName(active);
   }
 
   function updateContextTransform() {
     const active = canvas.getActiveObject();
-    if (!active || active instanceof F.ActiveSelection) {
+    if (!active || active instanceof F.ActiveSelection || isHelper(active)) {
       if (state.tool === "move") setContext("contextDefault");
       return;
     }
@@ -349,13 +588,14 @@ window.Studio = (() => {
     $("ctxW").value = Math.round(active.getScaledWidth());
     $("ctxH").value = Math.round(active.getScaledHeight());
     $("ctxAngle").value = Math.round(active.angle || 0);
+    $("ctxLockRatio").checked = !!active.__skoomaLockRatio;
     if (state.tool === "move") setContext("contextMove");
   }
 
   function renderLayers() {
     const list = $("layersList");
     list.innerHTML = "";
-    const objects = docObjects();
+    const objects = realObjects();
     if (!objects.length) {
       list.innerHTML = '<div class="empty-state">Слоёв пока нет.</div>';
       return;
@@ -365,7 +605,7 @@ window.Studio = (() => {
       const row = document.createElement("div");
       row.className = "layer-row" + (canvas.getActiveObject() === object ? " active" : "");
       row.draggable = true;
-      row.dataset.uuid = object.uuid;
+      row.dataset.objectIndex = canvas.getObjects().indexOf(object);
 
       const eye = document.createElement("button");
       eye.className = "layer-eye";
@@ -381,19 +621,45 @@ window.Studio = (() => {
 
       const thumb = document.createElement("div");
       thumb.className = "layer-thumb";
-      thumb.textContent = objectKind(object) === "image" ? "▧" :
+      const fallback = objectKind(object) === "image" ? "▧" :
         objectKind(object) === "text" ? "T" :
-        objectKind(object) === "group" ? "▦" :
-        objectKind(object) === "vector" ? "◇" : "◆";
+        objectKind(object) === "drawing" ? "✎" :
+        objectKind(object) === "group" ? "▦" : "◇";
+      thumb.textContent = fallback;
       thumb.style.display = "grid";
       thumb.style.placeItems = "center";
       thumb.style.color = "#9fb0c3";
       thumb.style.fontWeight = "900";
+      const cachedThumb=state.thumbCache.get(object);
+      if(cachedThumb){
+        thumb.textContent="";
+        thumb.style.backgroundImage="url("+cachedThumb+")";
+        thumb.style.backgroundSize="contain";
+        thumb.style.backgroundRepeat="no-repeat";
+        thumb.style.backgroundPosition="center";
+      }else{
+        const makeThumb=()=>{
+          if(!thumb.isConnected)return;
+          try{
+            const maxDim=Math.max(object.getScaledWidth?.()||object.width||1,object.getScaledHeight?.()||object.height||1);
+            const multiplier=Math.min(.25,48/Math.max(1,maxDim));
+            const url=object.toDataURL({format:"png",multiplier:Math.max(.03,multiplier)});
+            state.thumbCache.set(object,url);
+            thumb.textContent="";
+            thumb.style.backgroundImage="url("+url+")";
+            thumb.style.backgroundSize="contain";
+            thumb.style.backgroundRepeat="no-repeat";
+            thumb.style.backgroundPosition="center";
+          }catch{}
+        };
+        if("requestIdleCallback" in window)requestIdleCallback(makeThumb,{timeout:500});
+        else setTimeout(makeThumb,0);
+      }
 
       const meta = document.createElement("div");
       meta.className = "layer-meta";
-      meta.innerHTML = '<div class="layer-name">' + APP.escapeHtml(objectName(object)) + '</div><div class="layer-type">' +
-        APP.escapeHtml(objectKind(object)) + '</div>';
+      meta.innerHTML = '<div class="layer-name">' + APP.escapeHtml(objectName(object)) +
+        '</div><div class="layer-type">' + APP.escapeHtml(objectKind(object)) + '</div>';
 
       const lock = document.createElement("button");
       lock.className = "layer-lock";
@@ -403,40 +669,34 @@ window.Studio = (() => {
         event.stopPropagation();
         const locked = !object.lockMovementX;
         object.set({
-          lockMovementX: locked,
-          lockMovementY: locked,
-          lockScalingX: locked,
-          lockScalingY: locked,
-          lockRotation: locked,
-          selectable: !locked
+          lockMovementX:locked,lockMovementY:locked,lockScalingX:locked,lockScalingY:locked,
+          lockRotation:locked,selectable:!locked
         });
         snapshotLabel(locked ? "Слой заблокирован" : "Слой разблокирован");
         renderLayers();
       };
 
-      row.append(eye, thumb, meta, lock);
+      row.append(eye,thumb,meta,lock);
       row.onclick = () => {
+        if (object.selectable === false) return;
         canvas.setActiveObject(object);
         canvas.requestRenderAll();
         syncSelectionUi();
       };
-
-      row.ondragstart = event => {
-        event.dataTransfer.setData("text/x-skooma-layer", object.uuid);
-      };
+      row.ondragstart = event => event.dataTransfer.setData("text/x-skooma-layer",String(canvas.getObjects().indexOf(object)));
       row.ondragover = event => event.preventDefault();
       row.ondrop = event => {
         event.preventDefault();
-        const fromUuid = event.dataTransfer.getData("text/x-skooma-layer");
-        const moving = docObjects().find(item => item.uuid === fromUuid);
-        if (!moving || moving === object) return;
-        const actualTargetIndex = canvas.getObjects().indexOf(object);
-        canvas.moveObjectTo(moving, actualTargetIndex);
-        canvas.requestRenderAll();
-        snapshotLabel("Изменён порядок слоёв");
-        renderLayers();
+        const from = Number(event.dataTransfer.getData("text/x-skooma-layer"));
+        const target = canvas.getObjects().indexOf(object);
+        const moving = canvas.item(from);
+        if (moving && from !== target && !isHelper(moving)) {
+          canvas.moveObjectTo(moving,target);
+          canvas.requestRenderAll();
+          snapshotLabel("Изменён порядок слоёв");
+          renderLayers();
+        }
       };
-
       list.appendChild(row);
     });
   }
@@ -445,7 +705,7 @@ window.Studio = (() => {
     const active = canvas.getActiveObject();
     const empty = $("emptyProperties");
     const panel = $("objectProperties");
-    if (!active || active instanceof F.ActiveSelection || active.excludeFromExport) {
+    if (!active || active instanceof F.ActiveSelection || isHelper(active)) {
       empty.classList.remove("hidden");
       panel.classList.add("hidden");
       return;
@@ -460,9 +720,30 @@ window.Studio = (() => {
     $("propAngle").value = Math.round(active.angle || 0);
     $("propOpacity").value = active.opacity ?? 1;
     $("propBlend").value = active.globalCompositeOperation || "source-over";
+
     const isImage = active instanceof F.FabricImage;
-    $("removeMaskBtn").disabled = !isImage || !active.maskBaseSrc;
-    $("resetRasterBtn").disabled = !isImage || !active.originalSrc;
+    const isText = active instanceof F.IText || active instanceof F.Textbox;
+    const canStyle = !isImage && !(active instanceof F.Group);
+    $("styleProperties").classList.toggle("hidden", !canStyle);
+    if (canStyle) {
+      if (typeof active.fill === "string" && /^#[0-9a-f]{6}$/i.test(active.fill)) $("propFill").value = active.fill;
+      if (typeof active.stroke === "string" && /^#[0-9a-f]{6}$/i.test(active.stroke)) $("propStroke").value = active.stroke;
+      $("propStrokeWidth").value = Number(active.strokeWidth || 0);
+    }
+
+    $("textObjectProperties").classList.toggle("hidden", !isText);
+    if (isText) {
+      $("propTextContent").value = active.text || "";
+      $("propTextSize").value = Math.round(active.fontSize || 48);
+      $("propTextWeight").value = String(active.fontWeight || 400);
+      $("propTextLineHeight").value = active.lineHeight || 1.16;
+      $("propTextAlign").value = active.textAlign || "left";
+      $("propTextFont").value = active.fontFamily || "Inter, Arial, sans-serif";
+    }
+
+    $("maskProperties").classList.toggle("hidden", !active.clipPath);
+    $("imageFilters").classList.toggle("hidden", !isImage);
+    if (isImage) syncFilterControls(active);
   }
 
   function syncSelectionUi() {
@@ -472,23 +753,43 @@ window.Studio = (() => {
     updateContextTransform();
   }
 
-  async function addImageFromUrl(src, name = "Image", asset = null) {
-    const image = await F.FabricImage.fromURL(src, { crossOrigin: "anonymous" });
-    const maxW = state.width * 0.8;
-    const maxH = state.height * 0.8;
-    const scale = Math.min(maxW / image.width, maxH / image.height, 1);
+  async function setBackgroundFromUrl(src,name="Background",asset=null) {
+    const image = await F.FabricImage.fromURL(src,{ crossOrigin:"anonymous" });
+    const scale = Math.max(state.width / image.width, state.height / image.height);
     image.set({
-      left: (state.width - image.width * scale) / 2,
-      top: (state.height - image.height * scale) / 2,
-      scaleX: scale,
-      scaleY: scale
+      left:state.width/2,top:state.height/2,
+      originX:"center",originY:"center",
+      scaleX:scale,scaleY:scale,
+      selectable:false,evented:false,
+      lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true
     });
-    assignObjectMetadata(image, name, {
-      assetId: asset?.id,
-      source: asset?.source || "image",
-      kind: "image",
-      originalSrc: src,
-      rasterSrc: src
+    assignObjectMetadata(image,name,{assetId:asset?.id,source:asset?.source||"media",kind:"background"});
+    canvas.add(image);
+    canvas.sendObjectToBack(image);
+    canvas.requestRenderAll();
+    snapshotLabel("Установлен background");
+    renderLayers();
+    return image;
+  }
+
+  async function addImageFromUrl(src,name="Image",asset=null,placement=null) {
+    const image = await F.FabricImage.fromURL(src,{ crossOrigin:"anonymous" });
+    let scale = 1;
+    if (!placement) {
+      const maxW = state.width * 0.8;
+      const maxH = state.height * 0.8;
+      scale = Math.min(maxW / image.width,maxH / image.height,1);
+    }
+    image.set({
+      left:placement?.left ?? (state.width - image.width * scale) / 2,
+      top:placement?.top ?? (state.height - image.height * scale) / 2,
+      scaleX:placement?.scaleX ?? scale,
+      scaleY:placement?.scaleY ?? scale
+    });
+    assignObjectMetadata(image,name,{
+      assetId:asset?.id,
+      source:asset?.source || "image",
+      kind:asset?.kind === "generated" ? "image" : "image"
     });
     canvas.add(image);
     canvas.setActiveObject(image);
@@ -498,63 +799,21 @@ window.Studio = (() => {
     return image;
   }
 
-  async function replaceImageSource(oldImage, src, updates = {}) {
-    if (!(oldImage instanceof F.FabricImage)) return null;
-    const objects = canvas.getObjects();
-    const index = objects.indexOf(oldImage);
-    const displayWidth = oldImage.getScaledWidth();
-    const displayHeight = oldImage.getScaledHeight();
-    const next = await F.FabricImage.fromURL(src, { crossOrigin: "anonymous" });
-    next.set({
-      left: oldImage.left,
-      top: oldImage.top,
-      angle: oldImage.angle,
-      skewX: oldImage.skewX,
-      skewY: oldImage.skewY,
-      flipX: oldImage.flipX,
-      flipY: oldImage.flipY,
-      originX: oldImage.originX,
-      originY: oldImage.originY,
-      opacity: oldImage.opacity,
-      globalCompositeOperation: oldImage.globalCompositeOperation,
-      scaleX: displayWidth / Math.max(1, next.width),
-      scaleY: displayHeight / Math.max(1, next.height)
-    });
-    assignObjectMetadata(next, oldImage.name, {
-      uuid: oldImage.uuid,
-      assetId: oldImage.assetId,
-      source: oldImage.source,
-      kind: "image",
-      originalSrc: updates.originalSrc !== undefined ? updates.originalSrc : oldImage.originalSrc,
-      rasterSrc: updates.rasterSrc !== undefined ? updates.rasterSrc : src,
-      maskSrc: updates.maskSrc !== undefined ? updates.maskSrc : oldImage.maskSrc,
-      maskBaseSrc: updates.maskBaseSrc !== undefined ? updates.maskBaseSrc : oldImage.maskBaseSrc
-    });
-    canvas.remove(oldImage);
-    canvas.add(next);
-    if (index >= 0) canvas.moveObjectTo(next, index);
-    canvas.setActiveObject(next);
-    canvas.requestRenderAll();
-    return next;
-  }
-
   async function importSvg(file) {
     const text = await file.text();
     const parsed = await F.loadSVGFromString(text);
     const objects = (parsed.objects || []).filter(Boolean);
     if (!objects.length) throw new Error("SVG не содержит объектов.");
-    const group = F.util.groupSVGElements(objects, parsed.options || {});
+    const group = F.util.groupSVGElements(objects,parsed.options || {});
     const maxW = state.width * 0.8;
     const maxH = state.height * 0.8;
-    const scale = Math.min(maxW / Math.max(1, group.width), maxH / Math.max(1, group.height), 1);
+    const scale = Math.min(maxW / group.width,maxH / group.height,1);
     group.set({
-      left: (state.width - group.width * scale) / 2,
-      top: (state.height - group.height * scale) / 2,
-      scaleX: scale,
-      scaleY: scale
+      left:(state.width - group.width * scale) / 2,
+      top:(state.height - group.height * scale) / 2,
+      scaleX:scale,scaleY:scale
     });
-    assignObjectMetadata(group, file.name || "SVG", { source: "upload", kind: "vector" });
-    group.getObjects?.().forEach(obj => assignObjectMetadata(obj, objectName(obj), { source: "svg", kind: objectKind(obj) }));
+    assignObjectMetadata(group,file.name || "SVG",{ source:"upload",kind:"vector" });
     canvas.add(group);
     canvas.setActiveObject(group);
     canvas.requestRenderAll();
@@ -568,20 +827,20 @@ window.Studio = (() => {
       return;
     }
     const src = await fileToDataUrl(file);
-    const asset = await APP.addAsset({ name: file.name, src, source: "upload", kind: "upload" });
-    await addImageFromUrl(src, file.name, asset);
+    const asset = await APP.addAsset({ name:file.name,src,source:"upload",kind:"upload" });
+    await addImageFromUrl(src,file.name,asset);
   }
 
-  function addTextAt(x = state.width / 2 - 120, y = state.height / 2 - 30) {
-    const text = new F.IText("Новый текст", {
-      left: x,
-      top: y,
-      fill: $("textColor").value,
-      fontSize: Math.max(8, Number($("textSize").value) || 48),
-      textAlign: $("textAlign").value,
-      fontFamily: "Inter, Arial, sans-serif"
+  function addTextAt(x=state.width/2-120,y=state.height/2-30) {
+    const text = new F.IText("Новый текст",{
+      left:x,top:y,fill:$("textColor").value,
+      fontSize:Math.max(8,Number($("textSize").value)||48),
+      fontWeight:$("textWeight").value,
+      lineHeight:Math.max(.5,Number($("textLineHeight").value)||1.16),
+      textAlign:$("textAlign").value,
+      fontFamily:$("textFont").value
     });
-    assignObjectMetadata(text, "Text", { kind: "text", source: "studio" });
+    assignObjectMetadata(text,"Text",{ kind:"text",source:"studio" });
     canvas.add(text);
     canvas.setActiveObject(text);
     text.enterEditing();
@@ -590,72 +849,244 @@ window.Studio = (() => {
     syncSelectionUi();
   }
 
-  function addRectAt(x = state.width / 2 - 100, y = state.height / 2 - 60) {
-    const rect = new F.Rect({ left: x, top: y, width: 200, height: 120, fill: "#6f7dff", rx: 4, ry: 4 });
-    assignObjectMetadata(rect, "Rectangle", { kind: "shape", source: "studio" });
-    canvas.add(rect);
-    canvas.setActiveObject(rect);
-    snapshotLabel("Добавлен прямоугольник");
-    syncSelectionUi();
+  function addRectAt(x=state.width/2-100,y=state.height/2-60) {
+    const rect = new F.Rect({
+      left:x,top:y,width:200,height:120,fill:$("shapeFill").value,
+      stroke:$("shapeStrokeWidth").value > 0 ? $("shapeStroke").value : null,
+      strokeWidth:Number($("shapeStrokeWidth").value)||0,rx:4,ry:4
+    });
+    assignObjectMetadata(rect,"Rectangle",{ kind:"shape",source:"studio" });
+    canvas.add(rect); canvas.setActiveObject(rect);
+    snapshotLabel("Добавлен прямоугольник"); syncSelectionUi();
   }
 
-  function addEllipseAt(x = state.width / 2 - 90, y = state.height / 2 - 60) {
-    const ellipse = new F.Ellipse({ left: x, top: y, rx: 90, ry: 60, fill: "#4dd3aa" });
-    assignObjectMetadata(ellipse, "Ellipse", { kind: "shape", source: "studio" });
-    canvas.add(ellipse);
-    canvas.setActiveObject(ellipse);
-    snapshotLabel("Добавлен эллипс");
-    syncSelectionUi();
+  function nodeScenePoint(object,index) {
+    const point=object.points[index];
+    const local=new F.Point(point.x-object.pathOffset.x,point.y-object.pathOffset.y);
+    return F.util.sendPointToPlane(local,object.calcTransformMatrix(),undefined);
+  }
+
+  function refreshNodeHandles() {
+    const object=state.nodeTarget;
+    if(!object)return;
+    state.nodeHandles.forEach((handle,index)=>{
+      const scene=nodeScenePoint(object,index);
+      handle.set({left:scene.x,top:scene.y});
+      handle.setCoords();
+    });
+    canvas.requestRenderAll();
+  }
+
+  function exitNodeEdit() {
+    if(state.nodeTarget){
+      state.nodeTarget.selectable=true;
+      state.nodeTarget.evented=true;
+    }
+    state.nodeHandles.forEach(handle=>canvas.remove(handle));
+    state.nodeHandles=[];
+    state.nodeTarget=null;
+  }
+
+  function enterNodeEdit() {
+    exitNodeEdit();
+    const object=canvas.getActiveObject();
+    if(!object || object instanceof F.ActiveSelection || !(object instanceof F.Polyline)){
+      $("selectionStatus").textContent="Node Edit: выберите Polyline / Polygon";
+      return;
+    }
+    state.nodeTarget=object;
+    object.selectable=false;
+    object.evented=false;
+    canvas.discardActiveObject();
+    state.nodeHandles=object.points.map((point,index)=>{
+      const scene=nodeScenePoint(object,index);
+      const handle=new F.Circle({
+        left:scene.x,top:scene.y,radius:5,originX:"center",originY:"center",
+        fill:"#ffffff",stroke:"#6f7dff",strokeWidth:2,
+        selectable:true,evented:true,hasControls:false,hasBorders:false,
+        excludeFromExport:true,helper:true,name:"Node "+(index+1)
+      });
+      handle.nodeIndex=index;
+      let anchorIndex=index>0?index-1:Math.max(0,object.points.length-1);
+      let absoluteAnchor=null;
+      handle.on("mousedown",()=>{
+        const anchor=object.points[anchorIndex];
+        const local=new F.Point(anchor.x-object.pathOffset.x,anchor.y-object.pathOffset.y);
+        absoluteAnchor=F.util.sendPointToPlane(local,object.calcTransformMatrix(),undefined);
+      });
+      handle.on("moving",()=>{
+        const scenePoint=handle.getCenterPoint();
+        const local=F.util.sendPointToPlane(scenePoint,undefined,object.calcTransformMatrix());
+        object.points[index]={x:local.x+object.pathOffset.x,y:local.y+object.pathOffset.y};
+        object.setDimensions();
+        if(absoluteAnchor){
+          const anchor=object.points[anchorIndex];
+          const newX=(anchor.x-object.pathOffset.x)/(object.width||1);
+          const newY=(anchor.y-object.pathOffset.y)/(object.height||1);
+          object.setPositionByOrigin(absoluteAnchor,newX+.5,newY+.5);
+        }
+        object.setCoords();
+        refreshNodeHandles();
+      });
+      handle.on("modified",()=>{
+        refreshNodeHandles();
+        snapshotLabel("Изменён vector node");
+      });
+      canvas.add(handle);
+      canvas.bringObjectToFront(handle);
+      return handle;
+    });
+    $("selectionStatus").textContent="Node Edit: "+object.points.length+" nodes";
+    canvas.requestRenderAll();
+  }
+
+  function beginShape(tool,point) {
+    state.shapeStart=point;
+    const common={
+      left:point.x,top:point.y,
+      fill:$("shapeFill").value,
+      stroke:Number($("shapeStrokeWidth").value)>0?$("shapeStroke").value:null,
+      strokeWidth:Number($("shapeStrokeWidth").value)||0,
+      selectable:false,evented:false,excludeFromExport:false,helper:false,opacity:.85
+    };
+    state.shapeHelper=tool==="ellipse"
+      ?new F.Ellipse({...common,rx:1,ry:1})
+      :new F.Rect({...common,width:1,height:1,rx:4,ry:4});
+    assignObjectMetadata(state.shapeHelper,tool==="ellipse"?"Ellipse":"Rectangle",{kind:"shape",source:"studio"});
+    canvas.add(state.shapeHelper);canvas.requestRenderAll();
+  }
+
+  function updateShape(point,shift=false) {
+    if(!state.shapeHelper||!state.shapeStart)return;
+    const start=state.shapeStart;
+    let width=Math.abs(point.x-start.x),height=Math.abs(point.y-start.y);
+    if(shift){const size=Math.max(width,height);width=height=size}
+    const left=Math.min(start.x,point.x),top=Math.min(start.y,point.y);
+    if(state.shapeHelper instanceof F.Ellipse){
+      state.shapeHelper.set({left,top,rx:Math.max(.5,width/2),ry:Math.max(.5,height/2)});
+    }else{
+      state.shapeHelper.set({left,top,width:Math.max(1,width),height:Math.max(1,height)});
+    }
+    state.shapeHelper.setCoords();canvas.requestRenderAll();
+  }
+
+  function finishShape() {
+    if(!state.shapeHelper)return;
+    const object=state.shapeHelper;
+    state.shapeHelper=null;state.shapeStart=null;
+    object.set({selectable:true,evented:true,opacity:1});
+    canvas.setActiveObject(object);canvas.requestRenderAll();
+    snapshotLabel("Добавлена фигура");syncSelectionUi();setTool("move");
+  }
+
+  function addLine(start,end) {
+    const line = new F.Polyline([start,end],{
+      stroke:$("shapeStroke").value || $("shapeFill").value,
+      strokeWidth:Math.max(1,Number($("shapeStrokeWidth").value)||2),
+      fill:"rgba(0,0,0,0)",
+      objectCaching:false
+    });
+    assignObjectMetadata(line,"Line",{kind:"vector",source:"studio"});
+    canvas.add(line); canvas.setActiveObject(line); canvas.requestRenderAll();
+    snapshotLabel("Добавлена линия"); syncSelectionUi();
+  }
+
+  function beginLine(point) {
+    state.lineStart = point;
+    state.lineHelper = new F.Line([point.x,point.y,point.x,point.y],{
+      stroke:"#9fb0ff",strokeWidth:1.5,strokeDashArray:[6,4],
+      selectable:false,evented:false,excludeFromExport:true,helper:true
+    });
+    canvas.add(state.lineHelper);
+  }
+
+  function updateLine(point) {
+    if (!state.lineHelper || !state.lineStart) return;
+    state.lineHelper.set({x2:point.x,y2:point.y});
+    canvas.requestRenderAll();
+  }
+
+  function finishLine(point) {
+    if (!state.lineStart) return;
+    const start=state.lineStart;
+    if(state.lineHelper)canvas.remove(state.lineHelper);
+    state.lineHelper=null;state.lineStart=null;
+    addLine(start,point);setTool("move");
+  }
+
+  function beginPen(point) {
+    state.penPoints.push({x:point.x,y:point.y});
+    if(state.penHelper)canvas.remove(state.penHelper);
+    state.penHelper=new F.Polyline(state.penPoints,{
+      fill:"rgba(0,0,0,0)",stroke:"#9fb0ff",strokeWidth:1.5,strokeDashArray:[5,4],
+      selectable:false,evented:false,excludeFromExport:true,helper:true,objectCaching:false
+    });
+    canvas.add(state.penHelper);canvas.requestRenderAll();
+  }
+
+  function finishPen(close=false) {
+    if(state.penPoints.length<2){clearToolHelpers();setTool("move");return}
+    const points=[...state.penPoints];
+    if(close && points.length>2) points.push({...points[0]});
+    if(state.penHelper)canvas.remove(state.penHelper);
+    state.penHelper=null;state.penPoints=[];
+    const poly=new F.Polyline(points,{
+      fill:close?$("shapeFill").value:"rgba(0,0,0,0)",
+      stroke:$("shapeStroke").value || $("shapeFill").value,
+      strokeWidth:Math.max(1,Number($("shapeStrokeWidth").value)||2),
+      objectCaching:false
+    });
+    assignObjectMetadata(poly,close?"Polygon":"Polyline",{kind:"vector",source:"studio"});
+    canvas.add(poly);canvas.setActiveObject(poly);canvas.requestRenderAll();
+    snapshotLabel(close?"Добавлен polygon":"Добавлен path");syncSelectionUi();setTool("move");
+  }
+
+  function addEllipseAt(x=state.width/2-90,y=state.height/2-60) {
+    const ellipse = new F.Ellipse({
+      left:x,top:y,rx:90,ry:60,fill:$("shapeFill").value,
+      stroke:$("shapeStrokeWidth").value > 0 ? $("shapeStroke").value : null,
+      strokeWidth:Number($("shapeStrokeWidth").value)||0
+    });
+    assignObjectMetadata(ellipse,"Ellipse",{ kind:"shape",source:"studio" });
+    canvas.add(ellipse); canvas.setActiveObject(ellipse);
+    snapshotLabel("Добавлен эллипс"); syncSelectionUi();
   }
 
   async function copyActive() {
     const active = canvas.getActiveObject();
-    if (!active || active instanceof F.ActiveSelection) return;
-    state.clipboard = await active.clone(CUSTOM_PROPS);
+    if (!active || active instanceof F.ActiveSelection || isHelper(active)) return;
+    state.clipboard = await active.clone(["name","assetId","source","kind"]);
   }
 
   async function pasteClipboard() {
     if (!state.clipboard) return;
-    const clone = await state.clipboard.clone(CUSTOM_PROPS);
-    clone.set({ left: (clone.left || 0) + 24, top: (clone.top || 0) + 24, evented: true });
-    assignObjectMetadata(clone, objectName(clone) + " copy", clone);
-    canvas.add(clone);
-    canvas.setActiveObject(clone);
-    canvas.requestRenderAll();
+    const clone = await state.clipboard.clone(["name","assetId","source","kind"]);
+    clone.set({ left:(clone.left||0)+24,top:(clone.top||0)+24,evented:true });
+    clone.name = objectName(clone) + " copy";
+    canvas.add(clone); canvas.setActiveObject(clone); canvas.requestRenderAll();
     state.clipboard = clone;
-    snapshotLabel("Вставлен объект");
-    syncSelectionUi();
+    snapshotLabel("Вставлен объект"); syncSelectionUi();
   }
 
-  async function cutActive() {
-    await copyActive();
-    deleteActive();
-  }
+  async function cutActive() { await copyActive(); deleteActive(); }
 
   function duplicateActive() {
     const active = canvas.getActiveObject();
-    if (!active || active instanceof F.ActiveSelection) return;
-    active.clone(CUSTOM_PROPS).then(clone => {
-      clone.set({ left: (active.left || 0) + 24, top: (active.top || 0) + 24 });
-      assignObjectMetadata(clone, objectName(active) + " copy", clone);
-      clone.uuid = uid();
-      canvas.add(clone);
-      canvas.setActiveObject(clone);
-      canvas.requestRenderAll();
-      snapshotLabel("Дублирован слой");
-      syncSelectionUi();
+    if (!active || active instanceof F.ActiveSelection || isHelper(active)) return;
+    active.clone(["name","assetId","source","kind"]).then(clone => {
+      clone.set({ left:(active.left||0)+24,top:(active.top||0)+24 });
+      clone.name = objectName(active) + " copy";
+      canvas.add(clone); canvas.setActiveObject(clone); canvas.requestRenderAll();
+      snapshotLabel("Дублирован слой"); syncSelectionUi();
     });
   }
 
   function deleteActive() {
     const active = canvas.getActiveObject();
-    if (!active) return;
-    if (active instanceof F.ActiveSelection) {
-      active.getObjects().forEach(obj => canvas.remove(obj));
-      canvas.discardActiveObject();
-    } else {
-      canvas.remove(active);
-    }
+    if (!active || isHelper(active)) return;
+    const objects = canvas.getActiveObjects().filter(object => !isHelper(object));
+    canvas.discardActiveObject();
+    objects.forEach(object => canvas.remove(object));
     canvas.requestRenderAll();
     snapshotLabel("Удалён слой");
     syncSelectionUi();
@@ -663,900 +1094,891 @@ window.Studio = (() => {
 
   function applyProperties() {
     const active = canvas.getActiveObject();
-    if (!active || active instanceof F.ActiveSelection) return;
-    const width = Math.max(1, Number($("propWidth").value) || active.getScaledWidth());
-    const height = Math.max(1, Number($("propHeight").value) || active.getScaledHeight());
+    if (!active || active instanceof F.ActiveSelection || isHelper(active)) return;
+    const width = Math.max(1,Number($("propWidth").value)||active.getScaledWidth());
+    const height = Math.max(1,Number($("propHeight").value)||active.getScaledHeight());
     active.name = $("propName").value.trim() || objectName(active);
     active.set({
-      left: Number($("propX").value) || 0,
-      top: Number($("propY").value) || 0,
-      angle: Number($("propAngle").value) || 0,
-      opacity: Math.max(0, Math.min(1, Number($("propOpacity").value))),
-      globalCompositeOperation: $("propBlend").value || "source-over"
+      left:Number($("propX").value)||0,
+      top:Number($("propY").value)||0,
+      angle:Number($("propAngle").value)||0,
+      opacity:Math.max(0,Math.min(1,Number($("propOpacity").value))),
+      globalCompositeOperation:$("propBlend").value || "source-over"
     });
+
+    const isImage = active instanceof F.FabricImage;
+    const isText = active instanceof F.IText || active instanceof F.Textbox;
+    if (!isImage && !(active instanceof F.Group)) {
+      if ("fill" in active) active.fill = $("propFill").value;
+      active.stroke = Number($("propStrokeWidth").value) > 0 ? $("propStroke").value : null;
+      active.strokeWidth = Math.max(0, Number($("propStrokeWidth").value) || 0);
+    }
+    if (isText) {
+      active.set({
+        text:$("propTextContent").value,
+        fontSize:Math.max(8,Number($("propTextSize").value)||48),
+        fontWeight:$("propTextWeight").value,
+        lineHeight:Math.max(.5,Number($("propTextLineHeight").value)||1.16),
+        textAlign:$("propTextAlign").value,
+        fontFamily:$("propTextFont").value.trim() || "Inter, Arial, sans-serif",
+        fill:$("propFill").value
+      });
+    }
+
     if (active.width) active.scaleX = width / active.width;
     if (active.height) active.scaleY = height / active.height;
-    active.setCoords();
-    canvas.requestRenderAll();
-    snapshotLabel("Изменены свойства");
-    syncSelectionUi();
+    active.setCoords(); canvas.requestRenderAll();
+    snapshotLabel("Изменены свойства"); syncSelectionUi();
   }
 
   function applyContextTransform() {
     const active = canvas.getActiveObject();
-    if (!active || active instanceof F.ActiveSelection) return;
-    const width = Math.max(1, Number($("ctxW").value) || active.getScaledWidth());
-    const height = Math.max(1, Number($("ctxH").value) || active.getScaledHeight());
+    if (!active || active instanceof F.ActiveSelection || isHelper(active)) return;
+    const width = Math.max(1,Number($("ctxW").value)||active.getScaledWidth());
+    const height = Math.max(1,Number($("ctxH").value)||active.getScaledHeight());
     active.set({
-      left: Number($("ctxX").value) || 0,
-      top: Number($("ctxY").value) || 0,
-      angle: Number($("ctxAngle").value) || 0
+      left:Number($("ctxX").value)||0,
+      top:Number($("ctxY").value)||0,
+      angle:Number($("ctxAngle").value)||0
+    });
+    active.__skoomaLockRatio = $("ctxLockRatio").checked;
+    active.setControlsVisibility({
+      ml:!active.__skoomaLockRatio,mr:!active.__skoomaLockRatio,
+      mt:!active.__skoomaLockRatio,mb:!active.__skoomaLockRatio,
+      tl:true,tr:true,bl:true,br:true,mtr:true
     });
     if (active.width) active.scaleX = width / active.width;
     if (active.height) active.scaleY = height / active.height;
-    active.setCoords();
-    canvas.requestRenderAll();
-    snapshotLabel("Transform");
-    syncSelectionUi();
+    active.setCoords(); canvas.requestRenderAll();
+    snapshotLabel("Transform"); syncSelectionUi();
   }
 
-  function groupActive() {
-    const active = canvas.getActiveObject();
-    if (!(active instanceof F.ActiveSelection)) return;
-    let group = null;
-    if (typeof active.toGroup === "function") {
-      group = active.toGroup();
-    } else {
-      const objects = active.getObjects();
-      canvas.discardActiveObject();
-      objects.forEach(object => canvas.remove(object));
-      group = new F.Group(objects);
-      canvas.add(group);
-      canvas.setActiveObject(group);
+  function selectAll() {
+    const objects = realObjects().filter(object => object.selectable !== false && object.visible !== false);
+    if (!objects.length) return;
+    const selection = new F.ActiveSelection(objects,{ canvas });
+    canvas.setActiveObject(selection); canvas.requestRenderAll(); syncSelectionUi();
+  }
+
+  function clearSelection() {
+    canvas.discardActiveObject(); canvas.requestRenderAll(); syncSelectionUi();
+  }
+
+  function pointInPolygon(point,polygon) {
+    let inside = false;
+    for (let i=0,j=polygon.length-1;i<polygon.length;j=i++) {
+      const xi=polygon[i].x, yi=polygon[i].y, xj=polygon[j].x, yj=polygon[j].y;
+      const intersect=((yi>point.y)!==(yj>point.y)) &&
+        (point.x < (xj-xi)*(point.y-yi)/(yj-yi+Number.EPSILON)+xi);
+      if (intersect) inside=!inside;
     }
-    assignObjectMetadata(group, "Group", { kind: "group", source: "studio" });
+    return inside;
+  }
+
+  function applyObjectSelection(objects, baseOverride = null) {
+    const mode = $("selectionMode").value;
+    const current = (baseOverride || canvas.getActiveObjects()).filter(object => !isHelper(object));
+    let result = objects;
+    if (mode === "add") result = [...new Set([...current,...objects])];
+    if (mode === "subtract") result = current.filter(object => !objects.includes(object));
+    if (mode === "intersect") result = current.filter(object => objects.includes(object));
+    state.adjustingSelection = true;
+    canvas.discardActiveObject();
+    if (result.length === 1) canvas.setActiveObject(result[0]);
+    else if (result.length > 1) canvas.setActiveObject(new F.ActiveSelection(result,{ canvas }));
     canvas.requestRenderAll();
-    snapshotLabel("Слои сгруппированы");
+    state.adjustingSelection = false;
     syncSelectionUi();
   }
 
-  function ungroupActive() {
-    const active = canvas.getActiveObject();
-    if (!(active instanceof F.Group) || active instanceof F.ActiveSelection) return;
-    if (typeof active.toActiveSelection === "function") {
-      const selection = active.toActiveSelection();
-      canvas.setActiveObject(selection);
-      selection.getObjects().forEach(object => assignObjectMetadata(object, objectName(object), object));
-      canvas.requestRenderAll();
-      snapshotLabel("Группа разгруппирована");
-      syncSelectionUi();
+  function startLasso(point) {
+    state.lassoPoints = [point];
+    state.lassoHelper = new F.Polyline([point],{
+      fill:"rgba(111,125,255,0.08)",stroke:"#7d8cff",strokeWidth:1.5,
+      selectable:false,evented:false,excludeFromExport:true,helper:true,objectCaching:false
+    });
+    canvas.add(state.lassoHelper);
+  }
+
+  function updateLasso(point) {
+    if (!state.lassoHelper) return;
+    state.lassoPoints.push(point);
+    state.lassoHelper.set({ points:[...state.lassoPoints] });
+    state.lassoHelper.setCoords();
+    canvas.requestRenderAll();
+  }
+
+  function finishLasso() {
+    if (!state.lassoHelper || state.lassoPoints.length < 3) return;
+    const selected = realObjects().filter(object => pointInPolygon(object.getCenterPoint(),state.lassoPoints));
+    canvas.remove(state.lassoHelper); state.lassoHelper=null;
+    applyObjectSelection(selected);
+    state.lassoPoints=[];
+  }
+
+  function startCrop() {
+    if (state.cropRect) canvas.remove(state.cropRect);
+    const inset = Math.round(Math.min(state.width,state.height)*0.08);
+    state.cropRect = new F.Rect({
+      left:inset,top:inset,width:Math.max(32,state.width-inset*2),height:Math.max(32,state.height-inset*2),
+      fill:"rgba(0,0,0,0.04)",stroke:"#ffffff",strokeWidth:1.5,strokeDashArray:[8,6],
+      cornerColor:"#ffffff",cornerStrokeColor:"#6f7dff",transparentCorners:false,
+      excludeFromExport:true,helper:true,name:"Crop area"
+    });
+    canvas.add(state.cropRect); canvas.setActiveObject(state.cropRect); canvas.requestRenderAll();
+  }
+
+  function updateCropRatio() {
+    if (!state.cropRect) return;
+    const value = $("cropRatio").value;
+    if (value === "free") {
+      state.cropRect.lockUniScaling = false;
       return;
     }
+    const [rw,rh] = value.split(":").map(Number);
+    const ratio = rw/rh;
+    const w = state.cropRect.getScaledWidth();
+    state.cropRect.set({ scaleY:1,height:w/ratio });
+    state.cropRect.setCoords(); canvas.requestRenderAll();
   }
 
-  async function rasterizeObjects(objects, bounds) {
-    const temp = new F.StaticCanvas(null, {
-      width: Math.max(1, Math.ceil(bounds.width)),
-      height: Math.max(1, Math.ceil(bounds.height)),
-      backgroundColor: null
-    });
-    for (const object of objects) {
-      const clone = await object.clone(CUSTOM_PROPS);
-      clone.set({
-        left: (clone.left || 0) - bounds.left,
-        top: (clone.top || 0) - bounds.top
-      });
-      temp.add(clone);
-    }
-    temp.requestRenderAll();
-    const src = temp.toDataURL({ format: "png", multiplier: 1 });
-    temp.dispose();
-    return src;
-  }
-
-  async function mergeActive() {
-    let active = canvas.getActiveObject();
-    if (!active) return;
-    let objects = [];
-    if (active instanceof F.ActiveSelection) {
-      objects = active.getObjects().filter(object => !object.excludeFromExport);
-    } else {
-      const layers = docObjects();
-      const index = layers.indexOf(active);
-      if (index <= 0) return;
-      objects = [layers[index - 1], active];
-    }
-    if (objects.length < 2) return;
-    const boundsList = objects.map(object => object.getBoundingRect());
-    const left = Math.min(...boundsList.map(b => b.left));
-    const top = Math.min(...boundsList.map(b => b.top));
-    const right = Math.max(...boundsList.map(b => b.left + b.width));
-    const bottom = Math.max(...boundsList.map(b => b.top + b.height));
-    const bounds = { left, top, width: right - left, height: bottom - top };
-    const src = await rasterizeObjects(objects, bounds);
+  function applyCrop() {
+    if (!state.cropRect) return;
+    const box = state.cropRect.getBoundingRect();
+    const left = Math.max(0,Math.round(box.left));
+    const top = Math.max(0,Math.round(box.top));
+    const width = Math.max(1,Math.min(state.width-left,Math.round(box.width)));
+    const height = Math.max(1,Math.min(state.height-top,Math.round(box.height)));
     canvas.discardActiveObject();
-    objects.forEach(object => canvas.remove(object));
-    const image = await F.FabricImage.fromURL(src);
-    image.set({ left: bounds.left, top: bounds.top });
-    assignObjectMetadata(image, "Merged", {
-      kind: "image",
-      source: "merge",
-      originalSrc: src,
-      rasterSrc: src
-    });
-    canvas.add(image);
-    canvas.setActiveObject(image);
-    canvas.requestRenderAll();
-    snapshotLabel("Слои объединены");
-    syncSelectionUi();
-  }
-
-  async function flattenAll() {
-    selectionTools.clear();
-    clearGuides();
-    clearNodeHandles(false);
-    canvas.discardActiveObject();
-    canvas.requestRenderAll();
-    const src = canvas.toDataURL({ format: "png", multiplier: 1 });
-    docObjects().forEach(object => canvas.remove(object));
-    const image = await F.FabricImage.fromURL(src);
-    image.set({ left: 0, top: 0, scaleX: state.width / image.width, scaleY: state.height / image.height });
-    assignObjectMetadata(image, "Flattened", {
-      kind: "image",
-      source: "flatten",
-      originalSrc: src,
-      rasterSrc: src
-    });
-    canvas.add(image);
-    canvas.setActiveObject(image);
-    snapshotLabel("Документ flatten");
-    syncSelectionUi();
-  }
-
-  async function applySelectionDelete() {
-    const image = getActiveImage();
-    const mask = selectionTools.getMaskForActiveImage();
-    if (!image || !mask) return;
-    const source = SkoomaRaster.sourceCanvasFromFabricImage(image);
-    const feather = selectionTools.state.current?.type === "mask" ? Number($("wandFeather").value || 0) : 0;
-    const out = SkoomaRaster.applyDelete(source, mask, feather);
-    const src = out.toDataURL("image/png");
-    await replaceImageSource(image, src, {
-      originalSrc: image.originalSrc || image.rasterSrc || image.getSrc?.() || src,
-      rasterSrc: src,
-      maskBaseSrc: image.maskBaseSrc,
-      maskSrc: image.maskSrc
-    });
-    selectionTools.clear();
-    snapshotLabel("Удалены выбранные пиксели");
-    syncSelectionUi();
-  }
-
-  async function applySelectionMask() {
-    const image = getActiveImage();
-    const mask = selectionTools.getMaskForActiveImage();
-    if (!image || !mask) return;
-    const source = SkoomaRaster.sourceCanvasFromFabricImage(image);
-    const feather = selectionTools.state.current?.type === "mask" ? Number($("wandFeather").value || 0) : 0;
-    const maskCanvas = feather ? SkoomaRaster.featherMask(mask, feather) : mask;
-    const out = SkoomaRaster.applyKeep(source, maskCanvas, 0);
-    const src = out.toDataURL("image/png");
-    const maskSrc = maskCanvas.toDataURL("image/png");
-    const baseSrc = image.rasterSrc || image.getSrc?.() || src;
-    await replaceImageSource(image, src, {
-      originalSrc: image.originalSrc || baseSrc,
-      rasterSrc: src,
-      maskBaseSrc: baseSrc,
-      maskSrc
-    });
-    selectionTools.clear();
-    snapshotLabel("Применена маска");
-    syncSelectionUi();
-  }
-
-  async function removeMask() {
-    const image = getActiveImage();
-    if (!image?.maskBaseSrc) return;
-    await replaceImageSource(image, image.maskBaseSrc, {
-      originalSrc: image.originalSrc,
-      rasterSrc: image.maskBaseSrc,
-      maskBaseSrc: null,
-      maskSrc: null
-    });
-    snapshotLabel("Маска удалена");
-    syncSelectionUi();
-  }
-
-  async function resetRaster() {
-    const image = getActiveImage();
-    if (!image?.originalSrc) return;
-    await replaceImageSource(image, image.originalSrc, {
-      originalSrc: image.originalSrc,
-      rasterSrc: image.originalSrc,
-      maskBaseSrc: null,
-      maskSrc: null
-    });
-    snapshotLabel("Изображение восстановлено");
-    syncSelectionUi();
-  }
-
-  function cropDocument(bounds) {
-    if (!bounds) return;
-    let x = Math.max(0, Math.floor(bounds.x));
-    let y = Math.max(0, Math.floor(bounds.y));
-    let width = Math.min(state.width - x, Math.max(1, Math.round(bounds.width)));
-    let height = Math.min(state.height - y, Math.max(1, Math.round(bounds.height)));
-    if (width < 2 || height < 2) return;
-
-    docObjects().forEach(object => {
-      object.set({
-        left: (object.left || 0) - x,
-        top: (object.top || 0) - y
-      });
+    canvas.remove(state.cropRect); state.cropRect=null;
+    realObjects().forEach(object => {
+      object.set({ left:(object.left||0)-left,top:(object.top||0)-top });
       object.setCoords();
     });
-    state.width = width;
-    state.height = height;
-    canvas.setDimensions({ width, height });
+    setDocumentSize(width,height);
     canvas.requestRenderAll();
-    selectionTools.clear();
-    fitToViewport();
-    snapshotLabel("Документ обрезан");
+    snapshotLabel("Crop " + width + "×" + height);
+    setTool("move");
     syncSelectionUi();
   }
 
-  async function eraseRasterStroke() {
-    const stroke = state.eraser;
-    state.eraser = null;
-    if (state.eraserPreview) {
-      canvas.remove(state.eraserPreview);
-      state.eraserPreview = null;
-    }
-    if (!stroke?.target || stroke.points.length < 1) return;
-
-    const target = stroke.target;
-    if (!docObjects().includes(target)) return;
-    const source = SkoomaRaster.sourceCanvasFromFabricImage(target);
-    const pixelPoints = SkoomaRaster.scenePointsToPixels(F, target, stroke.points);
-    const avgScale = Math.max(0.0001, (Math.abs(target.scaleX || 1) + Math.abs(target.scaleY || 1)) / 2);
-    const lineWidth = Math.max(1, Number($("brushSize").value || 18) / avgScale);
-    const out = SkoomaRaster.eraseStroke(source, pixelPoints, lineWidth);
-    const src = out.toDataURL("image/png");
-    await replaceImageSource(target, src, {
-      originalSrc: target.originalSrc || target.rasterSrc || target.getSrc?.() || src,
-      rasterSrc: src,
-      maskBaseSrc: target.maskBaseSrc,
-      maskSrc: target.maskSrc
-    });
-    snapshotLabel("Raster eraser");
-    syncSelectionUi();
+  function cancelCrop() {
+    if (state.cropRect) canvas.remove(state.cropRect);
+    state.cropRect=null; canvas.discardActiveObject(); canvas.requestRenderAll(); setTool("move");
   }
 
-  function updateEraserPreview() {
-    if (state.eraserPreview) canvas.remove(state.eraserPreview);
-    if (!state.eraser?.points?.length) return;
-    state.eraserPreview = new F.Polyline(state.eraser.points, {
-      fill: "",
-      stroke: "rgba(255,255,255,.72)",
-      strokeWidth: Math.max(1, Number($("brushSize").value || 18)),
-      strokeLineCap: "round",
-      strokeLineJoin: "round",
-      selectable: false,
-      evented: false,
-      excludeFromExport: true,
-      objectCaching: false,
-      name: "__eraser_preview__"
-    });
-    canvas.add(state.eraserPreview);
-    canvas.bringObjectToFront(state.eraserPreview);
-    canvas.requestRenderAll();
-  }
-
-  function clearGuides() {
-    state.guides.forEach(line => canvas.remove(line));
-    state.guides = [];
-  }
-
-  function addGuide(vertical, position) {
-    const line = new F.Line(
-      vertical ? [position, 0, position, state.height] : [0, position, state.width, position],
-      {
-        stroke: "#58d7ff",
-        strokeWidth: 1 / Math.max(0.2, state.viewScale),
-        selectable: false,
-        evented: false,
-        excludeFromExport: true,
-        opacity: 0.85,
-        name: "__guide__"
+  function helpersVisible(value) {
+    const changed=[];
+    canvas.getObjects().forEach(object => {
+      if (isHelper(object)) {
+        changed.push([object,object.visible]);
+        object.visible=value;
       }
-    );
-    state.guides.push(line);
-    canvas.add(line);
-    canvas.bringObjectToFront(line);
-  }
-
-  function snapMovingObject(target) {
-    if (!target || target.excludeFromExport || target instanceof F.ActiveSelection) return;
-    clearGuides();
-    const threshold = 6 / Math.max(0.1, state.viewScale);
-    const bounds = target.getBoundingRect();
-    const sourceX = [bounds.left, bounds.left + bounds.width / 2, bounds.left + bounds.width];
-    const sourceY = [bounds.top, bounds.top + bounds.height / 2, bounds.top + bounds.height];
-    const targetX = [0, state.width / 2, state.width];
-    const targetY = [0, state.height / 2, state.height];
-
-    docObjects().forEach(object => {
-      if (object === target || object.visible === false) return;
-      const box = object.getBoundingRect();
-      targetX.push(box.left, box.left + box.width / 2, box.left + box.width);
-      targetY.push(box.top, box.top + box.height / 2, box.top + box.height);
     });
-
-    let bestX = null;
-    let bestY = null;
-    for (const sx of sourceX) {
-      for (const tx of targetX) {
-        const diff = tx - sx;
-        if (Math.abs(diff) <= threshold && (!bestX || Math.abs(diff) < Math.abs(bestX.diff))) {
-          bestX = { diff, guide: tx };
-        }
-      }
-    }
-    for (const sy of sourceY) {
-      for (const ty of targetY) {
-        const diff = ty - sy;
-        if (Math.abs(diff) <= threshold && (!bestY || Math.abs(diff) < Math.abs(bestY.diff))) {
-          bestY = { diff, guide: ty };
-        }
-      }
-    }
-
-    if (bestX) {
-      target.left = (target.left || 0) + bestX.diff;
-      addGuide(true, bestX.guide);
-    }
-    if (bestY) {
-      target.top = (target.top || 0) + bestY.diff;
-      addGuide(false, bestY.guide);
-    }
-    if (bestX || bestY) target.setCoords();
+    return () => changed.forEach(([object,visible]) => object.visible=visible);
   }
 
-  function endpointIndexes(command) {
-    const code = String(command?.[0] || "").toUpperCase();
-    if (["M", "L", "T"].includes(code)) return [1, 2];
-    if (code === "C") return [5, 6];
-    if (["S", "Q"].includes(code)) return [3, 4];
-    if (code === "A") return [6, 7];
-    return null;
-  }
-
-  function clearNodeHandles(commit = false) {
-    if (commit && state.nodeTarget && state.nodeHandles.length) snapshotLabel("Vector nodes edited");
-    state.nodeHandles.forEach(handle => canvas.remove(handle));
-    state.nodeHandles = [];
-    state.nodeTarget = null;
+  function renderFlatCanvas() {
+    const restore = helpersVisible(false);
+    canvas.discardActiveObject();
     canvas.requestRenderAll();
-  }
-
-  function refreshNodeHandles() {
-    if (!state.nodeTarget || !state.nodeHandles.length) return;
-    const path = state.nodeTarget;
-    state.nodeHandles.forEach(handle => {
-      const info = handle.nodeInfo;
-      const command = path.path?.[info.commandIndex];
-      if (!command) return;
-      const local = new F.Point(
-        Number(command[info.xIndex]) - path.pathOffset.x,
-        Number(command[info.yIndex]) - path.pathOffset.y
-      );
-      const scene = F.util.transformPoint(local, path.calcTransformMatrix());
-      handle.set({
-        left: scene.x,
-        top: scene.y,
-        radius: 5 / Math.max(0.2, state.viewScale)
-      });
-      handle.setCoords();
-    });
+    const el = canvas.toCanvasElement(1);
+    restore();
     canvas.requestRenderAll();
+    return el;
   }
 
-  function enterNodeMode() {
-    clearNodeHandles(false);
+  function clearWand() {
+    if (state.wand?.preview) canvas.remove(state.wand.preview);
+    state.wand=null;
+    if ($("wandToLayerBtn")) $("wandToLayerBtn").disabled=true;
+    if ($("wandMaskBtn")) $("wandMaskBtn").disabled=true;
+    if ($("wandCancelBtn")) $("wandCancelBtn").disabled=true;
+  }
+
+  async function magicWandAt(point) {
+    clearWand();
     const target = canvas.getActiveObject();
-    if (!(target instanceof F.Path) || !Array.isArray(target.path)) {
-      $("selectionStatus").textContent = "Node Edit: выберите Path. SVG group можно сначала Ungroup.";
+    const source = renderFlatCanvas();
+    const ctx = source.getContext("2d",{ willReadFrequently:true });
+    const imageData = ctx.getImageData(0,0,state.width,state.height);
+    const x=Math.max(0,Math.min(state.width-1,Math.floor(point.x)));
+    const y=Math.max(0,Math.min(state.height-1,Math.floor(point.y)));
+    const tolerance=Math.max(0,Math.min(255,Number($("wandTolerance").value)||32));
+
+    let mask = null;
+    try {
+      const transferable = imageData.data.buffer.slice(0);
+      const result = await runRasterWorker("magic-wand",{
+        width:state.width,height:state.height,data:transferable,x,y,tolerance
+      },[transferable]);
+      if (result) {
+        mask = {
+          width:result.width || state.width,
+          height:result.height || state.height,
+          bounds:result.bounds || null,
+          data:new Uint8Array(result.data)
+        };
+      }
+    } catch (workerError) {
+      if (MagicWand?.floodFill) {
+        mask=MagicWand.floodFill({
+          data:imageData.data,width:state.width,height:state.height,bytes:4
+        },x,y,tolerance,null,true);
+      } else {
+        console.error(workerError);
+      }
+    }
+
+    if (!mask) {
+      $("selectionStatus").textContent="Magic Wand: область не найдена";
       return;
     }
-    state.nodeTarget = target;
-    target.selectable = false;
 
-    target.path.forEach((command, commandIndex) => {
-      const indexes = endpointIndexes(command);
-      if (!indexes) return;
-      const [xIndex, yIndex] = indexes;
-      const local = new F.Point(
-        Number(command[xIndex]) - target.pathOffset.x,
-        Number(command[yIndex]) - target.pathOffset.y
-      );
-      const scene = F.util.transformPoint(local, target.calcTransformMatrix());
-      const handle = new F.Circle({
-        left: scene.x,
-        top: scene.y,
-        radius: 5 / Math.max(0.2, state.viewScale),
-        originX: "center",
-        originY: "center",
-        fill: "#ffffff",
-        stroke: "#6f7dff",
-        strokeWidth: 2 / Math.max(0.2, state.viewScale),
-        selectable: true,
-        evented: true,
-        hasControls: false,
-        hasBorders: false,
-        excludeFromExport: true,
-        name: "__node__"
-      });
-      handle.nodeInfo = { commandIndex, xIndex, yIndex };
-      handle.on("moving", () => {
-        const inverse = F.util.invertTransform(target.calcTransformMatrix());
-        const localPoint = F.util.transformPoint(new F.Point(handle.left, handle.top), inverse);
-        command[xIndex] = localPoint.x + target.pathOffset.x;
-        command[yIndex] = localPoint.y + target.pathOffset.y;
-        target.dirty = true;
-        canvas.requestRenderAll();
-      });
-      state.nodeHandles.push(handle);
-      canvas.add(handle);
-      canvas.bringObjectToFront(handle);
+    let bounds=mask.bounds;
+    if (!bounds || bounds.minX===undefined) bounds=computeMaskBounds(mask.data,state.width,state.height);
+    if (!bounds) return;
+
+    const feather=Math.max(0,Math.min(40,Number($("wandFeather").value)||0));
+    const previewCanvas=featherMaskCanvas(mask,bounds,feather,true);
+    const pctx=previewCanvas.getContext("2d");
+    pctx.globalCompositeOperation="source-in";
+    pctx.fillStyle="rgba(111,125,255,.45)";
+    pctx.fillRect(0,0,previewCanvas.width,previewCanvas.height);
+    const previewObj=await F.FabricImage.fromURL(previewCanvas.toDataURL("image/png"));
+    previewObj.set({
+      left:0,top:0,originX:"left",originY:"top",
+      selectable:false,evented:false,excludeFromExport:true,helper:true,opacity:1
     });
-    canvas.requestRenderAll();
+    canvas.add(previewObj);canvas.bringObjectToFront(previewObj);canvas.requestRenderAll();
+
+    state.wand={mask,bounds,source,preview:previewObj,target:target instanceof F.FabricImage?target:null,feather};
+    $("wandToLayerBtn").disabled=false;
+    $("wandMaskBtn").disabled=!(target instanceof F.FabricImage);
+    $("wandCancelBtn").disabled=false;
+    $("selectionStatus").textContent="Magic Wand selection";
   }
 
-  async function generateAi() {
-    const prompt = $("aiPrompt").value.trim();
-    if (!prompt) {
-      $("aiStatus").textContent = "Введите промпт.";
-      $("aiStatus").className = "drawer-status error";
-      return;
+  async function wandToLayer() {
+    if (!state.wand) return;
+    const {mask,bounds,source,feather}=state.wand;
+    const width=bounds.maxX-bounds.minX+1;
+    const height=bounds.maxY-bounds.minY+1;
+    const srcCtx=source.getContext("2d");
+    const src=srcCtx.getImageData(bounds.minX,bounds.minY,width,height);
+    const alphaCanvas=featherMaskCanvas(mask,bounds,feather,false);
+    const alpha=alphaCanvas.getContext("2d",{willReadFrequently:true}).getImageData(0,0,width,height).data;
+    for(let i=0;i<width*height;i++) {
+      const a=alpha[i*4+3];
+      src.data[i*4+3]=Math.round(src.data[i*4+3]*(a/255));
     }
-    const button = $("generateAiBtn");
-    button.disabled = true;
-    button.textContent = "Генерация...";
-    $("aiStatus").textContent = "Puter AI...";
-    $("aiStatus").className = "drawer-status";
+    const out=document.createElement("canvas");out.width=width;out.height=height;
+    out.getContext("2d").putImageData(src,0,0);
+    const url=out.toDataURL("image/png");
+    const asset=await APP.addAsset({name:"Magic Wand selection",src:url,source:"Studio",kind:"selection"});
+    clearWand();
+    await addImageFromUrl(url,"Magic Wand selection",asset,{left:bounds.minX,top:bounds.minY,scaleX:1,scaleY:1});
+    snapshotLabel("Magic Wand → Layer");
+    setTool("move");
+  }
+
+  async function wandToMask() {
+    if (!state.wand?.target) return;
+    const {mask,bounds,feather,target}=state.wand;
+    const full=featherMaskCanvas(mask,bounds,feather,true);
+    const maskImage=await F.FabricImage.fromURL(full.toDataURL("image/png"));
+    maskImage.set({
+      left:0,top:0,originX:"left",originY:"top",
+      absolutePositioned:true,selectable:false,evented:false
+    });
+    target.clipPath=maskImage;
+    target.dirty=true;
+    clearWand();
+    canvas.setActiveObject(target);
+    canvas.requestRenderAll();
+    snapshotLabel("Добавлена layer mask");
+    syncSelectionUi();
+    setTool("move");
+  }
+
+  function eyedropAt(point) {
+    const source=renderFlatCanvas();
+    const d=source.getContext("2d").getImageData(
+      Math.max(0,Math.min(state.width-1,Math.floor(point.x))),
+      Math.max(0,Math.min(state.height-1,Math.floor(point.y))),1,1
+    ).data;
+    const hex="#" + [d[0],d[1],d[2]].map(v=>v.toString(16).padStart(2,"0")).join("");
+    $("brushColor").value=hex; $("textColor").value=hex; $("shapeFill").value=hex;
+    $("selectionStatus").textContent="Color " + hex.toUpperCase();
+  }
+
+  function parseHexColor(hex) {
+    const raw=String(hex||"#000000").replace("#","");
+    const full=raw.length===3?raw.split("").map(v=>v+v).join(""):raw.padEnd(6,"0");
+    const value=parseInt(full,16)||0;
+    return {r:(value>>16)&255,g:(value>>8)&255,b:value&255};
+  }
+
+  async function rasterFloodFillAt(point) {
+    const source=renderFlatCanvas();
+    const ctx=source.getContext("2d",{willReadFrequently:true});
+    const imageData=ctx.getImageData(0,0,state.width,state.height);
+    const x=Math.max(0,Math.min(state.width-1,Math.floor(point.x)));
+    const y=Math.max(0,Math.min(state.height-1,Math.floor(point.y)));
+    const tolerance=Math.max(0,Math.min(255,Number($("wandTolerance").value)||32));
+    let mask=null;
+    try{
+      const buffer=imageData.data.buffer.slice(0);
+      const result=await runRasterWorker("magic-wand",{width:state.width,height:state.height,data:buffer,x,y,tolerance},[buffer]);
+      if(result)mask={data:new Uint8Array(result.data),bounds:result.bounds};
+    }catch{
+      if(MagicWand?.floodFill)mask=MagicWand.floodFill({data:imageData.data,width:state.width,height:state.height,bytes:4},x,y,tolerance,null,true);
+    }
+    if(!mask)return;
+    const bounds=mask.bounds?.minX!==undefined?mask.bounds:computeMaskBounds(mask.data,state.width,state.height);
+    if(!bounds)return;
+    const width=bounds.maxX-bounds.minX+1,height=bounds.maxY-bounds.minY+1;
+    const out=document.createElement("canvas");out.width=width;out.height=height;
+    const octx=out.getContext("2d");const data=octx.createImageData(width,height);
+    const color=parseHexColor($("shapeFill").value);
+    for(let yy=0;yy<height;yy++)for(let xx=0;xx<width;xx++){
+      const mi=(bounds.minY+yy)*state.width+(bounds.minX+xx);
+      if(!mask.data[mi])continue;
+      const p=(yy*width+xx)*4;
+      data.data[p]=color.r;data.data[p+1]=color.g;data.data[p+2]=color.b;data.data[p+3]=255;
+    }
+    octx.putImageData(data,0,0);
+    const src=out.toDataURL("image/png");
+    const asset=await APP.addAsset({name:"Fill",src,source:"Studio",kind:"generated"});
+    await addImageFromUrl(src,"Fill",asset,{left:bounds.minX,top:bounds.minY,scaleX:1,scaleY:1});
+    snapshotLabel("Raster fill");
+  }
+
+  async function fillTarget(target,point) {
+    if (target && !isHelper(target) && !(target instanceof F.FabricImage) && !(target instanceof F.Path)) {
+      if ("fill" in target) {
+        target.set("fill",$("shapeFill").value);
+        canvas.requestRenderAll(); snapshotLabel("Fill");
+        syncSelectionUi();
+        return;
+      }
+    }
+    await rasterFloodFillAt(point);
+  }
+
+  function groupSelected() {
+    const active=canvas.getActiveObject();
+    if (!(active instanceof F.ActiveSelection)) return;
+    const matrix=active.calcTransformMatrix();
+    const objects=active.getObjects().filter(object=>!isHelper(object));
+    active.removeAll();
+    canvas.discardActiveObject();
+    objects.forEach(object=>{
+      F.util.sendObjectToPlane(object,matrix,undefined);
+      canvas.remove(object);
+    });
+    const group=new F.Group(objects,{ subTargetCheck:true });
+    assignObjectMetadata(group,"Group",{ kind:"group",source:"studio" });
+    canvas.add(group);canvas.setActiveObject(group);canvas.requestRenderAll();
+    snapshotLabel("Сгруппированы слои");syncSelectionUi();
+  }
+
+  function ungroupSelected() {
+    const active=canvas.getActiveObject();
+    if (!(active instanceof F.Group) || active instanceof F.ActiveSelection) return;
+    const matrix=active.calcTransformMatrix();
+    const items=active.getObjects();
+    active.removeAll();
+    canvas.remove(active);
+    items.forEach(object=>{
+      F.util.sendObjectToPlane(object,matrix,undefined);
+      canvas.add(object);
+    });
+    const selection=new F.ActiveSelection(items,{ canvas });
+    canvas.setActiveObject(selection);canvas.requestRenderAll();
+    snapshotLabel("Разгруппированы слои");syncSelectionUi();
+  }
+
+  async function mergeSelected() {
+    const objects=canvas.getActiveObjects().filter(object=>!isHelper(object));
+    if (objects.length<2) return;
+    const bounds=objects.reduce((acc,object)=>{
+      const b=object.getBoundingRect();
+      return {
+        left:Math.min(acc.left,b.left),top:Math.min(acc.top,b.top),
+        right:Math.max(acc.right,b.left+b.width),bottom:Math.max(acc.bottom,b.top+b.height)
+      };
+    },{ left:Infinity,top:Infinity,right:-Infinity,bottom:-Infinity });
+    const width=Math.max(1,Math.ceil(bounds.right-bounds.left));
+    const height=Math.max(1,Math.ceil(bounds.bottom-bounds.top));
+    const temp=new F.StaticCanvas(null,{ width,height,backgroundColor:null });
+    for (const object of objects) {
+      const clone=await object.clone(["name","assetId","source","kind"]);
+      clone.set({ left:(clone.left||0)-bounds.left,top:(clone.top||0)-bounds.top });
+      temp.add(clone);
+    }
+    temp.renderAll();
+    const src=temp.toDataURL({ format:"png",multiplier:1 });
+    temp.dispose();
+    canvas.discardActiveObject();
+    objects.forEach(object=>canvas.remove(object));
+    const asset=await APP.addAsset({ name:"Merged layer",src,source:"Studio",kind:"image" });
+    await addImageFromUrl(src,"Merged layer",asset,{ left:bounds.left,top:bounds.top,scaleX:1,scaleY:1 });
+    snapshotLabel("Merge layers");
+  }
+
+  async function flattenCanvas() {
+    if (!realObjects().length) return;
+    const src=exportDataUrl("png");
+    state.historyMuted=true;
+    canvas.clear();
+    canvas.backgroundColor=null;
+    const image=await F.FabricImage.fromURL(src);
+    image.set({ left:0,top:0,scaleX:state.width/image.width,scaleY:state.height/image.height });
+    assignObjectMetadata(image,"Flattened",{ kind:"image",source:"Studio" });
+    canvas.add(image);canvas.setActiveObject(image);
+    state.historyMuted=false;
+    canvas.requestRenderAll();
+    snapshotLabel("Flatten image");syncSelectionUi();
+  }
+
+  function snapObject(object) {
+    if (!object || isHelper(object)) return;
+    state.guides={ v:[],h:[] };
+    const b=object.getBoundingRect();
+    let dx=0,dy=0;
+    const verticalTargets=[0,state.width/2,state.width];
+    const horizontalTargets=[0,state.height/2,state.height];
+    const objX=[b.left,b.left+b.width/2,b.left+b.width];
+    const objY=[b.top,b.top+b.height/2,b.top+b.height];
+    verticalTargets.forEach(target=>objX.forEach(x=>{
+      if (Math.abs(x-target)<=SNAP && Math.abs(dx)===0) { dx=target-x;state.guides.v.push(target); }
+    }));
+    horizontalTargets.forEach(target=>objY.forEach(y=>{
+      if (Math.abs(y-target)<=SNAP && Math.abs(dy)===0) { dy=target-y;state.guides.h.push(target); }
+    }));
+    realObjects().filter(other=>other!==object).forEach(other=>{
+      const ob=other.getBoundingRect();
+      const tx=[ob.left,ob.left+ob.width/2,ob.left+ob.width];
+      const ty=[ob.top,ob.top+ob.height/2,ob.top+ob.height];
+      tx.forEach(target=>objX.forEach(x=>{if(Math.abs(x-target)<=SNAP&&dx===0){dx=target-x;state.guides.v.push(target)}}));
+      ty.forEach(target=>objY.forEach(y=>{if(Math.abs(y-target)<=SNAP&&dy===0){dy=target-y;state.guides.h.push(target)}}));
+    });
+    if (dx||dy) {
+      object.set({ left:(object.left||0)+dx,top:(object.top||0)+dy });
+      object.setCoords();
+    }
+  }
+
+  function drawGuides() {
+    if (!state.guides.v.length && !state.guides.h.length) return;
+    const ctx=canvas.getTopContext?.() || canvas.getSelectionContext?.();
+    if (!ctx) return;
+    ctx.save();
+    ctx.strokeStyle="rgba(77,211,170,.9)";
+    ctx.lineWidth=1;
+    ctx.setLineDash([5,4]);
+    state.guides.v.forEach(x=>{ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,state.height);ctx.stroke()});
+    state.guides.h.forEach(y=>{ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(state.width,y);ctx.stroke()});
+    ctx.restore();
+  }
+
+  function syncFilterControls(image) {
+    const saved=state.filterState.get(image) || { brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false,invert:false,sharpen:false };
+    $("filterBrightness").value=saved.brightness;
+    $("filterContrast").value=saved.contrast;
+    $("filterSaturation").value=saved.saturation;
+    $("filterBlur").value=saved.blur;
+  }
+
+  function applyImageFilters(commit=false) {
+    const image=canvas.getActiveObject();
+    if (!(image instanceof F.FabricImage)) return;
+    const values=state.filterState.get(image) || { grayscale:false,sepia:false };
+    values.brightness=Number($("filterBrightness").value)||0;
+    values.contrast=Number($("filterContrast").value)||0;
+    values.saturation=Number($("filterSaturation").value)||0;
+    values.blur=Number($("filterBlur").value)||0;
+    const filters=[];
+    if (values.brightness) filters.push(new F.filters.Brightness({ brightness:values.brightness }));
+    if (values.contrast) filters.push(new F.filters.Contrast({ contrast:values.contrast }));
+    if (values.saturation) filters.push(new F.filters.Saturation({ saturation:values.saturation }));
+    if (values.blur) filters.push(new F.filters.Blur({ blur:values.blur }));
+    if (values.grayscale) filters.push(new F.filters.Grayscale());
+    if (values.sepia) filters.push(new F.filters.Sepia());
+    if (values.invert) filters.push(new F.filters.Invert());
+    if (values.sharpen) filters.push(new F.filters.Convolute({ matrix:[0,-1,0,-1,5,-1,0,-1,0] }));
+    image.filters=filters;
+    image.applyFilters();
+    state.filterState.set(image,values);
+    canvas.requestRenderAll();
+    if (commit) snapshotLabel("Image filters");
+  }
+
+  function toggleImageFilter(type) {
+    const image=canvas.getActiveObject();
+    if (!(image instanceof F.FabricImage)) return;
+    const values=state.filterState.get(image) || { brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false,invert:false,sharpen:false };
+    values[type]=!values[type];
+    state.filterState.set(image,values);
+    applyImageFilters(true);
+  }
+
+  function resetImageFilters() {
+    const image=canvas.getActiveObject();
+    if (!(image instanceof F.FabricImage)) return;
+    state.filterState.set(image,{ brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false,invert:false,sharpen:false });
+    image.filters=[];image.applyFilters();canvas.requestRenderAll();
+    syncFilterControls(image);snapshotLabel("Filters reset");
+  }
+
+  async function generateAi(replace=false, promptOverride=null) {
+    const prompt=(promptOverride ?? $("aiPrompt").value).trim();
+    if (!prompt) {
+      $("aiStatus").textContent="Введите промпт.";
+      $("aiStatus").className="drawer-status error";return;
+    }
+    const button=replace?$("replaceWithAiBtn"):$("generateAiBtn");
+    const oldText=button.textContent;button.disabled=true;button.textContent="Генерация...";
+    $("aiStatus").textContent="Puter AI...";$("aiStatus").className="drawer-status";
+    const previous=canvas.getActiveObject();
     try {
-      const [w, h] = $("aiRatio").value.split(":").map(Number);
-      const result = await puter.ai.txt2img(prompt, {
-        model: $("aiModel").value,
-        quality: $("aiQuality").value,
-        ratio: { w, h },
-        test_mode: $("aiTestMode").checked
+      const [w,h]=$("aiRatio").value.split(":").map(Number);
+      const options={
+        model:$("aiModel").value,quality:$("aiQuality").value,ratio:{w,h},test_mode:$("aiTestMode").checked
+      };
+      if(state.aiReference) options.input_image=state.aiReference;
+      const result=await puter.ai.txt2img(prompt,options);
+      const src=result.src;
+      state.lastAiSrc=src;
+      $("downloadAiBtn").disabled=false;
+      const asset=await APP.addAsset({
+        name:"AI: "+prompt.slice(0,32),src,source:"Puter / "+$("aiModel").selectedOptions[0].text,kind:"generated"
       });
-      const src = result.src;
-      const asset = await APP.addAsset({
-        name: "AI: " + prompt.slice(0, 32),
-        src,
-        source: "Puter / " + $("aiModel").selectedOptions[0].text,
-        kind: "generated"
-      });
-      await addImageFromUrl(src, asset.name, asset);
-      $("aiStatus").textContent = "Готово. Результат добавлен новым слоем.";
-      $("aiStatus").className = "drawer-status ok";
+      let placement=null;
+      if (replace && previous && !isHelper(previous) && !(previous instanceof F.ActiveSelection)) {
+        placement={
+          left:previous.left,top:previous.top,
+          scaleX:previous.getScaledWidth() / (previous.width || previous.getScaledWidth()),
+          scaleY:previous.getScaledHeight() / (previous.height || previous.getScaledHeight())
+        };
+        canvas.remove(previous);
+      }
+      const newImage=await addImageFromUrl(src,asset.name,asset);
+      if (replace && previous) {
+        newImage.set({
+          left:previous.left,top:previous.top,angle:previous.angle||0,
+          scaleX:previous.getScaledWidth()/newImage.width,
+          scaleY:previous.getScaledHeight()/newImage.height
+        });
+        newImage.setCoords();canvas.requestRenderAll();
+        snapshotLabel("AI replaced selected layer");
+      }
+      $("aiStatus").textContent=replace?"Выбранный слой заменён.":"Готово. Результат добавлен новым слоем.";
+      $("aiStatus").className="drawer-status ok";
       APP.refreshPuterState();
     } catch (error) {
-      $("aiStatus").textContent = "Ошибка: " + (error?.message || error?.msg || String(error));
-      $("aiStatus").className = "drawer-status error";
+      $("aiStatus").textContent="Ошибка: "+(error?.message||error?.msg||String(error));
+      $("aiStatus").className="drawer-status error";
     } finally {
-      button.disabled = false;
-      button.textContent = "Сгенерировать";
+      button.disabled=false;button.textContent=oldText;
     }
   }
 
-  async function newDocument(width, height, transparent = true) {
-    state.historyMuted = true;
-    selectionTools?.clear();
-    clearGuides();
-    clearNodeHandles(false);
+  async function generateVariations() {
+    const prompt=$("aiPrompt").value.trim();
+    if(!prompt)return;
+    const count=Math.max(2,Math.min(4,Number($("aiVariationCount").value)||3));
+    const button=$("generateVariationsBtn"),old=button.textContent;
+    button.disabled=true;button.textContent="Генерация "+count+"...";
+    $("aiStatus").textContent="Создаю вариации...";
+    try{
+      for(let i=0;i<count;i++){
+        await generateAi(false,prompt + (i ? " variation "+(i+1) : ""));
+        const active=canvas.getActiveObject();
+        if(active && !(active instanceof F.ActiveSelection)){
+          active.set({left:(active.left||0)+i*28,top:(active.top||0)+i*18});
+          active.setCoords();canvas.requestRenderAll();
+        }
+      }
+      $("aiStatus").textContent="Вариации готовы."; $("aiStatus").className="drawer-status ok";
+    }finally{button.disabled=false;button.textContent=old}
+  }
+
+  async function newDocument(width,height,transparent=true) {
+    state.historyMuted=true;
     canvas.clear();
-    state.transparent = transparent;
-    canvas.backgroundColor = transparent ? null : "#ffffff";
-    setDocumentSize(width, height);
+    state.transparent=transparent;
+    canvas.backgroundColor=transparent?null:"#ffffff";
+    setDocumentSize(width,height);
     canvas.requestRenderAll();
-    state.historyMuted = false;
-    state.history = [];
-    state.historyIndex = -1;
-    snapshotLabel("Новый документ");
-    syncSelectionUi();
-  }
-
-  async function loadProjectData(project, restoreAssets = true) {
-    if (!project?.canvas) throw new Error("Некорректный Skooma project.");
-    state.restoring = true;
-    state.historyMuted = true;
-    selectionTools?.clear();
-    clearGuides();
-    clearNodeHandles(false);
-    state.width = project.width || 1280;
-    state.height = project.height || 720;
-    state.transparent = project.transparent !== false;
-    canvas.setDimensions({ width: state.width, height: state.height });
-    canvas.backgroundColor = state.transparent ? null : "#ffffff";
-    await canvas.loadFromJSON(project.canvas);
-    docObjects().forEach(obj => assignObjectMetadata(obj, obj.name, obj));
-    canvas.requestRenderAll();
-    if (restoreAssets && Array.isArray(project.assets)) {
-      for (const asset of project.assets) await APP.addAsset(asset);
-    }
-    state.historyMuted = false;
-    state.restoring = false;
-    state.history = [];
-    state.historyIndex = -1;
-    snapshotLabel("Проект загружен");
-    syncSelectionUi();
-    fitToViewport();
+    state.historyMuted=false;
+    state.history=[];state.historyIndex=-1;
+    snapshotLabel("Новый документ");syncSelectionUi();setTool("move");
   }
 
   async function loadAutosave() {
     try {
-      const project = await SkoomaStore.getProject("autosave");
-      if (!project?.canvas) {
-        snapshotLabel("Начальное состояние");
-        return;
-      }
-      await loadProjectData(project, false);
-      if (state.history[0]) state.history[0].label = "Восстановлен autosave";
-      renderHistory();
+      const project=await SkoomaStore.getProject("autosave");
+      if (!project?.canvas) { snapshotLabel("Начальное состояние");return; }
+      await loadProjectObject(project,false);
+      state.history=[];state.historyIndex=-1;snapshotLabel("Восстановлен autosave");
     } catch (error) {
-      console.error("Autosave restore failed", error);
-      snapshotLabel("Начальное состояние");
+      console.error("Autosave restore failed",error);snapshotLabel("Начальное состояние");
     }
   }
 
-  async function exportProjectFile() {
-    const project = serialize();
-    try { project.assets = await SkoomaStore.listAssets(); } catch { project.assets = []; }
-    const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "skooma-project.json";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  async function loadProjectObject(project,recordHistory=true) {
+    state.restoring=true;state.historyMuted=true;
+    state.width=project.width||1280;state.height=project.height||720;
+    state.transparent=project.transparent!==false;
+    canvas.setDimensions({ width:state.width,height:state.height });
+    canvas.backgroundColor=state.transparent?null:"#ffffff";
+    await canvas.loadFromJSON(project.canvas);
+    canvas.getObjects().filter(o=>!isHelper(o)).forEach(o=>assignObjectMetadata(o,o.name,o));
+    canvas.requestRenderAll();state.historyMuted=false;state.restoring=false;
+    syncSelectionUi();fitToViewport();$("docStatus").textContent=state.width+" × "+state.height;
+    if(recordHistory)snapshotLabel("Импортирован проект");
   }
 
-  async function importProjectFile(file) {
-    const text = await file.text();
-    const project = JSON.parse(text);
-    await loadProjectData(project, true);
-    await saveNow();
+  function exportProjectJson() {
+    const project={ ...serialize("project-export","Exported project"),assets:APP.assets || [] };
+    const blob=new Blob([JSON.stringify(project,null,2)],{ type:"application/json" });
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");a.href=url;a.download="skooma-project.json";a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
   }
 
-  function exportImage(format = "png") {
-    selectionTools?.clear();
-    clearGuides();
-    clearNodeHandles(false);
-    canvas.discardActiveObject();
-    canvas.requestRenderAll();
-    const mimeFormat = format === "jpg" ? "jpeg" : format;
-    const data = canvas.toDataURL({ format: mimeFormat, quality: 0.92, multiplier: 1 });
-    const a = document.createElement("a");
-    a.href = data;
-    a.download = "skooma-export." + (format === "jpeg" ? "jpg" : format);
-    a.click();
-  }
-
-  function selectionChanged(selection) {
-    if (selection?.error) {
-      $("selectionStatus").textContent = selection.error;
-      return;
-    }
-    if (!selection) {
-      $("selectionStatus").textContent = selectionSummary();
-      return;
-    }
-    if (selection.type === "mask") {
-      $("selectionStatus").textContent = "Magic Wand selection";
-    } else if (selection.type === "lasso") {
-      $("selectionStatus").textContent = "Lasso selection";
-    } else if (selection.type === "crop") {
-      $("selectionStatus").textContent = "Crop selection";
-    } else {
-      $("selectionStatus").textContent = "Rectangle selection";
+  async function importProjectJson(file) {
+    try {
+      const project=JSON.parse(await file.text());
+      if (!project?.canvas) throw new Error("Неверный файл проекта");
+      for (const asset of project.assets || []) await APP.addAsset(asset);
+      await loadProjectObject(project,true);
+    } catch (error) {
+      alert("Не удалось открыть проект: "+error.message);
     }
   }
 
-  const selectionTools = SkoomaSelectionTools.create({
-    canvas,
-    Fabric: F,
-    getTool: () => state.tool,
-    getActiveImage,
-    getDocumentSize,
-    onSelectionChanged: selectionChanged
-  });
+  function exportDataUrl(format="png") {
+    const restore=helpersVisible(false);
+    canvas.discardActiveObject();canvas.requestRenderAll();
+    const data=canvas.toDataURL({ format:format==="jpg"?"jpeg":format,quality:.92,multiplier:1 });
+    restore();canvas.requestRenderAll();
+    return data;
+  }
+
+  function exportImage(format="png") {
+    const data=exportDataUrl(format);
+    const a=document.createElement("a");a.href=data;a.download="skooma-export."+format;a.click();
+  }
 
   function bindEvents() {
-    canvas.on("selection:created", syncSelectionUi);
-    canvas.on("selection:updated", syncSelectionUi);
-    canvas.on("selection:cleared", syncSelectionUi);
-    canvas.on("object:moving", event => {
-      if (event.target?.excludeFromExport) return;
-      snapMovingObject(event.target);
-      if (state.nodeTarget) refreshNodeHandles();
-    });
-    canvas.on("object:scaling", () => {
-      clearGuides();
-      if (state.nodeTarget) refreshNodeHandles();
-    });
-    canvas.on("object:rotating", () => {
-      clearGuides();
-      if (state.nodeTarget) refreshNodeHandles();
-    });
-    canvas.on("object:modified", event => {
-      clearGuides();
-      if (event.target?.excludeFromExport) return;
-      snapshotLabel("Изменён объект");
+    canvas.on("selection:created",event=>{
+      if(state.tool==="marquee"&&!state.adjustingSelection&&$("selectionMode").value!=="replace"){
+        const selected=(event.selected||canvas.getActiveObjects()).filter(object=>!isHelper(object));
+        applyObjectSelection(selected,state.selectionBase);
+        return;
+      }
       syncSelectionUi();
     });
-    canvas.on("path:created", event => {
-      const path = event.path;
-      if (!path) return;
-      assignObjectMetadata(path, "Brush stroke", { kind: "drawing", source: "studio" });
-      snapshotLabel("Кисть");
-      renderLayers();
+    canvas.on("selection:updated",syncSelectionUi);
+    canvas.on("selection:cleared",syncSelectionUi);
+    canvas.on("object:modified",event=>{
+      if(isHelper(event.target))return;
+      state.guides={v:[],h:[]};snapshotLabel("Изменён объект");syncSelectionUi();
     });
-
-    canvas.on("mouse:down", event => {
-      if (selectionTools.handleMouseDown(event)) return;
-
-      const pointer = event.e;
-      const scenePoint = canvas.getScenePoint(pointer);
-
-      if (state.tool === "eraser") {
-        const target = getActiveImage();
-        if (!target) {
-          $("selectionStatus").textContent = "Raster Eraser: выберите image layer.";
-          return;
-        }
-        state.eraser = { target, points: [scenePoint] };
-        updateEraserPreview();
+    canvas.on("object:moving",event=>{if(!isHelper(event.target))snapObject(event.target)});
+    canvas.on("after:render",drawGuides);
+    canvas.on("path:created",async event=>{
+      const path=event.path;if(!path)return;
+      if(state.tool==="eraser"){
+        await applyEraserStroke(path);
         return;
       }
+      assignObjectMetadata(path,state.tool==="pencil"?"Pencil":"Brush",{kind:"drawing",source:"studio"});
+      snapshotLabel(state.tool==="pencil"?"Карандаш":"Кисть");
+      renderLayers();canvas.requestRenderAll();
+    });
 
-      if (state.tool === "hand") {
-        state.isPanning = true;
-        state.lastPointer = { x: pointer.clientX, y: pointer.clientY };
-        canvas.defaultCursor = "grabbing";
-      } else if (state.tool === "zoom") {
-        setZoom(state.viewScale * (pointer.altKey ? 0.85 : 1.15));
-      } else if (state.tool === "text" && !event.target) {
-        addTextAt(scenePoint.x, scenePoint.y);
-        setTool("move");
-      } else if (state.tool === "rect" && !event.target) {
-        addRectAt(scenePoint.x, scenePoint.y);
-        setTool("move");
-      } else if (state.tool === "ellipse" && !event.target) {
-        addEllipseAt(scenePoint.x, scenePoint.y);
-        setTool("move");
+    canvas.on("mouse:down:before",()=>{
+      if(state.tool==="marquee") state.selectionBase=canvas.getActiveObjects().filter(object=>!isHelper(object));
+    });
+
+    canvas.on("mouse:down",event=>{
+      const e=event.e;
+      const point=canvas.getScenePoint(e);
+      if(state.tool==="hand"){
+        state.isPanning=true;state.lastPointer={x:e.clientX,y:e.clientY};canvas.defaultCursor="grabbing";
+      }else if(state.tool==="zoom"){
+        setZoom(state.viewScale*(e.altKey?.85:1.15));
+      }else if(state.tool==="text"&&!event.target){
+        addTextAt(point.x,point.y);setTool("move");
+      }else if((state.tool==="rect"||state.tool==="ellipse")&&!event.target){
+        beginShape(state.tool,point);
+      }else if(state.tool==="line"&&!event.target){
+        beginLine(point);
+      }else if(state.tool==="pen"&&!event.target){
+        beginPen(point);
+      }else if(state.tool==="lasso"){
+        startLasso(point);
+      }else if(state.tool==="wand"){
+        magicWandAt(point);
+      }else if(state.tool==="eyedropper"){
+        eyedropAt(point);
+      }else if(state.tool==="fill"){
+        fillTarget(event.target,point);
       }
     });
 
-    canvas.on("mouse:move", event => {
-      if (selectionTools.handleMouseMove(event)) return;
-
-      const scenePoint = canvas.getScenePoint(event.e);
-      if (state.eraser) {
-        const last = state.eraser.points[state.eraser.points.length - 1];
-        const dx = scenePoint.x - last.x;
-        const dy = scenePoint.y - last.y;
-        if (dx * dx + dy * dy > 4) state.eraser.points.push(scenePoint);
-        updateEraserPreview();
-        return;
-      }
-
-      if (!state.isPanning || !state.lastPointer) return;
-      const pointer = event.e;
-      state.panX += pointer.clientX - state.lastPointer.x;
-      state.panY += pointer.clientY - state.lastPointer.y;
-      state.lastPointer = { x: pointer.clientX, y: pointer.clientY };
-      applyViewTransform();
-    });
-
-    canvas.on("mouse:up", async () => {
-      if (selectionTools.handleMouseUp()) return;
-      if (state.eraser) {
-        await eraseRasterStroke();
-        return;
-      }
-      if (state.isPanning) {
-        state.isPanning = false;
-        state.lastPointer = null;
-        canvas.defaultCursor = "grab";
+    canvas.on("mouse:move",event=>{
+      const e=event.e;const point=canvas.getScenePoint(e);
+      if(state.isPanning&&state.lastPointer){
+        state.panX+=e.clientX-state.lastPointer.x;state.panY+=e.clientY-state.lastPointer.y;
+        state.lastPointer={x:e.clientX,y:e.clientY};applyViewTransform();
+      }else if(state.tool==="lasso"&&state.lassoHelper){
+        updateLasso(point);
+      }else if(state.tool==="line"&&state.lineHelper){
+        updateLine(point);
+      }else if((state.tool==="rect"||state.tool==="ellipse")&&state.shapeHelper){
+        updateShape(point,!!e.shiftKey);
       }
     });
 
-    $("canvasViewport").addEventListener("wheel", event => {
-      if (!event.ctrlKey && state.tool !== "zoom") return;
+    canvas.on("mouse:dblclick",()=>{
+      if(state.tool==="pen")finishPen(false);
+    });
+
+    canvas.on("mouse:up",event=>{
+      if(state.isPanning){state.isPanning=false;state.lastPointer=null;canvas.defaultCursor="grab"}
+      if(state.tool==="lasso"&&state.lassoHelper)finishLasso();
+      if(state.tool==="line"&&state.lineHelper){
+        const point=canvas.getScenePoint(event.e);
+        const distance=state.lineStart?Math.hypot(point.x-state.lineStart.x,point.y-state.lineStart.y):0;
+        if(distance>2)finishLine(point);
+        else{canvas.remove(state.lineHelper);state.lineHelper=null;state.lineStart=null}
+      }
+      if((state.tool==="rect"||state.tool==="ellipse")&&state.shapeHelper)finishShape();
+    });
+
+    $("canvasViewport").addEventListener("wheel",event=>{
+      if(!event.ctrlKey&&state.tool!=="zoom")return;
+      event.preventDefault();setZoom(state.viewScale*(event.deltaY<0?1.08:.92));
+    },{passive:false});
+
+    $("canvasViewport").addEventListener("dragover",event=>event.preventDefault());
+    $("canvasViewport").addEventListener("drop",async event=>{
       event.preventDefault();
-      setZoom(state.viewScale * (event.deltaY < 0 ? 1.08 : 0.92));
-    }, { passive: false });
-
-    $("canvasViewport").addEventListener("dragover", event => event.preventDefault());
-    $("canvasViewport").addEventListener("drop", async event => {
-      event.preventDefault();
-      const assetId = event.dataTransfer.getData("application/x-skooma-asset");
-      if (assetId) {
-        const asset = APP.getAsset(assetId);
-        if (asset) await addImageFromUrl(asset.src, asset.name, asset);
+      const assetId=event.dataTransfer.getData("application/x-skooma-asset");
+      if(assetId){const asset=APP.getAsset(assetId);if(asset)await addImageFromUrl(asset.src,asset.name,asset);return}
+      const mediaArt=event.dataTransfer.getData("application/x-skooma-media-art");
+      if(mediaArt){
+        try{
+          const art=JSON.parse(mediaArt);
+          let src=art.url;
+          try{
+            const response=await fetch(art.url);
+            if(response.ok){
+              const blob=await response.blob();
+              src=await fileToDataUrl(new File([blob],"media-art",{type:blob.type||"image/png"}));
+            }
+          }catch{}
+          const asset=await APP.addAsset({name:(art.title||"Media")+" · "+(art.kind||"image"),src,source:art.source||"media",kind:art.kind||"image",meta:art.meta||{}});
+          await addImageFromUrl(asset.src,asset.name,asset);
+        }catch(error){console.error(error)}
         return;
       }
-      const file = event.dataTransfer.files?.[0];
-      if (file) await importFile(file);
+      const file=event.dataTransfer.files?.[0];if(file)await importFile(file);
     });
 
-    document.addEventListener("paste", async event => {
-      if ($("editorSelect").value !== "skooma") return;
-      if (state.clipboard && !event.clipboardData?.items?.length) {
-        await pasteClipboard();
-        return;
-      }
-      const item = [...(event.clipboardData?.items || [])].find(entry => entry.type.startsWith("image/"));
-      if (!item) return;
-      const file = item.getAsFile();
-      if (file) await importFile(file);
+    document.addEventListener("paste",async event=>{
+      if($("editorSelect").value!=="skooma")return;
+      const item=[...(event.clipboardData?.items||[])].find(entry=>entry.type.startsWith("image/"));
+      if(!item)return;const file=item.getAsFile();if(file)await importFile(file);
     });
 
-    qsa(".tool-button[data-tool]").forEach(btn => btn.onclick = () => setTool(btn.dataset.tool));
-
-    ["brushSize", "brushOpacity", "brushColor"].forEach(id => {
-      $(id).oninput = () => {
-        if (state.tool === "brush") setTool("brush");
-      };
-    });
-
-    $("generateAiBtn").onclick = generateAi;
-    $("duplicateBtn").onclick = duplicateActive;
-    $("deleteBtn").onclick = deleteActive;
-    $("groupBtn").onclick = groupActive;
-    $("ungroupBtn").onclick = ungroupActive;
-    $("mergeBtn").onclick = mergeActive;
-    $("flattenBtn").onclick = flattenAll;
-    $("undoBtn").onclick = undo;
-    $("redoBtn").onclick = redo;
-    $("applyPropertiesBtn").onclick = applyProperties;
-    $("applyTransformBtn").onclick = applyContextTransform;
-    $("removeMaskBtn").onclick = removeMask;
-    $("resetRasterBtn").onclick = resetRaster;
-
-    $("selectionDeleteBtn").onclick = applySelectionDelete;
-    $("selectionMaskBtn").onclick = applySelectionMask;
-    $("selectionInvertBtn").onclick = () => selectionTools.invert();
-    $("selectionCropBtn").onclick = () => cropDocument(selectionTools.getSceneBounds());
-    $("selectionClearBtn").onclick = () => selectionTools.clear();
-
-    $("selectionDeleteWandBtn").onclick = applySelectionDelete;
-    $("selectionMaskWandBtn").onclick = applySelectionMask;
-    $("selectionClearWandBtn").onclick = () => selectionTools.clear();
-
-    $("cropApplyBtn").onclick = () => cropDocument(selectionTools.getSceneBounds());
-    $("cropCancelBtn").onclick = () => selectionTools.clear();
-    $("nodeExitBtn").onclick = () => {
-      clearNodeHandles(true);
-      setTool("move");
+    qsa(".tool-button[data-tool]").forEach(btn=>btn.onclick=()=>setTool(btn.dataset.tool));
+    ["brushSize","brushHardness","brushOpacity","brushFlow","brushColor"].forEach(id=>$(id).oninput=()=>{if(["brush","pencil","eraser"].includes(state.tool))setTool(state.tool,true)});
+    $("ctxLockRatio").onchange=()=>{
+      const active=canvas.getActiveObject();
+      if(!active||active instanceof F.ActiveSelection)return;
+      active.__skoomaLockRatio=$("ctxLockRatio").checked;
+      active.setControlsVisibility({
+        ml:!active.__skoomaLockRatio,mr:!active.__skoomaLockRatio,
+        mt:!active.__skoomaLockRatio,mb:!active.__skoomaLockRatio,
+        tl:true,tr:true,bl:true,br:true,mtr:true
+      });
+      canvas.requestRenderAll();
     };
 
-    $("exportBtn").onclick = () => exportImage($("exportFormat").value);
-    $("exportProjectBtn").onclick = exportProjectFile;
-    $("importProjectBtn").onclick = () => $("projectInput").click();
-    $("projectInput").onchange = async event => {
-      const file = event.target.files?.[0];
-      if (file) {
-        try {
-          await importProjectFile(file);
-        } catch (error) {
-          alert("Project import error: " + error.message);
-        }
-      }
-      event.target.value = "";
+    $("selectAllBtn").onclick=selectAll;$("clearSelectionBtn").onclick=clearSelection;
+    $("wandToLayerBtn").onclick=wandToLayer;$("wandMaskBtn").onclick=wandToMask;
+    $("wandCancelBtn").onclick=()=>{clearWand();canvas.requestRenderAll()};
+    $("cropApplyBtn").onclick=applyCrop;$("cropCancelBtn").onclick=cancelCrop;$("cropRatio").onchange=updateCropRatio;
+
+    $("generateAiBtn").onclick=()=>generateAi(false);$("replaceWithAiBtn").onclick=()=>generateAi(true);
+    $("generateVariationsBtn").onclick=generateVariations;
+    $("downloadAiBtn").onclick=()=>{if(!state.lastAiSrc)return;const a=document.createElement("a");a.href=state.lastAiSrc;a.download="skooma-ai.png";a.click()};
+    $("aiReference").onchange=async event=>{
+      const file=event.target.files?.[0];state.aiReference=file?await fileToDataUrl(file):null;
+    };
+    $("duplicateBtn").onclick=duplicateActive;$("deleteBtn").onclick=deleteActive;
+    $("groupBtn").onclick=groupSelected;$("ungroupBtn").onclick=ungroupSelected;
+    $("mergeBtn").onclick=mergeSelected;$("flattenBtn").onclick=flattenCanvas;
+    $("undoBtn").onclick=undo;$("redoBtn").onclick=redo;
+    $("applyPropertiesBtn").onclick=applyProperties;$("applyTransformBtn").onclick=applyContextTransform;
+    $("exportBtn").onclick=()=>exportImage($("exportFormat").value);
+
+    ["filterBrightness","filterContrast","filterSaturation","filterBlur"].forEach(id=>{
+      $(id).oninput=()=>applyImageFilters(false);$(id).onchange=()=>applyImageFilters(true);
+    });
+    $("filterGrayscaleBtn").onclick=()=>toggleImageFilter("grayscale");
+    $("filterSepiaBtn").onclick=()=>toggleImageFilter("sepia");
+    $("filterInvertBtn").onclick=()=>toggleImageFilter("invert");
+    $("filterSharpenBtn").onclick=()=>toggleImageFilter("sharpen");
+    $("filterResetBtn").onclick=resetImageFilters;
+    $("removeMaskBtn").onclick=()=>{
+      const active=canvas.getActiveObject();
+      if(!active||!active.clipPath)return;
+      active.clipPath=undefined;active.dirty=true;canvas.requestRenderAll();
+      snapshotLabel("Layer mask removed");renderProperties();
     };
 
-    window.addEventListener("resize", fitToViewport);
-    window.addEventListener("keydown", event => {
-      const tag = document.activeElement?.tagName?.toLowerCase();
-      const typing = tag === "input" || tag === "textarea" || tag === "select" || canvas.getActiveObject()?.isEditing;
-      const mod = event.ctrlKey || event.metaKey;
-
-      if (mod && event.key.toLowerCase() === "z" && !event.shiftKey) {
-        event.preventDefault(); undo(); return;
-      }
-      if ((mod && event.key.toLowerCase() === "y") || (mod && event.shiftKey && event.key.toLowerCase() === "z")) {
-        event.preventDefault(); redo(); return;
-      }
-      if (mod && event.key.toLowerCase() === "c") {
-        if (!typing) { event.preventDefault(); copyActive(); }
-        return;
-      }
-      if (mod && event.key.toLowerCase() === "x") {
-        if (!typing) { event.preventDefault(); cutActive(); }
-        return;
-      }
-      if (mod && event.key.toLowerCase() === "v") {
-        if (!typing && state.clipboard) { event.preventDefault(); pasteClipboard(); }
-        return;
-      }
-      if (mod && event.key.toLowerCase() === "d") {
-        event.preventDefault(); duplicateActive(); return;
-      }
-      if (mod && event.key.toLowerCase() === "s") {
-        event.preventDefault(); saveNow(); return;
-      }
-      if (!typing && event.code === "Space" && !event.repeat) {
-        event.preventDefault();
-        state.previousTool = state.tool;
-        setTool("hand");
-        return;
-      }
-      if (!typing && event.key === "Escape") {
-        selectionTools.clear();
-        clearNodeHandles(false);
-        setTool("move");
-        return;
-      }
-      if (!typing && event.key === "Delete") {
-        if (selectionTools.state.current && getActiveImage()) {
-          event.preventDefault();
-          applySelectionDelete();
-        } else {
-          event.preventDefault();
-          deleteActive();
-        }
-        return;
-      }
-      if (typing) return;
-
-      const key = event.key.toLowerCase();
-      if (key === "v") setTool("move");
-      else if (key === "m") setTool("marquee");
-      else if (key === "l") setTool("lasso");
-      else if (key === "w") setTool("wand");
-      else if (key === "c") setTool("crop");
-      else if (key === "b") setTool("brush");
-      else if (key === "e") setTool("eraser");
-      else if (key === "t") setTool("text");
-      else if (key === "r") setTool("rect");
-      else if (key === "o") setTool("ellipse");
-      else if (key === "n") setTool("node");
-      else if (key === "h") setTool("hand");
-      else if (key === "z") setTool("zoom");
+    window.addEventListener("resize",fitToViewport);
+    window.addEventListener("keydown",event=>{
+      const tag=document.activeElement?.tagName?.toLowerCase();
+      const typing=tag==="input"||tag==="textarea"||tag==="select"||canvas.getActiveObject()?.isEditing;
+      const mod=event.ctrlKey||event.metaKey;
+      if(mod&&event.key.toLowerCase()==="z"&&!event.shiftKey){event.preventDefault();undo();return}
+      if((mod&&event.key.toLowerCase()==="y")||(mod&&event.shiftKey&&event.key.toLowerCase()==="z")){event.preventDefault();redo();return}
+      if(mod&&event.key.toLowerCase()==="c"){if(!typing){event.preventDefault();copyActive()}return}
+      if(mod&&event.key.toLowerCase()==="x"){if(!typing){event.preventDefault();cutActive()}return}
+      if(mod&&event.key.toLowerCase()==="v"){if(!typing&&state.clipboard){event.preventDefault();pasteClipboard()}return}
+      if(mod&&event.key.toLowerCase()==="d"){event.preventDefault();duplicateActive();return}
+      if(mod&&event.key.toLowerCase()==="s"){event.preventDefault();saveNow();return}
+      if(!typing&&event.code==="Space"&&!event.repeat){event.preventDefault();state.previousTool=state.tool;setTool("hand");return}
+      if(!typing&&event.key==="Delete"){event.preventDefault();deleteActive();return}
+      if(event.key==="Escape"){clearToolHelpers();setTool("move");return}
+      if(event.key==="Enter"&&state.tool==="crop"){applyCrop();return}
+      if(event.key==="Enter"&&state.tool==="pen"){finishPen(false);return}
+      if(typing)return;
+      const key=event.key.toLowerCase();
+      const map={v:"move",m:"marquee",l:"lasso",w:"wand",c:"crop",b:"brush",p:"pencil",e:"eraser",g:"fill",i:"eyedropper",t:"text",r:"rect",o:"ellipse",n:"line",a:"pen",q:"node",j:"image",h:"hand",z:"zoom"};
+      if(map[key])setTool(map[key]);
     });
-
-    window.addEventListener("keyup", event => {
-      if (event.code === "Space" && state.previousTool) {
-        const previous = state.previousTool;
-        state.previousTool = null;
-        setTool(previous);
-      }
+    window.addEventListener("keyup",event=>{
+      if(event.code==="Space"&&state.previousTool){const previous=state.previousTool;state.previousTool=null;setTool(previous)}
     });
   }
 
   bindEvents();
-  setDocumentSize(state.width, state.height);
+  setDocumentSize(state.width,state.height);
   setTool("move");
   loadAutosave();
-  setTimeout(fitToViewport, 50);
+  setTimeout(fitToViewport,50);
 
   return {
-    canvas,
-    fitToViewport,
-    setTool,
-    addImageFromUrl,
-    importFile,
-    fileToDataUrl,
-    newDocument,
-    saveNow,
-    exportImage,
-    exportProjectFile,
-    importProjectFile,
-    undo,
-    redo
+    canvas,fitToViewport,setTool,addImageFromUrl,setBackgroundFromUrl,importFile,fileToDataUrl,newDocument,saveNow,saveManualProject,loadProjectById,
+    exportImage,exportProjectJson,importProjectJson,undo,redo
   };
 })();
