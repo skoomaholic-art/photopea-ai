@@ -12,7 +12,9 @@ const required = [
   "storage.js",
   "studio.js",
   "media.js",
-  "THIRD_PARTY_LICENSES.md"
+  "raster-worker.js",
+  "THIRD_PARTY_LICENSES.md",
+  "docs/CANVAS_ENGINE_DECISION.md"
 ];
 
 for (const file of required) {
@@ -29,7 +31,7 @@ if (duplicates.length) {
 }
 
 const idSet = new Set(ids);
-const jsFiles = ["app.js","storage.js","studio.js","media.js"];
+const jsFiles = ["app.js","storage.js","studio.js","media.js","raster-worker.js"];
 const missingIds = new Set();
 
 for (const file of jsFiles) {
