@@ -173,6 +173,34 @@ window.APP = (() => {
     renderAssets();
   }
 
+  async function renderRecentProjects() {
+    const root=$("recentProjectsList");
+    root.innerHTML='<div class="empty-state">Загрузка...</div>';
+    try{
+      const projects=(await SkoomaStore.listProjects()).filter(project=>project.id!=="autosave");
+      root.innerHTML="";
+      if(!projects.length){root.innerHTML='<div class="empty-state">Сохранённых проектов пока нет.</div>';return}
+      projects.slice(0,20).forEach(project=>{
+        const row=document.createElement("div");
+        row.className="recent-project-row";
+        const date=project.updatedAt?new Date(project.updatedAt).toLocaleString():"";
+        row.innerHTML='<div><div class="recent-project-title">'+escapeHtml(project.title||"Skooma Project")+
+          '</div><div class="recent-project-meta">'+escapeHtml(date)+" · "+(project.width||"?")+"×"+(project.height||"?")+
+          '</div></div><div class="recent-project-actions"><button class="small-button open-recent">Открыть</button>'+
+          '<button class="small-button danger-button delete-recent">Удалить</button></div>';
+        row.querySelector(".open-recent").onclick=async()=>{
+          await window.Studio?.loadProjectById(project.id);
+          $("recentProjectsModal").classList.add("hidden");
+          $("editorSelect").value="skooma";switchEditor("skooma");
+        };
+        row.querySelector(".delete-recent").onclick=async()=>{
+          await SkoomaStore.deleteProject(project.id);renderRecentProjects();
+        };
+        root.appendChild(row);
+      });
+    }catch(error){root.innerHTML='<div class="empty-state">Ошибка: '+escapeHtml(error.message)+'</div>'}
+  }
+
   function saveSettings() {
     cfg.omdb = $("omdbKey").value.trim();
     cfg.tmdb = $("tmdbToken").value.trim();
@@ -212,7 +240,13 @@ window.APP = (() => {
       if (file) await window.Studio?.importFile(file);
       event.target.value = "";
     };
-    $("saveProjectBtn").onclick = () => window.Studio?.saveNow();
+    $("saveProjectBtn").onclick = async () => {
+      await window.Studio?.saveManualProject();
+    };
+    $("recentProjectsBtn").onclick = async () => {
+      await renderRecentProjects();
+      openModal("recentProjectsModal");
+    };
     $("projectExportBtn").onclick = () => window.Studio?.exportProjectJson();
     $("projectImportBtn").onclick = () => $("projectInput").click();
     $("projectInput").onchange = async event => {
@@ -276,6 +310,7 @@ window.APP = (() => {
     switchEditor,
     setAutosaveState,
     refreshPuterState,
+    renderRecentProjects,
     get assets() { return assets; },
     get assetFilter() { return assetFilter; }
   };
