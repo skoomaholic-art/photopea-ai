@@ -20,6 +20,7 @@
       <button class="menu-button" id="openImageBtn">Открыть</button>
       <button class="menu-button" id="projectImportBtn">Импорт проекта</button>
       <button class="menu-button" id="projectExportBtn">Проект JSON</button>
+      <button class="menu-button" id="recentProjectsBtn">Недавние</button>
       <button class="menu-button" id="saveProjectBtn">Сохранить</button>
     </nav>
 
@@ -362,6 +363,13 @@
     </div>
     <label class="checkbox-line"><input id="newDocTransparent" type="checkbox" checked> Прозрачный фон</label>
     <button id="createDocBtn" class="primary-button full">Создать</button>
+  </div>
+</div>
+
+<div class="modal-backdrop hidden" id="recentProjectsModal">
+  <div class="modal-card settings-card">
+    <div class="modal-head"><h2>Недавние проекты</h2><button class="icon-button modal-close">×</button></div>
+    <div id="recentProjectsList" class="recent-projects-list"></div>
   </div>
 </div>
 
