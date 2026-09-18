@@ -52,7 +52,9 @@ window.Studio = (() => {
     adjustingSelection: false,
     wandWorker: null,
     wandWorkerSeq: 0,
-    wandWorkerPending: new Map()
+    wandWorkerPending: new Map(),
+    nodeTarget: null,
+    nodeHandles: []
   };
 
   const MAX_HISTORY = 40;
@@ -169,6 +171,7 @@ window.Studio = (() => {
       state.penHelper = null;
     }
     state.penPoints = [];
+    exitNodeEdit();
     clearWand();
     state.lassoPoints = [];
     $("canvasFrame").classList.remove("selection-mode","crop-mode","lasso-mode","wand-mode","eyedropper-mode","fill-mode");
@@ -241,6 +244,9 @@ window.Studio = (() => {
       canvas.skipTargetFind = true;
       canvas.defaultCursor = "crosshair";
       setContext("contextShape");
+    } else if (tool === "node") {
+      setContext("contextShape");
+      enterNodeEdit();
     } else if (tool === "image") {
       $("fileInput").click();
       setTool("move");
@@ -259,7 +265,7 @@ window.Studio = (() => {
       move:"Move (V)", marquee:"Rectangle Select (M)", lasso:"Lasso (L)", wand:"Magic Wand (W)",
       crop:"Crop (C)", brush:"Brush (B)", pencil:"Pencil (P)", eraser:"Eraser (E)",
       fill:"Fill (G)", eyedropper:"Eyedropper (I)", text:"Text (T)",
-      rect:"Rectangle (R)", ellipse:"Ellipse (O)", line:"Line (N)", pen:"Pen (A)", image:"Place Image (J)", hand:"Hand (H)", zoom:"Zoom (Z)"
+      rect:"Rectangle (R)", ellipse:"Ellipse (O)", line:"Line (N)", pen:"Pen (A)", node:"Node Edit (Q)", image:"Place Image (J)", hand:"Hand (H)", zoom:"Zoom (Z)"
     }[tool] || tool;
   }
 
@@ -695,11 +701,92 @@ window.Studio = (() => {
     snapshotLabel("Добавлен прямоугольник"); syncSelectionUi();
   }
 
+  function nodeScenePoint(object,index) {
+    const point=object.points[index];
+    const local=new F.Point(point.x-object.pathOffset.x,point.y-object.pathOffset.y);
+    return F.util.sendPointToPlane(local,object.calcTransformMatrix(),undefined);
+  }
+
+  function refreshNodeHandles() {
+    const object=state.nodeTarget;
+    if(!object)return;
+    state.nodeHandles.forEach((handle,index)=>{
+      const scene=nodeScenePoint(object,index);
+      handle.set({left:scene.x,top:scene.y});
+      handle.setCoords();
+    });
+    canvas.requestRenderAll();
+  }
+
+  function exitNodeEdit() {
+    if(state.nodeTarget){
+      state.nodeTarget.selectable=true;
+      state.nodeTarget.evented=true;
+    }
+    state.nodeHandles.forEach(handle=>canvas.remove(handle));
+    state.nodeHandles=[];
+    state.nodeTarget=null;
+  }
+
+  function enterNodeEdit() {
+    exitNodeEdit();
+    const object=canvas.getActiveObject();
+    if(!object || object instanceof F.ActiveSelection || !(object instanceof F.Polyline)){
+      $("selectionStatus").textContent="Node Edit: выберите Polyline / Polygon";
+      return;
+    }
+    state.nodeTarget=object;
+    object.selectable=false;
+    object.evented=false;
+    canvas.discardActiveObject();
+    state.nodeHandles=object.points.map((point,index)=>{
+      const scene=nodeScenePoint(object,index);
+      const handle=new F.Circle({
+        left:scene.x,top:scene.y,radius:5,originX:"center",originY:"center",
+        fill:"#ffffff",stroke:"#6f7dff",strokeWidth:2,
+        selectable:true,evented:true,hasControls:false,hasBorders:false,
+        excludeFromExport:true,helper:true,name:"Node "+(index+1)
+      });
+      handle.nodeIndex=index;
+      let anchorIndex=index>0?index-1:Math.max(0,object.points.length-1);
+      let absoluteAnchor=null;
+      handle.on("mousedown",()=>{
+        const anchor=object.points[anchorIndex];
+        const local=new F.Point(anchor.x-object.pathOffset.x,anchor.y-object.pathOffset.y);
+        absoluteAnchor=F.util.sendPointToPlane(local,object.calcTransformMatrix(),undefined);
+      });
+      handle.on("moving",()=>{
+        const scenePoint=handle.getCenterPoint();
+        const local=F.util.sendPointToPlane(scenePoint,undefined,object.calcTransformMatrix());
+        object.points[index]={x:local.x+object.pathOffset.x,y:local.y+object.pathOffset.y};
+        object.setDimensions();
+        if(absoluteAnchor){
+          const anchor=object.points[anchorIndex];
+          const newX=(anchor.x-object.pathOffset.x)/(object.width||1);
+          const newY=(anchor.y-object.pathOffset.y)/(object.height||1);
+          object.setPositionByOrigin(absoluteAnchor,newX+.5,newY+.5);
+        }
+        object.setCoords();
+        refreshNodeHandles();
+      });
+      handle.on("modified",()=>{
+        refreshNodeHandles();
+        snapshotLabel("Изменён vector node");
+      });
+      canvas.add(handle);
+      canvas.bringObjectToFront(handle);
+      return handle;
+    });
+    $("selectionStatus").textContent="Node Edit: "+object.points.length+" nodes";
+    canvas.requestRenderAll();
+  }
+
   function addLine(start,end) {
-    const line = new F.Line([start.x,start.y,end.x,end.y],{
+    const line = new F.Polyline([start,end],{
       stroke:$("shapeStroke").value || $("shapeFill").value,
       strokeWidth:Math.max(1,Number($("shapeStrokeWidth").value)||2),
-      fill:null
+      fill:"rgba(0,0,0,0)",
+      objectCaching:false
     });
     assignObjectMetadata(line,"Line",{kind:"vector",source:"studio"});
     canvas.add(line); canvas.setActiveObject(line); canvas.requestRenderAll();
@@ -1583,7 +1670,7 @@ window.Studio = (() => {
       if(event.key==="Enter"&&state.tool==="pen"){finishPen(false);return}
       if(typing)return;
       const key=event.key.toLowerCase();
-      const map={v:"move",m:"marquee",l:"lasso",w:"wand",c:"crop",b:"brush",p:"pencil",e:"eraser",g:"fill",i:"eyedropper",t:"text",r:"rect",o:"ellipse",n:"line",a:"pen",j:"image",h:"hand",z:"zoom"};
+      const map={v:"move",m:"marquee",l:"lasso",w:"wand",c:"crop",b:"brush",p:"pencil",e:"eraser",g:"fill",i:"eyedropper",t:"text",r:"rect",o:"ellipse",n:"line",a:"pen",q:"node",j:"image",h:"hand",z:"zoom"};
       if(map[key])setTool(map[key]);
     });
     window.addEventListener("keyup",event=>{
