@@ -55,7 +55,8 @@ window.Studio = (() => {
     wandWorkerPending: new Map(),
     nodeTarget: null,
     nodeHandles: [],
-    eraserTarget: null
+    eraserTarget: null,
+    thumbCache: new WeakMap()
   };
 
   const MAX_HISTORY = 40;
@@ -467,6 +468,7 @@ window.Studio = (() => {
     };
     if (state.historyIndex < state.history.length - 1) state.history = state.history.slice(0,state.historyIndex + 1);
     state.history.push(snap);
+    state.thumbCache=new WeakMap();
     if (state.history.length > MAX_HISTORY) state.history.shift();
     state.historyIndex = state.history.length - 1;
     renderHistory();
@@ -612,14 +614,40 @@ window.Studio = (() => {
 
       const thumb = document.createElement("div");
       thumb.className = "layer-thumb";
-      thumb.textContent = objectKind(object) === "image" ? "▧" :
+      const fallback = objectKind(object) === "image" ? "▧" :
         objectKind(object) === "text" ? "T" :
         objectKind(object) === "drawing" ? "✎" :
         objectKind(object) === "group" ? "▦" : "◇";
+      thumb.textContent = fallback;
       thumb.style.display = "grid";
       thumb.style.placeItems = "center";
       thumb.style.color = "#9fb0c3";
       thumb.style.fontWeight = "900";
+      const cachedThumb=state.thumbCache.get(object);
+      if(cachedThumb){
+        thumb.textContent="";
+        thumb.style.backgroundImage="url("+cachedThumb+")";
+        thumb.style.backgroundSize="contain";
+        thumb.style.backgroundRepeat="no-repeat";
+        thumb.style.backgroundPosition="center";
+      }else{
+        const makeThumb=()=>{
+          if(!thumb.isConnected)return;
+          try{
+            const maxDim=Math.max(object.getScaledWidth?.()||object.width||1,object.getScaledHeight?.()||object.height||1);
+            const multiplier=Math.min(.25,48/Math.max(1,maxDim));
+            const url=object.toDataURL({format:"png",multiplier:Math.max(.03,multiplier)});
+            state.thumbCache.set(object,url);
+            thumb.textContent="";
+            thumb.style.backgroundImage="url("+url+")";
+            thumb.style.backgroundSize="contain";
+            thumb.style.backgroundRepeat="no-repeat";
+            thumb.style.backgroundPosition="center";
+          }catch{}
+        };
+        if("requestIdleCallback" in window)requestIdleCallback(makeThumb,{timeout:500});
+        else setTimeout(makeThumb,0);
+      }
 
       const meta = document.createElement("div");
       meta.className = "layer-meta";
