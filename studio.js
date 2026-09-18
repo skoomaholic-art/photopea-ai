@@ -123,12 +123,49 @@ window.Studio = (() => {
     fitToViewport();
   }
 
+  function updateRulers() {
+    const viewport=$("canvasViewport"),rx=$("rulerX"),ry=$("rulerY"),wrapper=canvas.wrapperEl;
+    if(!viewport||!rx||!ry||!wrapper)return;
+    const vp=viewport.getBoundingClientRect(),fr=wrapper.getBoundingClientRect();
+    const dpr=Math.max(1,window.devicePixelRatio||1);
+    const rw=Math.max(1,Math.floor(vp.width-20)),rh=Math.max(1,Math.floor(vp.height-20));
+    rx.width=Math.floor(rw*dpr);rx.height=Math.floor(20*dpr);rx.style.width=rw+"px";rx.style.height="20px";
+    ry.width=Math.floor(20*dpr);ry.height=Math.floor(rh*dpr);ry.style.width="20px";ry.style.height=rh+"px";
+    const xctx=rx.getContext("2d"),yctx=ry.getContext("2d");
+    xctx.setTransform(dpr,0,0,dpr,0,0);yctx.setTransform(dpr,0,0,dpr,0,0);
+    xctx.clearRect(0,0,rw,20);yctx.clearRect(0,0,20,rh);
+    xctx.fillStyle="#0d141c";xctx.fillRect(0,0,rw,20);yctx.fillStyle="#0d141c";yctx.fillRect(0,0,20,rh);
+    const pxPerUnit=Math.max(.0001,state.viewScale);
+    const candidates=[10,20,50,100,200,500,1000];
+    const major=candidates.find(step=>step*pxPerUnit>=55)||1000;
+    const minor=major/5;
+    const originX=fr.left-vp.left-20;
+    const originY=fr.top-vp.top-20;
+    xctx.strokeStyle="#5f6c7b";xctx.fillStyle="#8fa0b3";xctx.font="9px system-ui";xctx.textBaseline="top";
+    yctx.strokeStyle="#5f6c7b";yctx.fillStyle="#8fa0b3";yctx.font="9px system-ui";
+    for(let x=0;x<=state.width;x+=minor){
+      const sx=originX+x*pxPerUnit;if(sx<0||sx>rw)continue;
+      const isMajor=Math.abs((x/major)-Math.round(x/major))<1e-6;
+      xctx.beginPath();xctx.moveTo(sx,isMajor?7:13);xctx.lineTo(sx,20);xctx.stroke();
+      if(isMajor)xctx.fillText(String(Math.round(x)),sx+2,1);
+    }
+    for(let y=0;y<=state.height;y+=minor){
+      const sy=originY+y*pxPerUnit;if(sy<0||sy>rh)continue;
+      const isMajor=Math.abs((y/major)-Math.round(y/major))<1e-6;
+      yctx.beginPath();yctx.moveTo(isMajor?7:13,sy);yctx.lineTo(20,sy);yctx.stroke();
+      if(isMajor){
+        yctx.save();yctx.translate(1,sy-2);yctx.rotate(-Math.PI/2);yctx.fillText(String(Math.round(y)),0,0);yctx.restore();
+      }
+    }
+  }
+
   function applyViewTransform() {
     const wrapper = canvas.wrapperEl;
     if (!wrapper) return;
     wrapper.style.transformOrigin = "center center";
     wrapper.style.transform = "translate(" + state.panX + "px," + state.panY + "px) scale(" + state.viewScale + ")";
     $("zoomStatus").textContent = Math.round(state.viewScale * 100) + "%";
+    requestAnimationFrame(updateRulers);
   }
 
   function fitToViewport() {
