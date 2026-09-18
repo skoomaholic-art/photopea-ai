@@ -85,3 +85,9 @@ No proprietary Photopea, Vectorpea or Jampea source code is included in this rep
 - License: MIT
 - Use: fuzzy color selection / Magic Wand mask generation.
 - Integration: browser CDN dependency, pinned to version 1.1.7.
+
+### Playwright
+- Repository: https://github.com/microsoft/playwright
+- Package: @playwright/test 1.63.0
+- License: Apache-2.0
+- Use: development / CI browser smoke testing only. Not shipped as application runtime code.
