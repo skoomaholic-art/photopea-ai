@@ -317,3 +317,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
   .status-bar{grid-template-columns:auto 1fr auto}
   #docStatus{display:none}
 }
+
+.external-source-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.media-detail-inline{grid-column:1/-1;margin-top:7px;padding-top:7px;border-top:1px solid var(--line-soft)}
+.media-overview{line-height:1.45;margin-bottom:6px}
+.details-actions{margin:8px 0}
+.art-tabs{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
+.media-art-card{position:relative}
+.media-art-actions{display:grid;grid-template-columns:1fr 1fr 34px;gap:4px;padding:0 6px 6px}
+.media-art-actions .small-button{padding:4px 5px;font-size:9px}
