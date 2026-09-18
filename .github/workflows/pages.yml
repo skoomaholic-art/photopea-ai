@@ -28,6 +28,9 @@ jobs:
       - name: Static smoke check
         run: node scripts/static-smoke.mjs
 
+      - name: Feature contract
+        run: node scripts/feature-contract.mjs
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
