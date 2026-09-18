@@ -198,6 +198,241 @@ window.Studio = (() => {
     $(name)?.classList.remove("hidden");
   }
 
+  function pixelSelectionEnabled() {
+    return $("selectionTargetMode")?.value === "pixels";
+  }
+
+  function activeImageLayer() {
+    const active=canvas.getActiveObject();
+    return active instanceof F.FabricImage && !isHelper(active) ? active : null;
+  }
+
+  function selectionMaskCanvas(draw) {
+    const raw=document.createElement("canvas");
+    raw.width=state.width;raw.height=state.height;
+    const ctx=raw.getContext("2d");
+    ctx.fillStyle="#ffffff";
+    draw(ctx);
+    const feather=Math.max(0,Math.min(40,Number($("selectionFeather")?.value)||0));
+    if(!feather)return raw;
+    const blurred=document.createElement("canvas");
+    blurred.width=state.width;blurred.height=state.height;
+    const bctx=blurred.getContext("2d");
+    bctx.filter="blur("+feather+"px)";
+    bctx.drawImage(raw,0,0);
+    bctx.filter="none";
+    return blurred;
+  }
+
+  function combinePixelSelection(nextMask) {
+    const mode=$("selectionMode")?.value||"replace";
+    if(!state.pixelSelection || mode==="replace") {
+      state.pixelSelection=nextMask;
+      return;
+    }
+    const out=document.createElement("canvas");
+    out.width=state.width;out.height=state.height;
+    const ctx=out.getContext("2d");
+    ctx.drawImage(state.pixelSelection,0,0);
+    if(mode==="add"){
+      ctx.globalCompositeOperation="source-over";
+      ctx.drawImage(nextMask,0,0);
+    }else if(mode==="subtract"){
+      ctx.globalCompositeOperation="destination-out";
+      ctx.drawImage(nextMask,0,0);
+    }else if(mode==="intersect"){
+      ctx.globalCompositeOperation="destination-in";
+      ctx.drawImage(nextMask,0,0);
+    }
+    ctx.globalCompositeOperation="source-over";
+    state.pixelSelection=out;
+  }
+
+  function pixelMaskBounds(mask) {
+    if(!mask)return null;
+    const data=mask.getContext("2d",{willReadFrequently:true}).getImageData(0,0,mask.width,mask.height).data;
+    let minX=mask.width,minY=mask.height,maxX=-1,maxY=-1;
+    for(let y=0;y<mask.height;y++){
+      for(let x=0;x<mask.width;x++){
+        if(data[(y*mask.width+x)*4+3]>4){
+          minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);
+        }
+      }
+    }
+    return maxX<minX?null:{x:minX,y:minY,width:maxX-minX+1,height:maxY-minY+1};
+  }
+
+  function updatePixelSelectionButtons() {
+    const ready=!!state.pixelSelection && !!state.pixelSelectionTarget;
+    ["selectionToLayerBtn","selectionMaskBtn","selectionDeletePixelsBtn"].forEach(id=>{
+      if($(id))$(id).disabled=!ready;
+    });
+  }
+
+  async function renderPixelSelectionOverlay() {
+    if(state.pixelSelectionOverlay){
+      canvas.remove(state.pixelSelectionOverlay);
+      state.pixelSelectionOverlay=null;
+    }
+    if(!state.pixelSelection)return;
+    const seq=(state.pixelOverlaySeq||0)+1;state.pixelOverlaySeq=seq;
+    const colored=document.createElement("canvas");
+    colored.width=state.width;colored.height=state.height;
+    const ctx=colored.getContext("2d");
+    ctx.drawImage(state.pixelSelection,0,0);
+    ctx.globalCompositeOperation="source-in";
+    ctx.fillStyle="rgba(111,125,255,.42)";
+    ctx.fillRect(0,0,colored.width,colored.height);
+    ctx.globalCompositeOperation="source-over";
+    const overlay=await F.FabricImage.fromURL(colored.toDataURL("image/png"));
+    if(seq!==state.pixelOverlaySeq)return;
+    overlay.set({
+      left:0,top:0,originX:"left",originY:"top",selectable:false,evented:false,
+      excludeFromExport:true,helper:true,opacity:.72,name:"Pixel selection"
+    });
+    state.pixelSelectionOverlay=overlay;
+    canvas.add(overlay);canvas.bringObjectToFront(overlay);canvas.requestRenderAll();
+  }
+
+  function clearPixelSelection(keepTarget=false) {
+    if(state.pixelSelectionOverlay){
+      canvas.remove(state.pixelSelectionOverlay);state.pixelSelectionOverlay=null;
+    }
+    if(state.marqueeHelper){
+      canvas.remove(state.marqueeHelper);state.marqueeHelper=null;
+    }
+    state.marqueeStart=null;
+    state.pixelSelection=null;
+    if(!keepTarget)state.pixelSelectionTarget=null;
+    updatePixelSelectionButtons();
+    canvas.requestRenderAll();
+  }
+
+  function ensurePixelSelectionTarget() {
+    if(state.pixelSelectionTarget && realObjects().includes(state.pixelSelectionTarget))return state.pixelSelectionTarget;
+    state.pixelSelectionTarget=activeImageLayer();
+    return state.pixelSelectionTarget;
+  }
+
+  function createPixelRectMask(rect) {
+    return selectionMaskCanvas(ctx=>{
+      ctx.fillRect(rect.left,rect.top,rect.width,rect.height);
+    });
+  }
+
+  function createPixelPolygonMask(points) {
+    return selectionMaskCanvas(ctx=>{
+      if(points.length<3)return;
+      ctx.beginPath();ctx.moveTo(points[0].x,points[0].y);
+      for(let i=1;i<points.length;i++)ctx.lineTo(points[i].x,points[i].y);
+      ctx.closePath();ctx.fill();
+    });
+  }
+
+  function startPixelMarquee(point) {
+    const target=ensurePixelSelectionTarget();
+    if(!target){
+      $("selectionStatus").textContent="Pixels: сначала выберите image layer.";
+      return;
+    }
+    state.marqueeStart=point;
+    state.marqueeHelper=new F.Rect({
+      left:point.x,top:point.y,width:1,height:1,
+      fill:"rgba(111,125,255,.08)",stroke:"#7d8cff",strokeWidth:1.5,strokeDashArray:[6,4],
+      selectable:false,evented:false,excludeFromExport:true,helper:true,objectCaching:false
+    });
+    canvas.add(state.marqueeHelper);canvas.bringObjectToFront(state.marqueeHelper);
+  }
+
+  function updatePixelMarquee(point) {
+    if(!state.marqueeStart||!state.marqueeHelper)return;
+    const x=Math.min(state.marqueeStart.x,point.x),y=Math.min(state.marqueeStart.y,point.y);
+    const width=Math.abs(point.x-state.marqueeStart.x),height=Math.abs(point.y-state.marqueeStart.y);
+    state.marqueeHelper.set({left:x,top:y,width,height,scaleX:1,scaleY:1});
+    state.marqueeHelper.setCoords();canvas.requestRenderAll();
+  }
+
+  async function finishPixelMarquee() {
+    if(!state.marqueeHelper)return;
+    const rect=state.marqueeHelper.getBoundingRect();
+    canvas.remove(state.marqueeHelper);state.marqueeHelper=null;state.marqueeStart=null;
+    if(rect.width<2||rect.height<2)return;
+    combinePixelSelection(createPixelRectMask(rect));
+    await renderPixelSelectionOverlay();
+    updatePixelSelectionButtons();
+    $("selectionStatus").textContent="Pixel selection "+Math.round(rect.width)+"×"+Math.round(rect.height);
+  }
+
+  async function finishPixelLasso() {
+    if(!state.lassoHelper||state.lassoPoints.length<3)return;
+    canvas.remove(state.lassoHelper);state.lassoHelper=null;
+    combinePixelSelection(createPixelPolygonMask(state.lassoPoints));
+    state.lassoPoints=[];
+    await renderPixelSelectionOverlay();
+    updatePixelSelectionButtons();
+    $("selectionStatus").textContent="Pixel lasso selection";
+  }
+
+  function loadBrowserImage(src) {
+    return new Promise((resolve,reject)=>{
+      const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=src;
+    });
+  }
+
+  async function renderTargetDocument(target) {
+    const temp=new F.StaticCanvas(null,{width:state.width,height:state.height,backgroundColor:null});
+    const clone=await target.clone(["name","assetId","source","kind"]);
+    clone.set({selectable:false,evented:false});
+    temp.add(clone);temp.renderAll();
+    const src=temp.toDataURL({format:"png",multiplier:1});
+    temp.dispose();
+    const image=await loadBrowserImage(src);
+    const out=document.createElement("canvas");out.width=state.width;out.height=state.height;
+    out.getContext("2d").drawImage(image,0,0);
+    return out;
+  }
+
+  async function pixelSelectionToLayer() {
+    const target=ensurePixelSelectionTarget();
+    if(!target||!state.pixelSelection)return;
+    const source=await renderTargetDocument(target);
+    const ctx=source.getContext("2d");
+    ctx.globalCompositeOperation="destination-in";
+    ctx.drawImage(state.pixelSelection,0,0);
+    ctx.globalCompositeOperation="source-over";
+    const bounds=pixelMaskBounds(state.pixelSelection);
+    if(!bounds)return;
+    const crop=document.createElement("canvas");crop.width=bounds.width;crop.height=bounds.height;
+    crop.getContext("2d").drawImage(source,bounds.x,bounds.y,bounds.width,bounds.height,0,0,bounds.width,bounds.height);
+    const src=crop.toDataURL("image/png");
+    const asset=await APP.addAsset({name:"Pixel selection",src,source:"Studio",kind:"selection",
+      meta:{width:bounds.width,height:bounds.height}});
+    await addImageFromUrl(src,"Pixel selection",asset,{left:bounds.x,top:bounds.y,scaleX:1,scaleY:1});
+    clearPixelSelection();
+    snapshotLabel("Pixel selection → Layer");
+  }
+
+  async function applyPixelClip(deleteInside=false) {
+    const target=ensurePixelSelectionTarget();
+    if(!target||!state.pixelSelection)return;
+    let mask=state.pixelSelection;
+    if(deleteInside){
+      const inverted=document.createElement("canvas");inverted.width=state.width;inverted.height=state.height;
+      const ctx=inverted.getContext("2d");
+      ctx.fillStyle="#fff";ctx.fillRect(0,0,state.width,state.height);
+      ctx.globalCompositeOperation="destination-out";ctx.drawImage(mask,0,0);
+      ctx.globalCompositeOperation="source-over";mask=inverted;
+    }
+    const clip=await F.FabricImage.fromURL(mask.toDataURL("image/png"));
+    clip.set({left:0,top:0,originX:"left",originY:"top",absolutePositioned:true,selectable:false,evented:false});
+    target.clipPath=target.clipPath?F.util.mergeClipPaths(target.clipPath,clip):clip;
+    target.dirty=true;
+    clearPixelSelection();
+    canvas.setActiveObject(target);canvas.requestRenderAll();
+    snapshotLabel(deleteInside?"Deleted selected pixels":"Pixel selection → Mask");
+    syncSelectionUi();
+  }
+
   function clearToolHelpers() {
     if (state.lassoHelper) {
       canvas.remove(state.lassoHelper);
