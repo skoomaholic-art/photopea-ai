@@ -509,7 +509,7 @@ window.Studio = (() => {
       setContext(canvas.getActiveObject() ? "contextMove" : "contextDefault");
     } else if (tool === "marquee") {
       const pixels=pixelSelectionEnabled();
-      if(pixels)state.pixelSelectionTarget=activeImageLayer();
+      if(pixels)state.pixelSelectionTarget=activeImageLayer()||state.pixelSelectionTarget;
       canvas.selection = !pixels;
       canvas.skipTargetFind = pixels;
       canvas.discardActiveObject();
@@ -521,7 +521,7 @@ window.Studio = (() => {
       if(pixels&&!state.pixelSelectionTarget)$("selectionStatus").textContent="Pixels: сначала выберите image layer.";
     } else if (tool === "lasso") {
       const pixels=pixelSelectionEnabled();
-      if(pixels)state.pixelSelectionTarget=activeImageLayer();
+      if(pixels)state.pixelSelectionTarget=activeImageLayer()||state.pixelSelectionTarget;
       canvas.skipTargetFind = true;
       canvas.defaultCursor = "crosshair";
       $("selectionContextTitle").textContent = pixels ? "Pixel Lasso" : "Object Lasso";
@@ -2326,7 +2326,14 @@ window.Studio = (() => {
     $("selectionToLayerBtn").onclick=pixelSelectionToLayer;
     $("selectionMaskBtn").onclick=()=>applyPixelClip(false);
     $("selectionDeletePixelsBtn").onclick=()=>applyPixelClip(true);
-    $("selectionTargetMode").onchange=()=>{clearSelection();if(["marquee","lasso"].includes(state.tool))setTool(state.tool)};
+    $("selectionTargetMode").onchange=()=>{
+      const target=activeImageLayer()||state.pixelSelectionTarget;
+      clearPixelSelection();
+      state.pixelSelectionTarget=$("selectionTargetMode").value==="pixels"?target:null;
+      canvas.discardActiveObject();canvas.requestRenderAll();
+      if(["marquee","lasso"].includes(state.tool))setTool(state.tool,true);
+      syncSelectionUi();
+    };
     $("wandToLayerBtn").onclick=wandToLayer;$("wandMaskBtn").onclick=wandToMask;
     $("wandCancelBtn").onclick=()=>{clearWand();canvas.requestRenderAll()};
     $("cropApplyBtn").onclick=applyCrop;$("cropCancelBtn").onclick=cancelCrop;$("cropRatio").onchange=updateCropRatio;
