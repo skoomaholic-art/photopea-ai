@@ -299,11 +299,13 @@ window.Studio = (() => {
 
       const thumb = document.createElement("div");
       thumb.className = "layer-thumb";
-      try {
-        thumb.style.backgroundImage = "url(" + object.toDataURL({ format: "png", multiplier: 0.15 }) + ")";
-        thumb.style.backgroundSize = "cover";
-        thumb.style.backgroundPosition = "center";
-      } catch {}
+      thumb.textContent = objectKind(object) === "image" ? "▧" :
+        objectKind(object) === "text" ? "T" :
+        objectKind(object) === "drawing" ? "✎" : "◇";
+      thumb.style.display = "grid";
+      thumb.style.placeItems = "center";
+      thumb.style.color = "#9fb0c3";
+      thumb.style.fontWeight = "900";
 
       const meta = document.createElement("div");
       meta.className = "layer-meta";
