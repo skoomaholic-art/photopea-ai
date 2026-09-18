@@ -71,7 +71,7 @@ body{overflow:hidden}
 .compact-select{width:95px!important;padding:5px 7px!important}
 .color-input{width:38px!important;height:28px;padding:2px!important}
 
-.workbench{min-height:0;display:grid;grid-template-columns:54px auto 1fr 300px}
+.workbench{min-height:0;display:grid;grid-template-columns:54px auto 1fr var(--inspector-width,300px)}
 .tool-rail{
   display:flex;
   flex-direction:column;
@@ -102,7 +102,8 @@ body{overflow:hidden}
 .rail-divider{width:30px;height:1px;background:var(--line);margin:4px 0}
 
 .tool-drawer{
-  width:300px;
+  position:relative;
+  width:var(--drawer-width,300px);
   min-width:0;
   background:var(--panel);
   border-right:1px solid var(--line);
@@ -182,7 +183,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .compact-fallback{position:static;min-height:160px;border:1px solid var(--line);border-radius:10px;background:#0d141c;padding:16px}
 .compact-fallback p{font-size:11px}
 
-.inspector{min-width:0;background:var(--panel);border-left:1px solid var(--line);overflow:hidden;display:grid;grid-template-rows:38px 1fr}
+.inspector{position:relative;min-width:0;background:var(--panel);border-left:1px solid var(--line);overflow:hidden;display:grid;grid-template-rows:38px 1fr}
 .inspector-tabs{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--line)}
 .inspector-tab{border:0;background:transparent;color:var(--muted);font-size:10px;font-weight:800}
 .inspector-tab.active{color:#fff;background:rgba(111,125,255,.13);box-shadow:inset 0 -2px 0 var(--accent)}
@@ -342,3 +343,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .asset-search-field{margin:0 0 9px}
 
 .active-filter{background:rgba(111,125,255,.2)!important;border-color:rgba(111,125,255,.65)!important;color:#fff!important}
+
+.panel-resizer{position:absolute;top:0;bottom:0;width:7px;z-index:25;cursor:col-resize;background:transparent}
+.panel-resizer:hover,.panel-resizer.dragging{background:rgba(111,125,255,.35)}
+.panel-resizer-right{right:-4px}
+.panel-resizer-left{left:-4px}
+@media(max-width:900px){.panel-resizer{display:none}}
