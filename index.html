@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Photopea AI Bridge</title>
+  <script src="https://js.puter.com/v2/"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:#0b0c0f;
+      --panel:#14161b;
+      --panel2:#1b1e25;
+      --line:#2b303a;
+      --text:#f3f5f7;
+      --muted:#9ca5b3;
+      --accent:#6d7cff;
+      --ok:#46c37b;
+      --danger:#ff6b6b;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+    body { min-height:100vh; }
+    button,input,select,textarea { font:inherit; }
+    button { cursor:pointer; }
+    .app { min-height:100vh; display:grid; grid-template-rows:auto 1fr; }
+    header { height:58px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:0 18px; border-bottom:1px solid var(--line); background:#101217; }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:800; }
+    .dot { width:11px; height:11px; border-radius:999px; background:var(--accent); box-shadow:0 0 20px rgba(109,124,255,.7); }
+    .header-actions { display:flex; gap:8px; align-items:center; }
+    .layout { min-height:0; display:grid; grid-template-columns:380px minmax(0,1fr); }
+    aside { overflow:auto; padding:16px; border-right:1px solid var(--line); background:var(--panel); }
+    main { min-width:0; min-height:0; display:grid; grid-template-rows:minmax(280px,42%) minmax(360px,58%); }
+    .preview { overflow:auto; padding:18px; background:#0d0f13; border-bottom:1px solid var(--line); }
+    .photopea-wrap { min-height:0; background:#090a0c; }
+    #photopea { width:100%; height:100%; border:0; display:block; }
+    .card { background:var(--panel2); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+    h1,h2,p { margin-top:0; }
+    h2 { font-size:14px; margin-bottom:12px; }
+    .hint { color:var(--muted); font-size:12px; line-height:1.45; }
+    label { display:block; font-size:12px; color:var(--muted); margin-bottom:6px; }
+    textarea,input,select {
+      width:100%;
+      border:1px solid var(--line);
+      background:#0f1116;
+      color:var(--text);
+      border-radius:10px;
+      padding:10px 11px;
+      outline:none;
+    }
+    textarea { min-height:118px; resize:vertical; }
+    textarea:focus,input:focus,select:focus { border-color:var(--accent); }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:9px; }
+    .field { margin-bottom:11px; }
+    .btn {
+      border:1px solid var(--line);
+      background:#222630;
+      color:white;
+      border-radius:10px;
+      padding:10px 12px;
+      font-weight:700;
+    }
+    .btn:hover { filter:brightness(1.1); }
+    .btn.primary { background:var(--accent); border-color:var(--accent); }
+    .btn.ghost { background:transparent; }
+    .btn:disabled { opacity:.45; cursor:not-allowed; }
+    .actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+    .actions .wide { grid-column:1/-1; }
+    #resultBox {
+      min-height:220px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:1px dashed var(--line);
+      border-radius:14px;
+      background:#08090c;
+      overflow:hidden;
+      position:relative;
+    }
+    #resultBox img { max-width:100%; max-height:520px; display:block; object-fit:contain; }
+    #empty { color:var(--muted); text-align:center; padding:30px; }
+    .status { font-size:12px; color:var(--muted); min-height:18px; margin-top:8px; white-space:pre-wrap; }
+    .status.ok { color:var(--ok); }
+    .status.err { color:var(--danger); }
+    .chip { border:1px solid var(--line); background:#171a20; border-radius:999px; padding:5px 9px; font-size:11px; color:var(--muted); }
+    .switch { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+    .switch input { width:auto; }
+    .preview-head { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
+    .preview-head h2 { margin:0; }
+    @media (max-width:900px) {
+      .layout { grid-template-columns:1fr; }
+      aside { border-right:0; border-bottom:1px solid var(--line); }
+      main { grid-template-rows:auto 640px; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><span class="dot"></span>Photopea AI Bridge</div>
+    <div class="header-actions">
+      <span id="puterState" class="chip">Puter: проверка...</span>
+      <button id="signInBtn" class="btn ghost">Войти в Puter</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <div class="card">
+        <h2>Генерация изображения</h2>
+        <div class="field">
+          <label for="prompt">Промпт</label>
+          <textarea id="prompt" placeholder="Например: cinematic medieval castle at night, dramatic lighting"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="model">Модель</label>
+          <select id="model">
+            <option value="">Авто / gpt-image-1-mini</option>
+            <option value="gpt-image-1-mini">GPT Image 1 Mini</option>
+            <option value="black-forest-labs/flux-schnell">FLUX Schnell</option>
+            <option value="grok-imagine-image">Grok Imagine</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="ratio">Формат</label>
+            <select id="ratio">
+              <option value="1:1">1:1</option>
+              <option value="16:9">16:9</option>
+              <option value="9:16">9:16</option>
+              <option value="4:3">4:3</option>
+              <option value="3:4">3:4</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="quality">Качество</label>
+            <select id="quality">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="reference">Референс / исходное изображение, опционально</label>
+          <input id="reference" type="file" accept="image/*" />
+        </div>
+
+        <label class="switch">
+          <input id="testMode" type="checkbox" />
+          Тестовый режим Puter без расходования AI-кредитов
+        </label>
+
+        <button id="generateBtn" class="btn primary" style="width:100%;margin-top:12px;">Сгенерировать</button>
+        <div id="status" class="status">Готов.</div>
+      </div>
+
+      <div class="card">
+        <h2>Результат</h2>
+        <div class="actions">
+          <button id="openPhotopeaBtn" class="btn" disabled>Открыть в Photopea</button>
+          <button id="downloadBtn" class="btn" disabled>Скачать PNG</button>
+          <button id="openRefBtn" class="btn wide" disabled>Открыть референс в Photopea</button>
+        </div>
+        <p class="hint" style="margin:12px 0 0;">
+          Puter.js не требует от тебя собственного API-ключа. При первом реальном запросе Puter может попросить авторизацию. Доступность и стоимость конкретной модели определяет Puter.
+        </p>
+      </div>
+    </aside>
+
+    <main>
+      <section class="preview">
+        <div class="preview-head">
+          <h2>AI результат</h2>
+          <span id="photopeaState" class="chip">Photopea: загрузка...</span>
+        </div>
+        <div id="resultBox">
+          <div id="empty">Здесь появится сгенерированное изображение</div>
+        </div>
+      </section>
+      <section class="photopea-wrap">
+        <iframe id="photopea" title="Photopea" src="https://www.photopea.com/" allow="clipboard-read; clipboard-write"></iframe>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const pp = $("photopea");
+  let generatedImage = null;
+  let generatedDataUrl = null;
+  let referenceDataUrl = null;
+  let photopeaReady = false;
+
+  function setStatus(message, kind = "") {
+    const el = $("status");
+    el.textContent = message;
+    el.className = "status" + (kind ? " " + kind : "");
+  }
+
+  function ratioObject(value) {
+    const [w, h] = value.split(":").map(Number);
+    return { w, h };
+  }
+
+  function fileToDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => resolve(reader.result);
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function refreshPuterState() {
+    try {
+      const signed = puter.auth.isSignedIn();
+      $("puterState").textContent = signed ? "Puter: авторизован" : "Puter: без входа";
+    } catch {
+      $("puterState").textContent = "Puter: готов";
+    }
+  }
+
+  $("signInBtn").addEventListener("click", async () => {
+    try {
+      setStatus("Открываю авторизацию Puter...");
+      await puter.auth.signIn();
+      await refreshPuterState();
+      setStatus("Авторизация Puter выполнена.", "ok");
+    } catch (e) {
+      setStatus("Авторизация не завершена: " + (e?.msg || e?.message || String(e)), "err");
+    }
+  });
+
+  $("reference").addEventListener("change", async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      referenceDataUrl = null;
+      $("openRefBtn").disabled = true;
+      return;
+    }
+    referenceDataUrl = await fileToDataUrl(file);
+    $("openRefBtn").disabled = false;
+    setStatus("Референс загружен.");
+  });
+
+  $("generateBtn").addEventListener("click", async () => {
+    const prompt = $("prompt").value.trim();
+    if (!prompt) {
+      setStatus("Введи промпт.", "err");
+      return;
+    }
+
+    const btn = $("generateBtn");
+    btn.disabled = true;
+    btn.textContent = "Генерация...";
+    setStatus("Отправляю запрос в Puter AI...");
+
+    try {
+      const options = {
+        quality: $("quality").value,
+        ratio: ratioObject($("ratio").value),
+        test_mode: $("testMode").checked
+      };
+
+      const model = $("model").value;
+      if (model) options.model = model;
+      if (referenceDataUrl) options.input_image = referenceDataUrl;
+
+      const image = await puter.ai.txt2img(prompt, options);
+      generatedImage = image;
+      generatedDataUrl = image.src;
+
+      const box = $("resultBox");
+      box.innerHTML = "";
+      image.alt = prompt;
+      box.appendChild(image);
+
+      $("openPhotopeaBtn").disabled = false;
+      $("downloadBtn").disabled = false;
+      await refreshPuterState();
+      setStatus("Изображение готово.", "ok");
+    } catch (e) {
+      console.error(e);
+      const message = e?.message || e?.msg || e?.error?.message || JSON.stringify(e);
+      setStatus("Ошибка генерации: " + message, "err");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Сгенерировать";
+    }
+  });
+
+  async function sendDataUrlToPhotopea(dataUrl) {
+    if (!dataUrl) return;
+    setStatus("Передаю изображение в Photopea...");
+    const response = await fetch(dataUrl);
+    const buffer = await response.arrayBuffer();
+    pp.contentWindow.postMessage(buffer, "https://www.photopea.com");
+    setStatus("Изображение отправлено в Photopea.", "ok");
+  }
+
+  $("openPhotopeaBtn").addEventListener("click", async () => {
+    try {
+      await sendDataUrlToPhotopea(generatedDataUrl);
+    } catch (e) {
+      setStatus("Не удалось передать результат в Photopea: " + (e?.message || String(e)), "err");
+    }
+  });
+
+  $("openRefBtn").addEventListener("click", async () => {
+    try {
+      await sendDataUrlToPhotopea(referenceDataUrl);
+    } catch (e) {
+      setStatus("Не удалось передать референс в Photopea: " + (e?.message || String(e)), "err");
+    }
+  });
+
+  $("downloadBtn").addEventListener("click", () => {
+    if (!generatedDataUrl) return;
+    const a = document.createElement("a");
+    a.href = generatedDataUrl;
+    a.download = "photopea-ai.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
+  window.addEventListener("message", (event) => {
+    if (event.origin !== "https://www.photopea.com") return;
+    if (event.data === "done") {
+      photopeaReady = true;
+      $("photopeaState").textContent = "Photopea: готов";
+    }
+  });
+
+  pp.addEventListener("load", () => {
+    $("photopeaState").textContent = "Photopea: открыт";
+  });
+
+  refreshPuterState();
+</script>
+</body>
+</html>
