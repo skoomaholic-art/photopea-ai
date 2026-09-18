@@ -472,7 +472,7 @@ window.Studio = (() => {
 
   async function applyEraserStroke(path) {
     const target=state.eraserTarget;
-    if(!target || !canvas.contains(target)) {
+    if(!target || !canvas.getObjects().includes(target)) {
       path.globalCompositeOperation="destination-out";
       assignObjectMetadata(path,"Eraser",{kind:"drawing",source:"studio"});
       snapshotLabel("Ластик");
