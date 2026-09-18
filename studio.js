@@ -2214,7 +2214,9 @@ window.Studio = (() => {
     canvas.on("mouse:down",event=>{
       const e=event.e;
       const point=canvas.getScenePoint(e);
-      if(state.tool==="hand"){
+      if(state.tool==="marquee"&&pixelSelectionEnabled()){
+        startPixelMarquee(point);
+      }else if(state.tool==="hand"){
         state.isPanning=true;state.lastPointer={x:e.clientX,y:e.clientY};canvas.defaultCursor="grabbing";
       }else if(state.tool==="zoom"){
         setZoom(state.viewScale*(e.altKey?.85:1.15));
@@ -2239,7 +2241,9 @@ window.Studio = (() => {
 
     canvas.on("mouse:move",event=>{
       const e=event.e;const point=canvas.getScenePoint(e);
-      if(state.isPanning&&state.lastPointer){
+      if(state.tool==="marquee"&&pixelSelectionEnabled()&&state.marqueeHelper){
+        updatePixelMarquee(point);
+      }else if(state.isPanning&&state.lastPointer){
         state.panX+=e.clientX-state.lastPointer.x;state.panY+=e.clientY-state.lastPointer.y;
         state.lastPointer={x:e.clientX,y:e.clientY};applyViewTransform();
       }else if(state.tool==="lasso"&&state.lassoHelper){
@@ -2257,6 +2261,7 @@ window.Studio = (() => {
 
     canvas.on("mouse:up",event=>{
       if(state.isPanning){state.isPanning=false;state.lastPointer=null;canvas.defaultCursor="grab"}
+      if(state.tool==="marquee"&&pixelSelectionEnabled()&&state.marqueeHelper)finishPixelMarquee();
       if(state.tool==="lasso"&&state.lassoHelper)finishLasso();
       if(state.tool==="line"&&state.lineHelper){
         const point=canvas.getScenePoint(event.e);
@@ -2318,6 +2323,10 @@ window.Studio = (() => {
     };
 
     $("selectAllBtn").onclick=selectAll;$("clearSelectionBtn").onclick=clearSelection;
+    $("selectionToLayerBtn").onclick=pixelSelectionToLayer;
+    $("selectionMaskBtn").onclick=()=>applyPixelClip(false);
+    $("selectionDeletePixelsBtn").onclick=()=>applyPixelClip(true);
+    $("selectionTargetMode").onchange=()=>{clearSelection();if(["marquee","lasso"].includes(state.tool))setTool(state.tool)};
     $("wandToLayerBtn").onclick=wandToLayer;$("wandMaskBtn").onclick=wandToMask;
     $("wandCancelBtn").onclick=()=>{clearWand();canvas.requestRenderAll()};
     $("cropApplyBtn").onclick=applyCrop;$("cropCancelBtn").onclick=cancelCrop;$("cropRatio").onchange=updateCropRatio;
