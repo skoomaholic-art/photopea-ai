@@ -41,7 +41,13 @@ window.Studio = (() => {
     cropRect: null,
     wand: null,
     guides: { v: [], h: [] },
-    filterState: new WeakMap()
+    filterState: new WeakMap(),
+    lineStart: null,
+    lineHelper: null,
+    penPoints: [],
+    penHelper: null,
+    aiReference: null,
+    lastAiSrc: null
   };
 
   const MAX_HISTORY = 40;
@@ -148,6 +154,16 @@ window.Studio = (() => {
       canvas.remove(state.cropRect);
       state.cropRect = null;
     }
+    if (state.lineHelper) {
+      canvas.remove(state.lineHelper);
+      state.lineHelper = null;
+      state.lineStart = null;
+    }
+    if (state.penHelper) {
+      canvas.remove(state.penHelper);
+      state.penHelper = null;
+    }
+    state.penPoints = [];
     clearWand();
     state.lassoPoints = [];
     $("canvasFrame").classList.remove("selection-mode","crop-mode","lasso-mode","wand-mode","eyedropper-mode","fill-mode");
@@ -216,9 +232,14 @@ window.Studio = (() => {
     } else if (tool === "text") {
       canvas.skipTargetFind = true;
       setContext("contextText");
-    } else if (tool === "rect" || tool === "ellipse") {
+    } else if (tool === "rect" || tool === "ellipse" || tool === "line" || tool === "pen") {
       canvas.skipTargetFind = true;
+      canvas.defaultCursor = "crosshair";
       setContext("contextShape");
+    } else if (tool === "image") {
+      $("fileInput").click();
+      setTool("move");
+      return;
     } else if (tool === "hand") {
       canvas.skipTargetFind = true;
       canvas.defaultCursor = "grab";
@@ -233,7 +254,7 @@ window.Studio = (() => {
       move:"Move (V)", marquee:"Rectangle Select (M)", lasso:"Lasso (L)", wand:"Magic Wand (W)",
       crop:"Crop (C)", brush:"Brush (B)", pencil:"Pencil (P)", eraser:"Eraser (E)",
       fill:"Fill (G)", eyedropper:"Eyedropper (I)", text:"Text (T)",
-      rect:"Rectangle (R)", ellipse:"Ellipse (O)", hand:"Hand (H)", zoom:"Zoom (Z)"
+      rect:"Rectangle (R)", ellipse:"Ellipse (O)", line:"Line (N)", pen:"Pen (A)", image:"Place Image (J)", hand:"Hand (H)", zoom:"Zoom (Z)"
     }[tool] || tool;
   }
 
@@ -553,6 +574,67 @@ window.Studio = (() => {
     assignObjectMetadata(rect,"Rectangle",{ kind:"shape",source:"studio" });
     canvas.add(rect); canvas.setActiveObject(rect);
     snapshotLabel("Добавлен прямоугольник"); syncSelectionUi();
+  }
+
+  function addLine(start,end) {
+    const line = new F.Line([start.x,start.y,end.x,end.y],{
+      stroke:$("shapeStroke").value || $("shapeFill").value,
+      strokeWidth:Math.max(1,Number($("shapeStrokeWidth").value)||2),
+      fill:null
+    });
+    assignObjectMetadata(line,"Line",{kind:"vector",source:"studio"});
+    canvas.add(line); canvas.setActiveObject(line); canvas.requestRenderAll();
+    snapshotLabel("Добавлена линия"); syncSelectionUi();
+  }
+
+  function beginLine(point) {
+    state.lineStart = point;
+    state.lineHelper = new F.Line([point.x,point.y,point.x,point.y],{
+      stroke:"#9fb0ff",strokeWidth:1.5,strokeDashArray:[6,4],
+      selectable:false,evented:false,excludeFromExport:true,helper:true
+    });
+    canvas.add(state.lineHelper);
+  }
+
+  function updateLine(point) {
+    if (!state.lineHelper || !state.lineStart) return;
+    state.lineHelper.set({x2:point.x,y2:point.y});
+    canvas.requestRenderAll();
+  }
+
+  function finishLine(point) {
+    if (!state.lineStart) return;
+    const start=state.lineStart;
+    if(state.lineHelper)canvas.remove(state.lineHelper);
+    state.lineHelper=null;state.lineStart=null;
+    addLine(start,point);setTool("move");
+  }
+
+  function beginPen(point) {
+    state.penPoints.push({x:point.x,y:point.y});
+    if(state.penHelper)canvas.remove(state.penHelper);
+    state.penHelper=new F.Polyline(state.penPoints,{
+      fill:"rgba(0,0,0,0)",stroke:"#9fb0ff",strokeWidth:1.5,strokeDashArray:[5,4],
+      selectable:false,evented:false,excludeFromExport:true,helper:true,objectCaching:false
+    });
+    canvas.add(state.penHelper);canvas.requestRenderAll();
+  }
+
+  function finishPen(close=false) {
+    if(state.penPoints.length<2){clearToolHelpers();setTool("move");return}
+    const points=[...state.penPoints];
+    if(close && points.length>2) points.push({...points[0]});
+    if(state.penHelper)canvas.remove(state.penHelper);
+    state.penHelper=null;state.penPoints=[];
+    const poly=new F.Polyline(points,{
+      fill:close?$("shapeFill").value:"rgba(0,0,0,0)",
+      stroke:$("shapeStroke").value || $("shapeFill").value,
+      strokeWidth:Math.max(1,Number($("shapeStrokeWidth").value)||2),
+      objectCaching:false
+    });
+    assignObjectMetadata(poly,close?"Polygon":"Polyline",{kind:"vector",source:"studio"});
+    canvas.add(poly);canvas.setActiveObject(poly);canvas.requestRenderAll();
+    snapshotLabel(close?"Добавлен polygon":"Добавлен path");syncSelectionUi();setTool("move");
   }
 
   function addEllipseAt(x=state.width/2-90,y=state.height/2-60) {
@@ -1023,8 +1105,8 @@ window.Studio = (() => {
     syncFilterControls(image);snapshotLabel("Filters reset");
   }
 
-  async function generateAi(replace=false) {
-    const prompt=$("aiPrompt").value.trim();
+  async function generateAi(replace=false, promptOverride=null) {
+    const prompt=(promptOverride ?? $("aiPrompt").value).trim();
     if (!prompt) {
       $("aiStatus").textContent="Введите промпт.";
       $("aiStatus").className="drawer-status error";return;
@@ -1035,10 +1117,14 @@ window.Studio = (() => {
     const previous=canvas.getActiveObject();
     try {
       const [w,h]=$("aiRatio").value.split(":").map(Number);
-      const result=await puter.ai.txt2img(prompt,{
+      const options={
         model:$("aiModel").value,quality:$("aiQuality").value,ratio:{w,h},test_mode:$("aiTestMode").checked
-      });
+      };
+      if(state.aiReference) options.input_image=state.aiReference;
+      const result=await puter.ai.txt2img(prompt,options);
       const src=result.src;
+      state.lastAiSrc=src;
+      $("downloadAiBtn").disabled=false;
       const asset=await APP.addAsset({
         name:"AI: "+prompt.slice(0,32),src,source:"Puter / "+$("aiModel").selectedOptions[0].text,kind:"generated"
       });
@@ -1070,6 +1156,26 @@ window.Studio = (() => {
     } finally {
       button.disabled=false;button.textContent=oldText;
     }
+  }
+
+  async function generateVariations() {
+    const prompt=$("aiPrompt").value.trim();
+    if(!prompt)return;
+    const count=Math.max(2,Math.min(4,Number($("aiVariationCount").value)||3));
+    const button=$("generateVariationsBtn"),old=button.textContent;
+    button.disabled=true;button.textContent="Генерация "+count+"...";
+    $("aiStatus").textContent="Создаю вариации...";
+    try{
+      for(let i=0;i<count;i++){
+        await generateAi(false,prompt + (i ? " variation "+(i+1) : ""));
+        const active=canvas.getActiveObject();
+        if(active && !(active instanceof F.ActiveSelection)){
+          active.set({left:(active.left||0)+i*28,top:(active.top||0)+i*18});
+          active.setCoords();canvas.requestRenderAll();
+        }
+      }
+      $("aiStatus").textContent="Вариации готовы."; $("aiStatus").className="drawer-status ok";
+    }finally{button.disabled=false;button.textContent=old}
   }
 
   async function newDocument(width,height,transparent=true) {
@@ -1173,6 +1279,10 @@ window.Studio = (() => {
         addRectAt(point.x,point.y);setTool("move");
       }else if(state.tool==="ellipse"&&!event.target){
         addEllipseAt(point.x,point.y);setTool("move");
+      }else if(state.tool==="line"&&!event.target){
+        if(!state.lineStart)beginLine(point);else finishLine(point);
+      }else if(state.tool==="pen"&&!event.target){
+        beginPen(point);
       }else if(state.tool==="lasso"){
         startLasso(point);
       }else if(state.tool==="wand"){
@@ -1191,7 +1301,13 @@ window.Studio = (() => {
         state.lastPointer={x:e.clientX,y:e.clientY};applyViewTransform();
       }else if(state.tool==="lasso"&&state.lassoHelper){
         updateLasso(point);
+      }else if(state.tool==="line"&&state.lineHelper){
+        updateLine(point);
       }
+    });
+
+    canvas.on("mouse:dblclick",()=>{
+      if(state.tool==="pen")finishPen(false);
     });
 
     canvas.on("mouse:up",()=>{
@@ -1226,6 +1342,11 @@ window.Studio = (() => {
     $("cropApplyBtn").onclick=applyCrop;$("cropCancelBtn").onclick=cancelCrop;$("cropRatio").onchange=updateCropRatio;
 
     $("generateAiBtn").onclick=()=>generateAi(false);$("replaceWithAiBtn").onclick=()=>generateAi(true);
+    $("generateVariationsBtn").onclick=generateVariations;
+    $("downloadAiBtn").onclick=()=>{if(!state.lastAiSrc)return;const a=document.createElement("a");a.href=state.lastAiSrc;a.download="skooma-ai.png";a.click()};
+    $("aiReference").onchange=async event=>{
+      const file=event.target.files?.[0];state.aiReference=file?await fileToDataUrl(file):null;
+    };
     $("duplicateBtn").onclick=duplicateActive;$("deleteBtn").onclick=deleteActive;
     $("groupBtn").onclick=groupSelected;$("ungroupBtn").onclick=ungroupSelected;
     $("mergeBtn").onclick=mergeSelected;$("flattenBtn").onclick=flattenCanvas;
@@ -1256,9 +1377,10 @@ window.Studio = (() => {
       if(!typing&&event.key==="Delete"){event.preventDefault();deleteActive();return}
       if(event.key==="Escape"){clearToolHelpers();setTool("move");return}
       if(event.key==="Enter"&&state.tool==="crop"){applyCrop();return}
+      if(event.key==="Enter"&&state.tool==="pen"){finishPen(false);return}
       if(typing)return;
       const key=event.key.toLowerCase();
-      const map={v:"move",m:"marquee",l:"lasso",w:"wand",c:"crop",b:"brush",p:"pencil",e:"eraser",g:"fill",i:"eyedropper",t:"text",r:"rect",o:"ellipse",h:"hand",z:"zoom"};
+      const map={v:"move",m:"marquee",l:"lasso",w:"wand",c:"crop",b:"brush",p:"pencil",e:"eraser",g:"fill",i:"eyedropper",t:"text",r:"rect",o:"ellipse",n:"line",a:"pen",j:"image",h:"hand",z:"zoom"};
       if(map[key])setTool(map[key]);
     });
     window.addEventListener("keyup",event=>{
