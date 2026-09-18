@@ -326,3 +326,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .media-art-card{position:relative}
 .media-art-actions{display:grid;grid-template-columns:1fr 1fr 34px;gap:4px;padding:0 6px 6px}
 .media-art-actions .small-button{padding:4px 5px;font-size:9px}
+
+.recent-projects-list{display:flex;flex-direction:column;gap:7px}
+.recent-project-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:9px;border:1px solid var(--line);border-radius:9px;background:#0e151d}
+.recent-project-title{font-size:12px;font-weight:900}
+.recent-project-meta{font-size:9px;color:var(--muted);margin-top:2px}
+.recent-project-actions{display:flex;gap:5px}
