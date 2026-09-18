@@ -155,7 +155,7 @@ window.APP = (() => {
 
   function renderAssets() {
     const targets = [$("assetGridDrawer"), $("assetGridInspector")];
-    const mediaSources = new Set(["TVmaze","OMDb","TMDB","fanart.tv","Wikidata","IMDb"]);
+    const mediaSources = new Set(["TVmaze","OMDb","TMDB","fanart.tv","Wikidata","Wikimedia Commons","IMDb"]);
     const query = assetQuery.trim().toLowerCase();
     let filtered = assets.filter(asset => {
       if (assetFilter === "recent") {
@@ -166,7 +166,7 @@ window.APP = (() => {
         if (asset.kind !== "generated") return false;
       } else if (assetFilter === "media") {
         if (!mediaSources.has(asset.source) &&
-            !["poster","backdrop","logo","banner","still","fanart","image"].includes(asset.kind)) return false;
+            !["poster","backdrop","logo","banner","still","fanart","portrait"].includes(asset.kind)) return false;
       } else if (assetFilter !== "all" && asset.kind !== assetFilter) {
         return false;
       }
