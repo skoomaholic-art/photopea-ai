@@ -77,3 +77,11 @@ This file tracks third-party software used by Skooma Multitool and projects cons
 - Use: optional artwork provider when an API key is configured.
 
 No proprietary Photopea, Vectorpea or Jampea source code is included in this repository.
+
+
+### magic-wand-tool
+- Repository: https://github.com/Tamersoul/magic-wand-js
+- Package: magic-wand-tool 1.1.7
+- License: MIT
+- Use: fuzzy color selection / Magic Wand mask generation.
+- Integration: browser CDN dependency, pinned to version 1.1.7.
