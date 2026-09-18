@@ -54,6 +54,23 @@ window.SkoomaStore = (() => {
     });
   }
 
+  async function listProjects() {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("projects", "readonly").objectStore("projects").getAll();
+      req.onsuccess = () => {
+        const items = req.result || [];
+        items.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        resolve(items);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function deleteProject(id) {
+    return tx("projects", "readwrite", store => store.delete(id));
+  }
+
   async function saveAsset(asset) {
     return tx("assets", "readwrite", store => store.put(asset));
   }
@@ -79,5 +96,5 @@ window.SkoomaStore = (() => {
     });
   }
 
-  return { saveProject, getProject, saveAsset, deleteAsset, clearAssets, listAssets };
+  return { saveProject, getProject, listProjects, deleteProject, saveAsset, deleteAsset, clearAssets, listAssets };
 })();
