@@ -270,6 +270,82 @@ window.Studio = (() => {
     return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + alpha + ")";
   }
 
+  function ensureWandWorker() {
+    if (state.wandWorker) return state.wandWorker;
+    try {
+      const worker = new Worker("raster-worker.js");
+      worker.onmessage = event => {
+        const { id, ok, result, error } = event.data || {};
+        const pending = state.wandWorkerPending.get(id);
+        if (!pending) return;
+        state.wandWorkerPending.delete(id);
+        ok ? pending.resolve(result) : pending.reject(new Error(error || "Raster worker error"));
+      };
+      worker.onerror = error => {
+        for (const pending of state.wandWorkerPending.values()) pending.reject(error);
+        state.wandWorkerPending.clear();
+        try { worker.terminate(); } catch {}
+        state.wandWorker = null;
+      };
+      state.wandWorker = worker;
+      return worker;
+    } catch {
+      return null;
+    }
+  }
+
+  function runRasterWorker(type, payload, transfer = []) {
+    const worker = ensureWandWorker();
+    if (!worker) return Promise.reject(new Error("Raster worker unavailable"));
+    const id = ++state.wandWorkerSeq;
+    return new Promise((resolve, reject) => {
+      state.wandWorkerPending.set(id, { resolve, reject });
+      worker.postMessage({ id, type, payload }, transfer);
+    });
+  }
+
+  function computeMaskBounds(maskData, width, height) {
+    let minX = width, minY = height, maxX = -1, maxY = -1;
+    for (let y = 0; y < height; y++) {
+      const row = y * width;
+      for (let x = 0; x < width; x++) {
+        if (!maskData[row + x]) continue;
+        minX = Math.min(minX, x); minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+      }
+    }
+    return maxX < 0 ? null : { minX, minY, maxX, maxY };
+  }
+
+  function featherMaskCanvas(mask, bounds, feather = 0, fullDocument = false) {
+    const minX = fullDocument ? 0 : bounds.minX;
+    const minY = fullDocument ? 0 : bounds.minY;
+    const width = fullDocument ? state.width : bounds.maxX - bounds.minX + 1;
+    const height = fullDocument ? state.height : bounds.maxY - bounds.minY + 1;
+    const raw = document.createElement("canvas");
+    raw.width = width; raw.height = height;
+    const rctx = raw.getContext("2d");
+    const image = rctx.createImageData(width, height);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const srcX = x + minX, srcY = y + minY;
+        const selected = mask.data[srcY * state.width + srcX];
+        if (!selected) continue;
+        const p = (y * width + x) * 4;
+        image.data[p] = image.data[p + 1] = image.data[p + 2] = 255;
+        image.data[p + 3] = 255;
+      }
+    }
+    rctx.putImageData(image, 0, 0);
+    if (!feather) return raw;
+    const blurred = document.createElement("canvas");
+    blurred.width = width; blurred.height = height;
+    const bctx = blurred.getContext("2d");
+    bctx.filter = "blur(" + feather + "px)";
+    bctx.drawImage(raw, 0, 0);
+    return blurred;
+  }
+
   function serialize() {
     return {
       id:"autosave",
@@ -886,70 +962,112 @@ window.Studio = (() => {
     if (state.wand?.preview) canvas.remove(state.wand.preview);
     state.wand=null;
     if ($("wandToLayerBtn")) $("wandToLayerBtn").disabled=true;
+    if ($("wandMaskBtn")) $("wandMaskBtn").disabled=true;
     if ($("wandCancelBtn")) $("wandCancelBtn").disabled=true;
   }
 
   async function magicWandAt(point) {
     clearWand();
-    if (!MagicWand?.floodFill) {
-      $("selectionStatus").textContent="Magic Wand library не загрузилась";
-      return;
-    }
+    const target = canvas.getActiveObject();
     const source = renderFlatCanvas();
     const ctx = source.getContext("2d",{ willReadFrequently:true });
     const imageData = ctx.getImageData(0,0,state.width,state.height);
     const x=Math.max(0,Math.min(state.width-1,Math.floor(point.x)));
     const y=Math.max(0,Math.min(state.height-1,Math.floor(point.y)));
     const tolerance=Math.max(0,Math.min(255,Number($("wandTolerance").value)||32));
-    const mask=MagicWand.floodFill({ data:imageData.data,width:state.width,height:state.height,bytes:4 },x,y,tolerance,null,true);
-    if (!mask) return;
+
+    let mask = null;
+    try {
+      const transferable = imageData.data.buffer.slice(0);
+      const result = await runRasterWorker("magic-wand",{
+        width:state.width,height:state.height,data:transferable,x,y,tolerance
+      },[transferable]);
+      if (result) {
+        mask = {
+          width:result.width || state.width,
+          height:result.height || state.height,
+          bounds:result.bounds || null,
+          data:new Uint8Array(result.data)
+        };
+      }
+    } catch (workerError) {
+      if (MagicWand?.floodFill) {
+        mask=MagicWand.floodFill({
+          data:imageData.data,width:state.width,height:state.height,bytes:4
+        },x,y,tolerance,null,true);
+      } else {
+        console.error(workerError);
+      }
+    }
+
+    if (!mask) {
+      $("selectionStatus").textContent="Magic Wand: область не найдена";
+      return;
+    }
+
     let bounds=mask.bounds;
-    if (!bounds || bounds.minX===undefined) {
-      let minX=state.width,minY=state.height,maxX=0,maxY=0,found=false;
-      for (let yy=0;yy<state.height;yy++) for (let xx=0;xx<state.width;xx++) {
-        const idx=yy*state.width+xx;
-        if (mask.data[idx]) { found=true;minX=Math.min(minX,xx);minY=Math.min(minY,yy);maxX=Math.max(maxX,xx);maxY=Math.max(maxY,yy); }
-      }
-      if (!found) return;
-      bounds={ minX,minY,maxX,maxY };
-    }
-    const previewCanvas=document.createElement("canvas");
-    previewCanvas.width=state.width; previewCanvas.height=state.height;
+    if (!bounds || bounds.minX===undefined) bounds=computeMaskBounds(mask.data,state.width,state.height);
+    if (!bounds) return;
+
+    const feather=Math.max(0,Math.min(40,Number($("wandFeather").value)||0));
+    const previewCanvas=featherMaskCanvas(mask,bounds,feather,true);
     const pctx=previewCanvas.getContext("2d");
-    const preview=pctx.createImageData(state.width,state.height);
-    for (let i=0;i<mask.data.length;i++) {
-      if (mask.data[i]) {
-        const p=i*4; preview.data[p]=111;preview.data[p+1]=125;preview.data[p+2]=255;preview.data[p+3]=105;
-      }
-    }
-    pctx.putImageData(preview,0,0);
+    pctx.globalCompositeOperation="source-in";
+    pctx.fillStyle="rgba(111,125,255,.45)";
+    pctx.fillRect(0,0,previewCanvas.width,previewCanvas.height);
     const previewObj=await F.FabricImage.fromURL(previewCanvas.toDataURL("image/png"));
-    previewObj.set({ left:0,top:0,selectable:false,evented:false,excludeFromExport:true,helper:true,opacity:1 });
-    canvas.add(previewObj); canvas.bringObjectToFront(previewObj); canvas.requestRenderAll();
-    state.wand={ mask,bounds,source,preview:previewObj };
+    previewObj.set({
+      left:0,top:0,originX:"left",originY:"top",
+      selectable:false,evented:false,excludeFromExport:true,helper:true,opacity:1
+    });
+    canvas.add(previewObj);canvas.bringObjectToFront(previewObj);canvas.requestRenderAll();
+
+    state.wand={mask,bounds,source,preview:previewObj,target:target instanceof F.FabricImage?target:null,feather};
     $("wandToLayerBtn").disabled=false;
+    $("wandMaskBtn").disabled=!(target instanceof F.FabricImage);
     $("wandCancelBtn").disabled=false;
     $("selectionStatus").textContent="Magic Wand selection";
   }
 
   async function wandToLayer() {
     if (!state.wand) return;
-    const { mask,bounds,source }=state.wand;
+    const {mask,bounds,source,feather}=state.wand;
     const width=bounds.maxX-bounds.minX+1;
     const height=bounds.maxY-bounds.minY+1;
     const srcCtx=source.getContext("2d");
     const src=srcCtx.getImageData(bounds.minX,bounds.minY,width,height);
-    for (let y=0;y<height;y++) for (let x=0;x<width;x++) {
-      const maskIndex=(bounds.minY+y)*state.width+(bounds.minX+x);
-      if (!mask.data[maskIndex]) src.data[(y*width+x)*4+3]=0;
+    const alphaCanvas=featherMaskCanvas(mask,bounds,feather,false);
+    const alpha=alphaCanvas.getContext("2d",{willReadFrequently:true}).getImageData(0,0,width,height).data;
+    for(let i=0;i<width*height;i++) {
+      const a=alpha[i*4+3];
+      src.data[i*4+3]=Math.round(src.data[i*4+3]*(a/255));
     }
     const out=document.createElement("canvas");out.width=width;out.height=height;
     out.getContext("2d").putImageData(src,0,0);
     const url=out.toDataURL("image/png");
-    const asset=await APP.addAsset({ name:"Magic Wand selection",src:url,source:"Studio",kind:"selection" });
+    const asset=await APP.addAsset({name:"Magic Wand selection",src:url,source:"Studio",kind:"selection"});
     clearWand();
-    await addImageFromUrl(url,"Magic Wand selection",asset,{ left:bounds.minX,top:bounds.minY,scaleX:1,scaleY:1 });
+    await addImageFromUrl(url,"Magic Wand selection",asset,{left:bounds.minX,top:bounds.minY,scaleX:1,scaleY:1});
     snapshotLabel("Magic Wand → Layer");
+    setTool("move");
+  }
+
+  async function wandToMask() {
+    if (!state.wand?.target) return;
+    const {mask,bounds,feather,target}=state.wand;
+    const full=featherMaskCanvas(mask,bounds,feather,true);
+    const maskImage=await F.FabricImage.fromURL(full.toDataURL("image/png"));
+    maskImage.set({
+      left:0,top:0,originX:"left",originY:"top",
+      absolutePositioned:true,selectable:false,evented:false
+    });
+    target.clipPath=maskImage;
+    target.dirty=true;
+    clearWand();
+    canvas.setActiveObject(target);
+    canvas.requestRenderAll();
+    snapshotLabel("Добавлена layer mask");
+    syncSelectionUi();
     setTool("move");
   }
 
@@ -1403,7 +1521,8 @@ window.Studio = (() => {
     ["brushSize","brushOpacity","brushColor"].forEach(id=>$(id).oninput=()=>{if(["brush","pencil","eraser"].includes(state.tool))setTool(state.tool,true)});
 
     $("selectAllBtn").onclick=selectAll;$("clearSelectionBtn").onclick=clearSelection;
-    $("wandToLayerBtn").onclick=wandToLayer;$("wandCancelBtn").onclick=()=>{clearWand();canvas.requestRenderAll()};
+    $("wandToLayerBtn").onclick=wandToLayer;$("wandMaskBtn").onclick=wandToMask;
+    $("wandCancelBtn").onclick=()=>{clearWand();canvas.requestRenderAll()};
     $("cropApplyBtn").onclick=applyCrop;$("cropCancelBtn").onclick=cancelCrop;$("cropRatio").onchange=updateCropRatio;
 
     $("generateAiBtn").onclick=()=>generateAi(false);$("replaceWithAiBtn").onclick=()=>generateAi(true);
