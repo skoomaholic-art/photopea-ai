@@ -280,3 +280,40 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
   .editor-switch span{display:none}
   .editor-switch select{min-width:145px}
 }
+
+.header-export-select{width:78px;padding:6px 8px}
+.wide-select{width:150px!important}
+.button-stack{display:grid;gap:7px}
+.wrap-actions{flex-wrap:wrap}
+.panel-subtitle{font-size:11px;font-weight:900;color:var(--text);margin:14px 0 8px;padding-top:10px;border-top:1px solid var(--line)}
+.filter-panel{margin-top:12px}
+.slider-label{display:grid;grid-template-columns:78px 1fr;gap:8px;align-items:center;color:var(--muted);font-size:10px;margin:7px 0}
+.slider-label input{padding:0}
+.asset-filter-row{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 9px}
+.asset-filter{border:1px solid var(--line);background:#0e151d;color:var(--muted);border-radius:999px;font-size:9px;padding:4px 7px}
+.asset-filter.active{background:rgba(111,125,255,.18);border-color:rgba(111,125,255,.55);color:#fff}
+.wand-preview-note{color:var(--accent-2);font-size:10px}
+.canvas-frame .upper-canvas{outline:none}
+.canvas-frame.selection-mode .upper-canvas{cursor:crosshair!important}
+.canvas-frame.crop-mode .upper-canvas{cursor:crosshair!important}
+.canvas-frame.lasso-mode .upper-canvas{cursor:crosshair!important}
+.canvas-frame.wand-mode .upper-canvas{cursor:crosshair!important}
+.canvas-frame.eyedropper-mode .upper-canvas{cursor:crosshair!important}
+.canvas-frame.fill-mode .upper-canvas{cursor:crosshair!important}
+
+@media(max-width:900px){
+  .app-header{grid-template-columns:auto 1fr auto;gap:6px}
+  .brand span:last-child{display:none}
+  .header-actions .icon-text-button{font-size:10px;padding:6px}
+  .header-export-select{display:none}
+  .context-toolbar{min-height:42px}
+  .workbench{grid-template-columns:1fr;grid-template-rows:48px minmax(620px,1fr)}
+  .tool-rail{grid-row:1;display:flex;flex-direction:row;justify-content:flex-start;align-items:center;overflow-x:auto;overflow-y:hidden;border-right:0;border-bottom:1px solid var(--line);padding:3px 5px}
+  .tool-button{min-width:40px;width:40px;min-height:38px}
+  .rail-divider{width:1px;height:28px;min-width:1px;margin:0 3px}
+  .center-workspace{grid-row:2}
+  .tool-drawer{position:absolute;left:0;top:144px;bottom:28px;z-index:40;width:min(340px,88vw)}
+  .inspector{display:none}
+  .status-bar{grid-template-columns:auto 1fr auto}
+  #docStatus{display:none}
+}
