@@ -1250,6 +1250,28 @@ window.Studio = (() => {
     return inside;
   }
 
+  function segmentsIntersect(a,b,c,d) {
+    const orient=(p,q,r)=>(q.x-p.x)*(r.y-p.y)-(q.y-p.y)*(r.x-p.x);
+    const o1=orient(a,b,c),o2=orient(a,b,d),o3=orient(c,d,a),o4=orient(c,d,b);
+    return ((o1===0||o2===0||Math.sign(o1)!==Math.sign(o2)) &&
+            (o3===0||o4===0||Math.sign(o3)!==Math.sign(o4)));
+  }
+
+  function lassoIntersectsObject(object, polygon) {
+    const box=object.getCoords?.() || [];
+    if(!box.length)return pointInPolygon(object.getCenterPoint(),polygon);
+    if(box.some(point=>pointInPolygon(point,polygon)))return true;
+    if(polygon.some(point=>pointInPolygon(point,box)))return true;
+    for(let i=0;i<polygon.length;i++){
+      const a=polygon[i],b=polygon[(i+1)%polygon.length];
+      for(let j=0;j<box.length;j++){
+        const c=box[j],d=box[(j+1)%box.length];
+        if(segmentsIntersect(a,b,c,d))return true;
+      }
+    }
+    return false;
+  }
+
   function applyObjectSelection(objects, baseOverride = null) {
     const mode = $("selectionMode").value;
     const current = (baseOverride || canvas.getActiveObjects()).filter(object => !isHelper(object));
@@ -1285,7 +1307,7 @@ window.Studio = (() => {
 
   function finishLasso() {
     if (!state.lassoHelper || state.lassoPoints.length < 3) return;
-    const selected = realObjects().filter(object => pointInPolygon(object.getCenterPoint(),state.lassoPoints));
+    const selected = realObjects().filter(object => lassoIntersectsObject(object,state.lassoPoints));
     canvas.remove(state.lassoHelper); state.lassoHelper=null;
     applyObjectSelection(selected);
     state.lassoPoints=[];
