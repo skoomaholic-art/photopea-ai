@@ -324,6 +324,38 @@ window.Media = (() => {
     return lines.join("\n");
   }
 
+  function normalizeTitle(value) {
+    return String(value||"").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
+      .replace(/[^a-zа-яё0-9]+/gi," ").trim();
+  }
+
+  function mergeResults(items) {
+    const map=new Map();
+    const providerPriority={TMDB:4,OMDb:3,TVmaze:2,Wikidata:1};
+    for(const item of items) {
+      const key=normalizeTitle(item.title)+"|"+String(item.year||"")+"|"+String(item.type==="metadata"?"":item.type||"");
+      if(!map.has(key)){
+        map.set(key,{...item,sources:[item]});
+        continue;
+      }
+      const base=map.get(key);
+      base.sources.push(item);
+      if(!base.poster&&item.poster)base.poster=item.poster;
+      if(!base.backdrop&&item.backdrop)base.backdrop=item.backdrop;
+      if(!base.overview&&item.overview)base.overview=item.overview;
+      if((providerPriority[item.provider]||0)>(providerPriority[base.provider]||0)){
+        const sources=base.sources;
+        const preservedPoster=base.poster||item.poster;
+        const preservedBackdrop=base.backdrop||item.backdrop;
+        Object.assign(base,item);
+        base.sources=sources;
+        base.poster=preservedPoster;
+        base.backdrop=preservedBackdrop;
+      }
+    }
+    return [...map.values()];
+  }
+
   function renderResults(items) {
     const root=$("mediaResults");
     root.innerHTML="";
@@ -335,7 +367,7 @@ window.Media = (() => {
       card.innerHTML=poster+
         '<div><div class="media-title">'+APP.escapeHtml(item.title)+'</div>'+
         '<div class="media-meta">'+APP.escapeHtml([item.originalTitle!==item.title?item.originalTitle:"",item.year,item.type].filter(Boolean).join(" · "))+'</div>'+
-        '<div><span class="asset-provider-badge">'+APP.escapeHtml(item.provider)+'</span></div>'+
+        '<div>'+(item.sources||[item]).map(source=>'<span class="asset-provider-badge">'+APP.escapeHtml(source.provider)+'</span>').join("")+'</div>'+
         '<div class="media-actions"><button class="secondary-button details-btn">Детали</button>'+
         (item.poster?'<button class="secondary-button poster-btn">Poster → Canvas</button>':'')+
         (item.sourceUrl?'<button class="secondary-button source-btn">Source</button>':'')+
@@ -371,47 +403,90 @@ window.Media = (() => {
   }
 
   async function loadDetails(item,card) {
-    const provider=providers[item.providerKey];
-    if(!provider)return;
+    const sources=item.sources||[item];
     status("Загружаю детали...");
     try{
-      const details=await cached(item.providerKey+":details:"+item.id,()=>provider.details(item),30*60*1000);
+      const settled=await Promise.allSettled(sources.map(source=>{
+        const provider=providers[source.providerKey];
+        if(!provider)return null;
+        return cached(source.providerKey+":details:"+source.id,()=>provider.details(source),30*60*1000);
+      }));
+      const packets=settled.map((result,index)=>result.status==="fulfilled"&&result.value?{source:sources[index],details:result.value}:null).filter(Boolean);
+      if(!packets.length)throw new Error("Не удалось загрузить детали ни у одного provider.");
+
       document.querySelectorAll(".media-detail-inline").forEach(node=>node.remove());
       const block=document.createElement("div");
       block.className="media-detail-inline";
-      const meta=Object.entries(details.meta||{}).filter(([,value])=>value)
+
+      const preferred=[...packets].sort((a,b)=>{
+        const rank={TMDB:4,OMDb:3,TVmaze:2,Wikidata:1};
+        return (rank[b.source.provider]||0)-(rank[a.source.provider]||0);
+      });
+      const overview=preferred.find(packet=>packet.details.overview)?.details.overview||"";
+
+      const mergedMeta=new Map();
+      for(const packet of preferred){
+        for(const [key,value] of Object.entries(packet.details.meta||{})){
+          if(value&&!mergedMeta.has(key))mergedMeta.set(key,value);
+        }
+      }
+      const meta=[...mergedMeta.entries()]
         .map(([key,value])=>'<div class="media-meta"><strong>'+APP.escapeHtml(key)+':</strong> '+APP.escapeHtml(value)+'</div>').join("");
-      block.innerHTML='<div class="media-meta media-overview">'+APP.escapeHtml(details.overview||"")+'</div>'+meta+
-        '<div class="media-actions details-actions"><button class="secondary-button copy-meta">Copy metadata</button>'+
-        (item.sourceUrl?'<button class="secondary-button open-source">Open source</button>':'')+'</div>';
-      block.querySelector(".copy-meta").onclick=async()=> {
-        await navigator.clipboard.writeText(metadataText(item,details));
+
+      block.innerHTML='<div class="media-meta media-overview">'+APP.escapeHtml(overview)+'</div>'+meta+
+        '<div class="media-actions details-actions"><button class="secondary-button copy-meta">Copy metadata</button></div>';
+
+      block.querySelector(".copy-meta").onclick=async()=>{
+        const synthetic={...item,provider:(item.sources||[item]).map(s=>s.provider).join(", ")};
+        await navigator.clipboard.writeText(metadataText(synthetic,{overview,meta:Object.fromEntries(mergedMeta)}));
         status("Metadata скопированы.","ok");
       };
-      const openSource=block.querySelector(".open-source");
-      if(openSource)openSource.onclick=()=>window.open(item.sourceUrl,"_blank","noopener");
 
-      if(details.artwork?.length){
+      const sourceLinks=document.createElement("div");
+      sourceLinks.className="media-actions details-actions";
+      sources.filter(source=>source.sourceUrl).forEach(source=>{
+        const btn=document.createElement("button");
+        btn.className="secondary-button";
+        btn.textContent="Open "+source.provider;
+        btn.onclick=()=>window.open(source.sourceUrl,"_blank","noopener");
+        sourceLinks.appendChild(btn);
+      });
+      block.appendChild(sourceLinks);
+
+      const artwork=[];
+      const seenArt=new Set();
+      packets.forEach(packet=>(packet.details.artwork||[]).forEach(art=>{
+        if(!art?.url||seenArt.has(art.url))return;
+        seenArt.add(art.url);artwork.push(art);
+      }));
+
+      if(artwork.length){
         const grouped={};
-        details.artwork.forEach(art=>{const key=art.kind||"image";(grouped[key]??=[]).push(art)});
+        artwork.forEach(art=>{const key=art.kind||"image";(grouped[key]??=[]).push(art)});
         const tabs=document.createElement("div");tabs.className="art-tabs";
         const artWrap=document.createElement("div");artWrap.className="asset-grid";artWrap.style.marginTop="8px";
-        const kinds=Object.keys(grouped);
+        const order=["poster","backdrop","logo","still","banner","portrait","image"];
+        const kinds=Object.keys(grouped).sort((a,b)=>{
+          const ai=order.indexOf(a),bi=order.indexOf(b);
+          return (ai<0?99:ai)-(bi<0?99:bi)||a.localeCompare(b);
+        });
         let current=kinds[0];
         function renderKind(){
           artWrap.innerHTML="";
-          (grouped[current]||[]).slice(0,24).forEach(art=>artWrap.appendChild(artworkCard(art,item)));
+          (grouped[current]||[]).slice(0,32).forEach(art=>artWrap.appendChild(artworkCard(art,item)));
           [...tabs.children].forEach(btn=>btn.classList.toggle("active",btn.dataset.kind===current));
         }
         kinds.forEach(kind=>{
-          const btn=document.createElement("button");btn.className="asset-filter";btn.dataset.kind=kind;btn.textContent=kind;
+          const btn=document.createElement("button");btn.className="asset-filter";btn.dataset.kind=kind;
+          btn.textContent=kind+" ("+grouped[kind].length+")";
           btn.onclick=()=>{current=kind;renderKind()};tabs.appendChild(btn);
         });
         renderKind();
         block.append(tabs,artWrap);
       }
+
       card.appendChild(block);
-      status("Детали загружены.","ok");
+      status("Детали загружены из "+packets.map(p=>p.source.provider).join(", ")+".","ok");
     }catch(error){status(error.message,"error")}
   }
 
@@ -428,13 +503,10 @@ window.Media = (() => {
       if(result.status==="fulfilled")items.push(...result.value);
       else errors.push(active[index].label+": "+result.reason?.message);
     });
-    const seen=new Set();
-    const deduped=items.filter(item=>{
-      const key=item.provider+":"+item.id;if(seen.has(key))return false;seen.add(key);return true;
-    });
-    renderResults(deduped);
-    if(errors.length)status("Найдено "+deduped.length+". "+errors.join(" | "),"warn");
-    else status("Найдено: "+deduped.length,"ok");
+    const merged=mergeResults(items);
+    renderResults(merged);
+    if(errors.length)status("Найдено "+merged.length+". "+errors.join(" | "),"warn");
+    else status("Найдено: "+merged.length,"ok");
   }
 
   function refreshProviderState() {
