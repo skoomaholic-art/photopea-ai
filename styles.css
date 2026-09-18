@@ -337,11 +337,3 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .ruler-x{left:20px;right:0;top:0;height:20px;width:calc(100% - 20px);border-bottom:1px solid var(--line)}
 .ruler-y{left:0;top:20px;bottom:0;width:20px;height:calc(100% - 20px);border-right:1px solid var(--line)}
 .ruler-corner{position:absolute;left:0;top:0;width:20px;height:20px;z-index:9;background:#101720;border-right:1px solid var(--line);border-bottom:1px solid var(--line);pointer-events:none}
-
-.asset-filter-row{display:flex;gap:5px;overflow:auto;padding-bottom:7px;margin-bottom:7px}
-.asset-filter{border:1px solid var(--line);background:#0e151d;color:var(--muted);border-radius:999px;padding:4px 7px;font-size:9px;white-space:nowrap}
-.asset-filter.active{background:rgba(111,125,255,.16);border-color:rgba(111,125,255,.55);color:#fff}
-.wrap-actions{flex-wrap:wrap}
-.selection-overlay-label{position:absolute;pointer-events:none;background:#0d141ccc;border:1px solid var(--line);color:#dfe6f2;border-radius:6px;padding:3px 6px;font-size:9px;z-index:15}
-.node-handle{fill:#fff;stroke:#6f7dff;stroke-width:2}
-.context-row input[type="checkbox"]{width:auto}
