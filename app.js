@@ -241,6 +241,47 @@ window.APP = (() => {
     openModal("settingsModal");
   }
 
+  function bindPanelResizers() {
+    const root=document.documentElement;
+    const savedDrawer=Math.max(240,Math.min(520,Number(localStorage.getItem("skooma.drawerWidth"))||300));
+    const savedInspector=Math.max(240,Math.min(520,Number(localStorage.getItem("skooma.inspectorWidth"))||300));
+    root.style.setProperty("--drawer-width",savedDrawer+"px");
+    root.style.setProperty("--inspector-width",savedInspector+"px");
+
+    const bind=(handle,side)=>{
+      if(!handle)return;
+      handle.addEventListener("pointerdown",event=>{
+        if(window.innerWidth<=900)return;
+        event.preventDefault();
+        handle.setPointerCapture?.(event.pointerId);
+        handle.classList.add("dragging");
+        const startX=event.clientX;
+        const start=side==="drawer"
+          ? $("toolDrawer").getBoundingClientRect().width
+          : $("inspector").getBoundingClientRect().width;
+        const move=moveEvent=>{
+          const delta=moveEvent.clientX-startX;
+          const width=Math.max(240,Math.min(520,start+(side==="drawer"?delta:-delta)));
+          root.style.setProperty(side==="drawer"?"--drawer-width":"--inspector-width",width+"px");
+        };
+        const up=()=>{
+          window.removeEventListener("pointermove",move);
+          window.removeEventListener("pointerup",up);
+          handle.classList.remove("dragging");
+          const value=side==="drawer"
+            ? $("toolDrawer").getBoundingClientRect().width
+            : $("inspector").getBoundingClientRect().width;
+          localStorage.setItem(side==="drawer"?"skooma.drawerWidth":"skooma.inspectorWidth",String(Math.round(value)));
+          window.Studio?.fitToViewport?.();
+        };
+        window.addEventListener("pointermove",move);
+        window.addEventListener("pointerup",up,{once:true});
+      });
+    };
+    bind($("drawerResizer"),"drawer");
+    bind($("inspectorResizer"),"inspector");
+  }
+
   function bindUi() {
     $("editorSelect").onchange = event => switchEditor(event.target.value);
     $("settingsBtn").onclick = openSettings;
@@ -320,6 +361,7 @@ window.APP = (() => {
   }
 
   bindUi();
+  bindPanelResizers();
   refreshPuterState();
   loadAssets();
 
