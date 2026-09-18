@@ -182,8 +182,19 @@ window.Studio = (() => {
     const brush = new F.PencilBrush(canvas);
     const configuredSize = Math.max(1, Number($("brushSize").value) || 18);
     const opacity = Math.max(0.05, Number($("brushOpacity").value) || 1);
+    const flow = Math.max(0.05, Number($("brushFlow").value) || 1);
+    const hardness = Math.max(0, Math.min(1, Number($("brushHardness").value) || 0));
     brush.width = tool === "pencil" ? Math.min(4, configuredSize) : configuredSize;
-    brush.color = tool === "eraser" ? "rgba(255,255,255,0.25)" : hexToRgba($("brushColor").value, opacity);
+    brush.color = tool === "eraser" ? "rgba(255,255,255," + (opacity * flow) + ")" : hexToRgba($("brushColor").value, opacity * flow);
+    if (tool !== "pencil" && hardness < 0.98 && F.Shadow) {
+      brush.shadow = new F.Shadow({
+        color: tool === "eraser" ? "rgba(255,255,255," + (opacity * flow * .55) + ")" : hexToRgba($("brushColor").value, opacity * flow * .55),
+        blur: Math.max(0, (1 - hardness) * configuredSize * .7),
+        offsetX: 0,
+        offsetY: 0,
+        affectStroke: true
+      });
+    }
     canvas.freeDrawingBrush = brush;
     $("brushContextTitle").textContent = tool === "eraser" ? "Ластик" : tool === "pencil" ? "Карандаш" : "Кисть";
     setContext("contextBrush");
@@ -480,6 +491,7 @@ window.Studio = (() => {
     $("ctxW").value = Math.round(active.getScaledWidth());
     $("ctxH").value = Math.round(active.getScaledHeight());
     $("ctxAngle").value = Math.round(active.angle || 0);
+    $("ctxLockRatio").checked = !!active.__skoomaLockRatio;
     if (state.tool === "move") setContext("contextMove");
   }
 
@@ -678,6 +690,8 @@ window.Studio = (() => {
     const text = new F.IText("Новый текст",{
       left:x,top:y,fill:$("textColor").value,
       fontSize:Math.max(8,Number($("textSize").value)||48),
+      fontWeight:$("textWeight").value,
+      lineHeight:Math.max(.5,Number($("textLineHeight").value)||1.16),
       textAlign:$("textAlign").value,
       fontFamily:$("textFont").value
     });
@@ -922,6 +936,12 @@ window.Studio = (() => {
       left:Number($("ctxX").value)||0,
       top:Number($("ctxY").value)||0,
       angle:Number($("ctxAngle").value)||0
+    });
+    active.__skoomaLockRatio = $("ctxLockRatio").checked;
+    active.setControlsVisibility({
+      ml:!active.__skoomaLockRatio,mr:!active.__skoomaLockRatio,
+      mt:!active.__skoomaLockRatio,mb:!active.__skoomaLockRatio,
+      tl:true,tr:true,bl:true,br:true,mtr:true
     });
     if (active.width) active.scaleX = width / active.width;
     if (active.height) active.scaleY = height / active.height;
@@ -1626,7 +1646,18 @@ window.Studio = (() => {
     });
 
     qsa(".tool-button[data-tool]").forEach(btn=>btn.onclick=()=>setTool(btn.dataset.tool));
-    ["brushSize","brushOpacity","brushColor"].forEach(id=>$(id).oninput=()=>{if(["brush","pencil","eraser"].includes(state.tool))setTool(state.tool,true)});
+    ["brushSize","brushHardness","brushOpacity","brushFlow","brushColor"].forEach(id=>$(id).oninput=()=>{if(["brush","pencil","eraser"].includes(state.tool))setTool(state.tool,true)});
+    $("ctxLockRatio").onchange=()=>{
+      const active=canvas.getActiveObject();
+      if(!active||active instanceof F.ActiveSelection)return;
+      active.__skoomaLockRatio=$("ctxLockRatio").checked;
+      active.setControlsVisibility({
+        ml:!active.__skoomaLockRatio,mr:!active.__skoomaLockRatio,
+        mt:!active.__skoomaLockRatio,mb:!active.__skoomaLockRatio,
+        tl:true,tr:true,bl:true,br:true,mtr:true
+      });
+      canvas.requestRenderAll();
+    };
 
     $("selectAllBtn").onclick=selectAll;$("clearSelectionBtn").onclick=clearSelection;
     $("wandToLayerBtn").onclick=wandToLayer;$("wandMaskBtn").onclick=wandToMask;
