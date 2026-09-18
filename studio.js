@@ -44,6 +44,8 @@ window.Studio = (() => {
     filterState: new WeakMap(),
     lineStart: null,
     lineHelper: null,
+    shapeStart: null,
+    shapeHelper: null,
     penPoints: [],
     penHelper: null,
     aiReference: null,
@@ -204,6 +206,11 @@ window.Studio = (() => {
       canvas.remove(state.lineHelper);
       state.lineHelper = null;
       state.lineStart = null;
+    }
+    if (state.shapeHelper) {
+      canvas.remove(state.shapeHelper);
+      state.shapeHelper = null;
+      state.shapeStart = null;
     }
     if (state.penHelper) {
       canvas.remove(state.penHelper);
@@ -931,6 +938,45 @@ window.Studio = (() => {
     });
     $("selectionStatus").textContent="Node Edit: "+object.points.length+" nodes";
     canvas.requestRenderAll();
+  }
+
+  function beginShape(tool,point) {
+    state.shapeStart=point;
+    const common={
+      left:point.x,top:point.y,
+      fill:$("shapeFill").value,
+      stroke:Number($("shapeStrokeWidth").value)>0?$("shapeStroke").value:null,
+      strokeWidth:Number($("shapeStrokeWidth").value)||0,
+      selectable:false,evented:false,excludeFromExport:false,helper:false,opacity:.85
+    };
+    state.shapeHelper=tool==="ellipse"
+      ?new F.Ellipse({...common,rx:1,ry:1})
+      :new F.Rect({...common,width:1,height:1,rx:4,ry:4});
+    assignObjectMetadata(state.shapeHelper,tool==="ellipse"?"Ellipse":"Rectangle",{kind:"shape",source:"studio"});
+    canvas.add(state.shapeHelper);canvas.requestRenderAll();
+  }
+
+  function updateShape(point,shift=false) {
+    if(!state.shapeHelper||!state.shapeStart)return;
+    const start=state.shapeStart;
+    let width=Math.abs(point.x-start.x),height=Math.abs(point.y-start.y);
+    if(shift){const size=Math.max(width,height);width=height=size}
+    const left=Math.min(start.x,point.x),top=Math.min(start.y,point.y);
+    if(state.shapeHelper instanceof F.Ellipse){
+      state.shapeHelper.set({left,top,rx:Math.max(.5,width/2),ry:Math.max(.5,height/2)});
+    }else{
+      state.shapeHelper.set({left,top,width:Math.max(1,width),height:Math.max(1,height)});
+    }
+    state.shapeHelper.setCoords();canvas.requestRenderAll();
+  }
+
+  function finishShape() {
+    if(!state.shapeHelper)return;
+    const object=state.shapeHelper;
+    state.shapeHelper=null;state.shapeStart=null;
+    object.set({selectable:true,evented:true,opacity:1});
+    canvas.setActiveObject(object);canvas.requestRenderAll();
+    snapshotLabel("Добавлена фигура");syncSelectionUi();setTool("move");
   }
 
   function addLine(start,end) {
@@ -1768,12 +1814,10 @@ window.Studio = (() => {
         setZoom(state.viewScale*(e.altKey?.85:1.15));
       }else if(state.tool==="text"&&!event.target){
         addTextAt(point.x,point.y);setTool("move");
-      }else if(state.tool==="rect"&&!event.target){
-        addRectAt(point.x,point.y);setTool("move");
-      }else if(state.tool==="ellipse"&&!event.target){
-        addEllipseAt(point.x,point.y);setTool("move");
+      }else if((state.tool==="rect"||state.tool==="ellipse")&&!event.target){
+        beginShape(state.tool,point);
       }else if(state.tool==="line"&&!event.target){
-        if(!state.lineStart)beginLine(point);else finishLine(point);
+        beginLine(point);
       }else if(state.tool==="pen"&&!event.target){
         beginPen(point);
       }else if(state.tool==="lasso"){
@@ -1796,6 +1840,8 @@ window.Studio = (() => {
         updateLasso(point);
       }else if(state.tool==="line"&&state.lineHelper){
         updateLine(point);
+      }else if((state.tool==="rect"||state.tool==="ellipse")&&state.shapeHelper){
+        updateShape(point,!!e.shiftKey);
       }
     });
 
@@ -1803,9 +1849,16 @@ window.Studio = (() => {
       if(state.tool==="pen")finishPen(false);
     });
 
-    canvas.on("mouse:up",()=>{
+    canvas.on("mouse:up",event=>{
       if(state.isPanning){state.isPanning=false;state.lastPointer=null;canvas.defaultCursor="grab"}
       if(state.tool==="lasso"&&state.lassoHelper)finishLasso();
+      if(state.tool==="line"&&state.lineHelper){
+        const point=canvas.getScenePoint(event.e);
+        const distance=state.lineStart?Math.hypot(point.x-state.lineStart.x,point.y-state.lineStart.y):0;
+        if(distance>2)finishLine(point);
+        else{canvas.remove(state.lineHelper);state.lineHelper=null;state.lineStart=null}
+      }
+      if((state.tool==="rect"||state.tool==="ellipse")&&state.shapeHelper)finishShape();
     });
 
     $("canvasViewport").addEventListener("wheel",event=>{
