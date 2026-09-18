@@ -153,6 +153,9 @@
       <button class="tool-button" data-tool="text" title="Text (T)"><span>T</span><small>T</small></button>
       <button class="tool-button" data-tool="rect" title="Rectangle (R)"><span>▭</span><small>R</small></button>
       <button class="tool-button" data-tool="ellipse" title="Ellipse (O)"><span>○</span><small>O</small></button>
+      <button class="tool-button" data-tool="line" title="Line (N)"><span>／</span><small>N</small></button>
+      <button class="tool-button" data-tool="pen" title="Pen / Polyline (A)"><span>⌁</span><small>A</small></button>
+      <button class="tool-button" data-tool="image" title="Place Image (J)"><span>▧</span><small>J</small></button>
       <button class="tool-button" data-tool="hand" title="Hand (H)"><span>✋</span><small>H</small></button>
       <button class="tool-button" data-tool="zoom" title="Zoom (Z)"><span>⌕</span><small>Z</small></button>
       <div class="rail-divider"></div>
@@ -176,10 +179,18 @@
             <div class="field"><label for="aiRatio">Формат</label><select id="aiRatio"><option value="1:1">1:1</option><option value="16:9" selected>16:9</option><option value="9:16">9:16</option><option value="4:3">4:3</option><option value="3:4">3:4</option></select></div>
             <div class="field"><label for="aiQuality">Качество</label><select id="aiQuality"><option value="low">Low</option><option value="medium">Medium</option><option value="high" selected>High</option></select></div>
           </div>
+          <div class="field"><label for="aiReference">Reference image, опционально</label><input id="aiReference" type="file" accept="image/*"></div>
+          <div class="two-col">
+            <div class="field"><label for="aiVariationCount">Variations</label>
+              <select id="aiVariationCount"><option value="2">2</option><option value="3" selected>3</option><option value="4">4</option></select>
+            </div>
+            <div class="field"><label>&nbsp;</label><button class="secondary-button full" id="downloadAiBtn" disabled>Download last</button></div>
+          </div>
           <label class="checkbox-line"><input id="aiTestMode" type="checkbox"> Тестовый режим Puter</label>
           <div class="button-stack">
             <button class="primary-button full" id="generateAiBtn">Сгенерировать как новый слой</button>
             <button class="secondary-button full" id="replaceWithAiBtn">Заменить выбранный слой</button>
+            <button class="secondary-button full" id="generateVariationsBtn">Сгенерировать вариации</button>
           </div>
           <div class="drawer-status" id="aiStatus">Готов.</div>
         </div>
