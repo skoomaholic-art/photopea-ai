@@ -32,7 +32,9 @@ window.Studio = (() => {
     historyIndex: -1,
     historyMuted: false,
     autosaveTimer: null,
-    restoring: false
+    restoring: false,
+    clipboard: null,
+    previousTool: null
   };
 
   const MAX_HISTORY = 35;
@@ -253,13 +255,13 @@ window.Studio = (() => {
   function selectionSummary() {
     const active = canvas.getActiveObject();
     if (!active) return "Ничего не выбрано";
-    const count = active.type === "activeselection" ? active.getObjects().length : 1;
+    const count = active instanceof F.ActiveSelection ? active.getObjects().length : 1;
     return count > 1 ? "Выбрано объектов: " + count : objectName(active);
   }
 
   function updateContextTransform() {
     const active = canvas.getActiveObject();
-    if (!active || active.type === "activeselection") {
+    if (!active || active instanceof F.ActiveSelection) {
       if (state.tool === "move") setContext("contextDefault");
       return;
     }
@@ -363,7 +365,7 @@ window.Studio = (() => {
     const active = canvas.getActiveObject();
     const empty = $("emptyProperties");
     const panel = $("objectProperties");
-    if (!active || active.type === "activeselection") {
+    if (!active || active instanceof F.ActiveSelection) {
       empty.classList.remove("hidden");
       panel.classList.add("hidden");
       return;
@@ -484,9 +486,33 @@ window.Studio = (() => {
     syncSelectionUi();
   }
 
+  async function copyActive() {
+    const active = canvas.getActiveObject();
+    if (!active || active instanceof F.ActiveSelection) return;
+    state.clipboard = await active.clone(["name", "assetId", "source", "kind"]);
+  }
+
+  async function pasteClipboard() {
+    if (!state.clipboard) return;
+    const clone = await state.clipboard.clone(["name", "assetId", "source", "kind"]);
+    clone.set({ left: (clone.left || 0) + 24, top: (clone.top || 0) + 24, evented: true });
+    clone.name = objectName(clone) + " copy";
+    canvas.add(clone);
+    canvas.setActiveObject(clone);
+    canvas.requestRenderAll();
+    state.clipboard = clone;
+    snapshotLabel("Вставлен объект");
+    syncSelectionUi();
+  }
+
+  async function cutActive() {
+    await copyActive();
+    deleteActive();
+  }
+
   function duplicateActive() {
     const active = canvas.getActiveObject();
-    if (!active || active.type === "activeselection") return;
+    if (!active || active instanceof F.ActiveSelection) return;
     active.clone(["name", "assetId", "source", "kind"]).then(clone => {
       clone.set({ left: (active.left || 0) + 24, top: (active.top || 0) + 24 });
       clone.name = objectName(active) + " copy";
@@ -501,7 +527,7 @@ window.Studio = (() => {
   function deleteActive() {
     const active = canvas.getActiveObject();
     if (!active) return;
-    if (active.type === "activeselection") {
+    if (active instanceof F.ActiveSelection) {
       active.getObjects().forEach(obj => canvas.remove(obj));
       canvas.discardActiveObject();
     } else {
@@ -514,7 +540,7 @@ window.Studio = (() => {
 
   function applyProperties() {
     const active = canvas.getActiveObject();
-    if (!active || active.type === "activeselection") return;
+    if (!active || active instanceof F.ActiveSelection) return;
     const width = Math.max(1, Number($("propWidth").value) || active.getScaledWidth());
     const height = Math.max(1, Number($("propHeight").value) || active.getScaledHeight());
     active.name = $("propName").value.trim() || objectName(active);
@@ -534,7 +560,7 @@ window.Studio = (() => {
 
   function applyContextTransform() {
     const active = canvas.getActiveObject();
-    if (!active || active.type === "activeselection") return;
+    if (!active || active instanceof F.ActiveSelection) return;
     const width = Math.max(1, Number($("ctxW").value) || active.getScaledWidth());
     const height = Math.max(1, Number($("ctxH").value) || active.getScaledHeight());
     active.set({
@@ -767,11 +793,29 @@ window.Studio = (() => {
       if ((mod && event.key.toLowerCase() === "y") || (mod && event.shiftKey && event.key.toLowerCase() === "z")) {
         event.preventDefault(); redo(); return;
       }
+      if (mod && event.key.toLowerCase() === "c") {
+        if (!typing) { event.preventDefault(); copyActive(); }
+        return;
+      }
+      if (mod && event.key.toLowerCase() === "x") {
+        if (!typing) { event.preventDefault(); cutActive(); }
+        return;
+      }
+      if (mod && event.key.toLowerCase() === "v") {
+        if (!typing && state.clipboard) { event.preventDefault(); pasteClipboard(); }
+        return;
+      }
       if (mod && event.key.toLowerCase() === "d") {
         event.preventDefault(); duplicateActive(); return;
       }
       if (mod && event.key.toLowerCase() === "s") {
         event.preventDefault(); saveNow(); return;
+      }
+      if (!typing && event.code === "Space" && !event.repeat) {
+        event.preventDefault();
+        state.previousTool = state.tool;
+        setTool("hand");
+        return;
       }
       if (!typing && event.key === "Delete") {
         event.preventDefault(); deleteActive(); return;
@@ -787,6 +831,13 @@ window.Studio = (() => {
       else if (key === "o") setTool("ellipse");
       else if (key === "h") setTool("hand");
       else if (key === "z") setTool("zoom");
+    });
+    window.addEventListener("keyup", event => {
+      if (event.code === "Space" && state.previousTool) {
+        const previous = state.previousTool;
+        state.previousTool = null;
+        setTool(previous);
+      }
     });
   }
 
