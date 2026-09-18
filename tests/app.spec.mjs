@@ -24,7 +24,12 @@ test("unified shell and core editor workflow", async ({ page }) => {
   const upper = page.locator(".upper-canvas");
 
   await page.locator('[data-tool="rect"]').click();
-  await upper.click({ position: { x: 180, y: 140 } });
+  const box = await upper.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box.x + 120, box.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 280, box.y + 210, { steps: 8 });
+  await page.mouse.up();
   await expect.poll(() => page.evaluate(() => Studio.canvas.getObjects().filter(o => !o.helper).length)).toBe(1);
 
   await page.locator("#duplicateBtn").click();
@@ -58,7 +63,12 @@ test("drawers, provider fallback, project save and editor fallback", async ({ pa
 
   page.once("dialog", dialog => dialog.accept("Playwright project"));
   await page.locator("#saveProjectBtn").click();
+  await expect.poll(() => page.evaluate(async () => {
+    const projects = await SkoomaStore.listProjects();
+    return projects.some(project => project.title === "Playwright project");
+  })).toBe(true);
   await page.locator("#recentProjectsBtn").click();
+  await expect(page.locator("#recentProjectsModal")).toBeVisible();
   await expect(page.locator("#recentProjectsList")).toContainText("Playwright project");
 
   await page.locator("#editorSelect").selectOption("jampea");
