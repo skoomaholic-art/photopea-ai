@@ -13,6 +13,7 @@ window.APP = (() => {
   };
   let assets = [];
   let assetFilter = "all";
+  let assetQuery = "";
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>'"]/g, c => ({
@@ -134,8 +135,12 @@ window.APP = (() => {
     card.className = "asset-card";
     card.title = "Двойной клик: добавить на холст";
     card.draggable = true;
+    const resolution = asset.meta?.width && asset.meta?.height ? asset.meta.width + "×" + asset.meta.height : "";
+    const language = asset.meta?.language ? String(asset.meta.language).toUpperCase() : "";
+    const extra = [resolution, language, asset.kind].filter(Boolean).join(" · ");
     card.innerHTML = '<img src="' + asset.src + '" alt=""><div class="asset-info"><div class="asset-name">' +
-      escapeHtml(asset.name) + '</div><div class="asset-source">' + escapeHtml(asset.source) + '</div></div>';
+      escapeHtml(asset.name) + '</div><div class="asset-source">' + escapeHtml(asset.source) + '</div>' +
+      (extra ? '<div class="asset-meta">' + escapeHtml(extra) + '</div>' : '') + '</div>';
     card.ondblclick = () => {
       window.Studio?.addImageFromUrl(asset.src, asset.name, asset);
       $("editorSelect").value = "skooma";
@@ -150,14 +155,31 @@ window.APP = (() => {
 
   function renderAssets() {
     const targets = [$("assetGridDrawer"), $("assetGridInspector")];
-    const filtered = assetFilter === "all" ? assets : assets.filter(asset => {
-      if (assetFilter === "upload") return asset.source === "upload";
-      return asset.kind === assetFilter;
+    const mediaSources = new Set(["TVmaze","OMDb","TMDB","fanart.tv","Wikidata","IMDb"]);
+    const query = assetQuery.trim().toLowerCase();
+    let filtered = assets.filter(asset => {
+      if (assetFilter === "recent") {
+        // applied after sorting / text search
+      } else if (assetFilter === "upload") {
+        if (asset.source !== "upload") return false;
+      } else if (assetFilter === "generated") {
+        if (asset.kind !== "generated") return false;
+      } else if (assetFilter === "media") {
+        if (!mediaSources.has(asset.source) &&
+            !["poster","backdrop","logo","banner","still","fanart","image"].includes(asset.kind)) return false;
+      } else if (assetFilter !== "all" && asset.kind !== assetFilter) {
+        return false;
+      }
+      if (!query) return true;
+      return [asset.name, asset.source, asset.kind, asset.meta?.language]
+        .filter(Boolean)
+        .some(value => String(value).toLowerCase().includes(query));
     });
+    if (assetFilter === "recent") filtered = filtered.slice(0, 20);
     targets.forEach(target => {
       target.innerHTML = "";
       if (!filtered.length) {
-        target.innerHTML = '<div class="empty-state">Нет assets в этой категории.</div>';
+        target.innerHTML = '<div class="empty-state">Нет assets по текущему фильтру.</div>';
         return;
       }
       filtered.forEach(asset => target.appendChild(makeAssetCard(asset)));
@@ -291,6 +313,10 @@ window.APP = (() => {
       qsa(".asset-filter").forEach(item => item.classList.toggle("active", item === btn));
       renderAssets();
     });
+    $("assetSearch").oninput = event => {
+      assetQuery = event.target.value || "";
+      renderAssets();
+    };
   }
 
   bindUi();
