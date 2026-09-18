@@ -253,7 +253,7 @@ window.Studio = (() => {
   function selectionSummary() {
     const active = canvas.getActiveObject();
     if (!active) return "Ничего не выбрано";
-    const count = active.type === "activeselection" ? active.size() : 1;
+    const count = active.type === "activeselection" ? active.getObjects().length : 1;
     return count > 1 ? "Выбрано объектов: " + count : objectName(active);
   }
 
@@ -751,6 +751,7 @@ window.Studio = (() => {
     $("redoBtn").onclick = redo;
     $("applyPropertiesBtn").onclick = applyProperties;
     $("applyTransformBtn").onclick = applyContextTransform;
+    $("exportBtn").onclick = () => exportImage($("exportFormat").value);
 
     window.addEventListener("resize", fitToViewport);
     window.addEventListener("keydown", event => {
