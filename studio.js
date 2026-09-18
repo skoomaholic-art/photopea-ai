@@ -434,6 +434,7 @@ window.Studio = (() => {
   }
 
   function clearToolHelpers() {
+    clearPixelSelection();
     if (state.lassoHelper) {
       canvas.remove(state.lassoHelper);
       state.lassoHelper = null;
@@ -507,19 +508,26 @@ window.Studio = (() => {
       canvas.selection = true;
       setContext(canvas.getActiveObject() ? "contextMove" : "contextDefault");
     } else if (tool === "marquee") {
-      canvas.selection = true;
+      const pixels=pixelSelectionEnabled();
+      if(pixels)state.pixelSelectionTarget=activeImageLayer();
+      canvas.selection = !pixels;
+      canvas.skipTargetFind = pixels;
       canvas.discardActiveObject();
       canvas.requestRenderAll();
       canvas.defaultCursor = "crosshair";
-      $("selectionContextTitle").textContent = "Rectangle Select";
+      $("selectionContextTitle").textContent = pixels ? "Rectangle Pixel Select" : "Rectangle Object Select";
       $("canvasFrame").classList.add("selection-mode");
       setContext("contextSelection");
+      if(pixels&&!state.pixelSelectionTarget)$("selectionStatus").textContent="Pixels: сначала выберите image layer.";
     } else if (tool === "lasso") {
+      const pixels=pixelSelectionEnabled();
+      if(pixels)state.pixelSelectionTarget=activeImageLayer();
       canvas.skipTargetFind = true;
       canvas.defaultCursor = "crosshair";
-      $("selectionContextTitle").textContent = "Lasso";
+      $("selectionContextTitle").textContent = pixels ? "Pixel Lasso" : "Object Lasso";
       $("canvasFrame").classList.add("lasso-mode");
       setContext("contextSelection");
+      if(pixels){canvas.discardActiveObject();canvas.requestRenderAll();if(!state.pixelSelectionTarget)$("selectionStatus").textContent="Pixels: сначала выберите image layer."}
     } else if (tool === "wand") {
       canvas.skipTargetFind = true;
       canvas.defaultCursor = "crosshair";
