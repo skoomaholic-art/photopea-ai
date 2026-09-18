@@ -1320,7 +1320,7 @@ window.Studio = (() => {
   }
 
   function syncFilterControls(image) {
-    const saved=state.filterState.get(image) || { brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false };
+    const saved=state.filterState.get(image) || { brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false,invert:false,sharpen:false };
     $("filterBrightness").value=saved.brightness;
     $("filterContrast").value=saved.contrast;
     $("filterSaturation").value=saved.saturation;
@@ -1342,6 +1342,8 @@ window.Studio = (() => {
     if (values.blur) filters.push(new F.filters.Blur({ blur:values.blur }));
     if (values.grayscale) filters.push(new F.filters.Grayscale());
     if (values.sepia) filters.push(new F.filters.Sepia());
+    if (values.invert) filters.push(new F.filters.Invert());
+    if (values.sharpen) filters.push(new F.filters.Convolute({ matrix:[0,-1,0,-1,5,-1,0,-1,0] }));
     image.filters=filters;
     image.applyFilters();
     state.filterState.set(image,values);
@@ -1352,7 +1354,7 @@ window.Studio = (() => {
   function toggleImageFilter(type) {
     const image=canvas.getActiveObject();
     if (!(image instanceof F.FabricImage)) return;
-    const values=state.filterState.get(image) || { brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false };
+    const values=state.filterState.get(image) || { brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false,invert:false,sharpen:false };
     values[type]=!values[type];
     state.filterState.set(image,values);
     applyImageFilters(true);
@@ -1361,7 +1363,7 @@ window.Studio = (() => {
   function resetImageFilters() {
     const image=canvas.getActiveObject();
     if (!(image instanceof F.FabricImage)) return;
-    state.filterState.set(image,{ brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false });
+    state.filterState.set(image,{ brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false,invert:false,sharpen:false });
     image.filters=[];image.applyFilters();canvas.requestRenderAll();
     syncFilterControls(image);snapshotLabel("Filters reset");
   }
@@ -1649,6 +1651,8 @@ window.Studio = (() => {
     });
     $("filterGrayscaleBtn").onclick=()=>toggleImageFilter("grayscale");
     $("filterSepiaBtn").onclick=()=>toggleImageFilter("sepia");
+    $("filterInvertBtn").onclick=()=>toggleImageFilter("invert");
+    $("filterSharpenBtn").onclick=()=>toggleImageFilter("sharpen");
     $("filterResetBtn").onclick=resetImageFilters;
 
     window.addEventListener("resize",fitToViewport);
