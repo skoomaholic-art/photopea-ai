@@ -23,7 +23,7 @@ jobs:
           node-version: 24
 
       - name: Static smoke
-        run: node scripts/static-smoke.mjs
+        run: npm run smoke
 
       - name: Install Playwright
         run: npm install --no-package-lock
