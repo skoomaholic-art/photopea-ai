@@ -490,6 +490,25 @@ window.Studio = (() => {
     updateContextTransform();
   }
 
+  async function setBackgroundFromUrl(src,name="Background",asset=null) {
+    const image = await F.FabricImage.fromURL(src,{ crossOrigin:"anonymous" });
+    const scale = Math.max(state.width / image.width, state.height / image.height);
+    image.set({
+      left:state.width/2,top:state.height/2,
+      originX:"center",originY:"center",
+      scaleX:scale,scaleY:scale,
+      selectable:false,evented:false,
+      lockMovementX:true,lockMovementY:true,lockScalingX:true,lockScalingY:true,lockRotation:true
+    });
+    assignObjectMetadata(image,name,{assetId:asset?.id,source:asset?.source||"media",kind:"background"});
+    canvas.add(image);
+    canvas.sendObjectToBack(image);
+    canvas.requestRenderAll();
+    snapshotLabel("Установлен background");
+    renderLayers();
+    return image;
+  }
+
   async function addImageFromUrl(src,name="Image",asset=null,placement=null) {
     const image = await F.FabricImage.fromURL(src,{ crossOrigin:"anonymous" });
     let scale = 1;
@@ -1325,6 +1344,23 @@ window.Studio = (() => {
       event.preventDefault();
       const assetId=event.dataTransfer.getData("application/x-skooma-asset");
       if(assetId){const asset=APP.getAsset(assetId);if(asset)await addImageFromUrl(asset.src,asset.name,asset);return}
+      const mediaArt=event.dataTransfer.getData("application/x-skooma-media-art");
+      if(mediaArt){
+        try{
+          const art=JSON.parse(mediaArt);
+          let src=art.url;
+          try{
+            const response=await fetch(art.url);
+            if(response.ok){
+              const blob=await response.blob();
+              src=await fileToDataUrl(new File([blob],"media-art",{type:blob.type||"image/png"}));
+            }
+          }catch{}
+          const asset=await APP.addAsset({name:(art.title||"Media")+" · "+(art.kind||"image"),src,source:art.source||"media",kind:art.kind||"image",meta:art.meta||{}});
+          await addImageFromUrl(asset.src,asset.name,asset);
+        }catch(error){console.error(error)}
+        return;
+      }
       const file=event.dataTransfer.files?.[0];if(file)await importFile(file);
     });
 
@@ -1395,7 +1431,7 @@ window.Studio = (() => {
   setTimeout(fitToViewport,50);
 
   return {
-    canvas,fitToViewport,setTool,addImageFromUrl,importFile,fileToDataUrl,newDocument,saveNow,
+    canvas,fitToViewport,setTool,addImageFromUrl,setBackgroundFromUrl,importFile,fileToDataUrl,newDocument,saveNow,
     exportImage,exportProjectJson,importProjectJson,undo,redo
   };
 })();
