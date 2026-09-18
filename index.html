@@ -22,6 +22,8 @@
       <button class="menu-button" id="projectExportBtn">Проект JSON</button>
       <button class="menu-button" id="recentProjectsBtn">Недавние</button>
       <button class="menu-button" id="saveProjectBtn">Сохранить</button>
+      <button class="menu-button" id="exportProjectBtn">Project JSON ↓</button>
+      <button class="menu-button" id="importProjectBtn">Project JSON ↑</button>
     </nav>
 
     <div class="header-center">
@@ -93,6 +95,47 @@
           <option value="right">Right</option>
         </select>
       </label>
+    </div>
+
+    <div id="contextSelection" class="context-row hidden">
+      <span class="context-title">Selection</span>
+      <button id="selectionDeleteBtn" class="toolbar-button">Delete pixels</button>
+      <button id="selectionMaskBtn" class="toolbar-button">Mask</button>
+      <button id="selectionInvertBtn" class="toolbar-button">Invert</button>
+      <button id="selectionCropBtn" class="toolbar-button">Crop document</button>
+      <button id="selectionClearBtn" class="toolbar-button">Clear</button>
+    </div>
+
+    <div id="contextWand" class="context-row hidden">
+      <span class="context-title">Magic Wand</span>
+      <label>Tolerance <input id="wandTolerance" class="compact-number" type="number" min="0" max="100" value="18"></label>
+      <label><input id="wandContiguous" type="checkbox" checked> Contiguous</label>
+      <label>Feather <input id="wandFeather" class="compact-number" type="number" min="0" max="20" value="1"></label>
+      <button id="selectionDeleteWandBtn" class="toolbar-button">Delete pixels</button>
+      <button id="selectionMaskWandBtn" class="toolbar-button">Mask</button>
+      <button id="selectionClearWandBtn" class="toolbar-button">Clear</button>
+    </div>
+
+    <div id="contextCrop" class="context-row hidden">
+      <span class="context-title">Crop</span>
+      <label>Ratio
+        <select id="cropRatio" class="compact-select">
+          <option value="">Free</option>
+          <option value="1:1">1:1</option>
+          <option value="16:9">16:9</option>
+          <option value="9:16">9:16</option>
+          <option value="4:3">4:3</option>
+          <option value="3:4">3:4</option>
+        </select>
+      </label>
+      <button id="cropApplyBtn" class="toolbar-button">Apply</button>
+      <button id="cropCancelBtn" class="toolbar-button">Cancel</button>
+    </div>
+
+    <div id="contextNode" class="context-row hidden">
+      <span class="context-title">Vector Nodes</span>
+      <span class="muted">Выберите SVG/path. Перетаскивайте узлы на холсте.</span>
+      <button id="nodeExitBtn" class="toolbar-button">Exit nodes</button>
     </div>
 
     <div id="contextMove" class="context-row hidden">
@@ -236,6 +279,16 @@
       </section>
 
       <section class="drawer-panel hidden" id="assetsDrawer">
+        <div class="asset-filter-row" id="assetFilterRow">
+          <button class="asset-filter active" data-filter="all">All</button>
+          <button class="asset-filter" data-filter="upload">Uploads</button>
+          <button class="asset-filter" data-filter="generated">Generated</button>
+          <button class="asset-filter" data-filter="poster">Posters</button>
+          <button class="asset-filter" data-filter="backdrop">Backdrops</button>
+          <button class="asset-filter" data-filter="logo">Logos</button>
+          <button class="asset-filter" data-filter="media">Media</button>
+        </div>
+        <div class="field"><input id="assetSearch" placeholder="Search assets"></div>
         <div class="asset-toolbar">
           <button class="secondary-button" id="importAssetBtn">Импорт</button>
           <button class="secondary-button" id="clearAssetsBtn">Очистить</button>
@@ -402,6 +455,7 @@
 <input id="fileInput" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,image/*" hidden>
 <input id="assetInput" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,image/*" multiple hidden>
 <input id="projectInput" type="file" accept=".json,application/json" hidden>
+<input id="projectInput" type="file" accept=".json,application/json" hidden>
 
 <div class="modal-backdrop hidden" id="newDocModal">
   <div class="modal-card">
@@ -435,6 +489,8 @@
 </div>
 
 <script src="storage.js"></script>
+<script src="raster-tools.js"></script>
+<script src="selection-tools.js"></script>
 <script src="app.js"></script>
 <script src="studio.js"></script>
 <script src="media.js"></script>
