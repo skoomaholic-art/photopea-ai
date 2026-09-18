@@ -1,6 +1,6 @@
 window.SkoomaStore = (() => {
   const DB_NAME = "skooma-multitool";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   let dbPromise;
 
   function openDb() {
@@ -15,6 +15,10 @@ window.SkoomaStore = (() => {
         if (!db.objectStoreNames.contains("assets")) {
           const assets = db.createObjectStore("assets", { keyPath: "id" });
           assets.createIndex("createdAt", "createdAt");
+        }
+        if (!db.objectStoreNames.contains("cache")) {
+          const cache = db.createObjectStore("cache", { keyPath: "key" });
+          cache.createIndex("expiresAt", "expiresAt");
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -83,6 +87,48 @@ window.SkoomaStore = (() => {
     return tx("assets", "readwrite", store => store.clear());
   }
 
+  async function getCache(key) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("cache", "readonly").objectStore("cache").get(key);
+      req.onsuccess = () => {
+        const item = req.result || null;
+        if (!item || (item.expiresAt && item.expiresAt < Date.now())) {
+          resolve(null);
+          return;
+        }
+        resolve(item.value);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function setCache(key, value, ttlMs = 15 * 60 * 1000) {
+    return tx("cache", "readwrite", store => store.put({
+      key,
+      value,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + ttlMs
+    }));
+  }
+
+  async function clearExpiredCache() {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction("cache", "readwrite");
+      const store = transaction.objectStore("cache");
+      const req = store.openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return;
+        if (cursor.value?.expiresAt && cursor.value.expiresAt < Date.now()) cursor.delete();
+        cursor.continue();
+      };
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
+  }
+
   async function listAssets() {
     const db = await openDb();
     return new Promise((resolve, reject) => {
@@ -96,5 +142,9 @@ window.SkoomaStore = (() => {
     });
   }
 
-  return { saveProject, getProject, listProjects, deleteProject, saveAsset, deleteAsset, clearAssets, listAssets };
+  return {
+    saveProject, getProject, listProjects, deleteProject,
+    saveAsset, deleteAsset, clearAssets, listAssets,
+    getCache, setCache, clearExpiredCache
+  };
 })();
