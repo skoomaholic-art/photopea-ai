@@ -49,7 +49,13 @@ requireAll("editor features", studio, [
   "function generateAi",
   "function exportProjectJson",
   "function importProjectJson",
-  "function enterNodeEdit"
+  "function enterNodeEdit",
+  "function pixelSelectionToLayer",
+  "function applyPixelClip",
+  "function groupSelected",
+  "function mergeSelected",
+  "function flattenCanvas",
+  "function readFilterState"
 ]);
 
 requireAll("AI models", html, [
@@ -81,7 +87,12 @@ requireAll("storage", storage, [
 requireAll("asset browser", html, [
   'data-kind="recent"',
   'data-kind="media"',
-  'id="assetSearch"'
+  'id="assetSearch"',
+  'id="selectionTargetMode"',
+  'id="selectionToLayerBtn"',
+  'id="selectionDeletePixelsBtn"',
+  'id="cropWidth"',
+  'id="cropHeight"'
 ]);
 
 console.log("Feature contract passed.");
