@@ -2373,7 +2373,12 @@ window.Studio = (() => {
       if(mod&&event.key.toLowerCase()==="d"){event.preventDefault();duplicateActive();return}
       if(mod&&event.key.toLowerCase()==="s"){event.preventDefault();saveNow();return}
       if(!typing&&event.code==="Space"&&!event.repeat){event.preventDefault();state.previousTool=state.tool;setTool("hand");return}
-      if(!typing&&event.key==="Delete"){event.preventDefault();deleteActive();return}
+      if(!typing&&event.key==="Delete"){
+        event.preventDefault();
+        if(state.pixelSelection&&state.pixelSelectionTarget){applyPixelClip(true)}
+        else deleteActive();
+        return
+      }
       if(event.key==="Escape"){clearToolHelpers();setTool("move");return}
       if(event.key==="Enter"&&state.tool==="crop"){applyCrop();return}
       if(event.key==="Enter"&&state.tool==="pen"){finishPen(false);return}
