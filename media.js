@@ -146,15 +146,17 @@ window.Media = (() => {
         }
         const endpoint=type==="movie"?"movie":"tv";
         const base="https://api.themoviedb.org/3/"+endpoint+"/"+item.id;
-        const [detailsR,imagesR,creditsR]=await Promise.all([
+        const [detailsR,imagesR,creditsR,externalR]=await Promise.all([
           fetch(base+"?language=ru-RU",{headers:tmdbHeaders()}),
           fetch(base+"/images?include_image_language=ru,en,null",{headers:tmdbHeaders()}),
-          fetch(base+"/credits?language=ru-RU",{headers:tmdbHeaders()})
+          fetch(base+"/credits?language=ru-RU",{headers:tmdbHeaders()}),
+          fetch(base+"/external_ids",{headers:tmdbHeaders()})
         ]);
         if(!detailsR.ok)throw new Error("TMDB details HTTP "+detailsR.status);
         const details=await detailsR.json();
         const images=imagesR.ok?await imagesR.json():{};
         const credits=creditsR.ok?await creditsR.json():{};
+        const external=externalR.ok?await externalR.json():{};
         const artwork=[];
         (images.posters||[]).slice(0,14).forEach(image=>artwork.push({
           url:"https://image.tmdb.org/t/p/w780"+image.file_path,kind:"poster",source:"TMDB",
@@ -169,19 +171,29 @@ window.Media = (() => {
           meta:{width:image.width,height:image.height,language:image.iso_639_1}
         }));
 
-        if(APP.cfg.fanart&&endpoint==="movie"){
+        if(APP.cfg.fanart){
           try{
-            const fanR=await fetch("https://webservice.fanart.tv/v3.2/movies/"+item.id+"?api_key="+encodeURIComponent(APP.cfg.fanart));
-            if(fanR.ok){
-              const fan=await fanR.json();
-              Object.entries(fan).forEach(([kind,list])=>{
-                if(!Array.isArray(list))return;
-                list.slice(0,6).forEach(image=>{
-                  if(!image?.url)return;
-                  const mapped=/logo/i.test(kind)?"logo":/background|fanart/i.test(kind)?"backdrop":/poster/i.test(kind)?"poster":kind;
-                  artwork.push({url:image.url,kind:mapped,source:"fanart.tv"});
+            const fanUrl=endpoint==="movie"
+              ?"https://webservice.fanart.tv/v3.2/movies/"+item.id+"?api_key="+encodeURIComponent(APP.cfg.fanart)
+              :external.tvdb_id
+                ?"https://webservice.fanart.tv/v3.2/tv/"+external.tvdb_id+"?api_key="+encodeURIComponent(APP.cfg.fanart)
+                :null;
+            if(fanUrl){
+              const fanR=await fetch(fanUrl);
+              if(fanR.ok){
+                const fan=await fanR.json();
+                Object.entries(fan).forEach(([kind,list])=>{
+                  if(!Array.isArray(list))return;
+                  list.slice(0,6).forEach(image=>{
+                    if(!image?.url)return;
+                    const mapped=/logo/i.test(kind)?"logo":/background|fanart/i.test(kind)?"backdrop":/poster/i.test(kind)?"poster":/banner/i.test(kind)?"banner":kind;
+                    artwork.push({
+                      url:image.url,kind:mapped,source:"fanart.tv",
+                      meta:{width:image.width,height:image.height,language:image.lang}
+                    });
+                  });
                 });
-              });
+              }
             }
           }catch{}
         }
@@ -198,7 +210,8 @@ window.Media = (() => {
             Director:directors.join(", "),
             Cast:cast.join(", "),
             "TMDB ID":String(details.id||item.id),
-            IMDb:details.imdb_id||""
+            IMDb:external.imdb_id||details.imdb_id||"",
+            TVDB:external.tvdb_id||""
           },
           artwork
         };
