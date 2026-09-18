@@ -340,3 +340,5 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 
 .asset-meta{font-size:8px;color:#6f8094;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .asset-search-field{margin:0 0 9px}
+
+.active-filter{background:rgba(111,125,255,.2)!important;border-color:rgba(111,125,255,.65)!important;color:#fff!important}
