@@ -54,7 +54,8 @@ window.Studio = (() => {
     wandWorkerSeq: 0,
     wandWorkerPending: new Map(),
     nodeTarget: null,
-    nodeHandles: []
+    nodeHandles: [],
+    eraserTarget: null
   };
 
   const MAX_HISTORY = 40;
@@ -179,6 +180,13 @@ window.Studio = (() => {
 
   function setBrush(tool) {
     canvas.isDrawingMode = true;
+    if (tool === "eraser") {
+      const active=canvas.getActiveObject();
+      state.eraserTarget=active && !(active instanceof F.ActiveSelection) && !isHelper(active) ? active : null;
+      if(state.eraserTarget) $("selectionStatus").textContent="Eraser: "+objectName(state.eraserTarget);
+    } else {
+      state.eraserTarget=null;
+    }
     const brush = new F.PencilBrush(canvas);
     const configuredSize = Math.max(1, Number($("brushSize").value) || 18);
     const opacity = Math.max(0.05, Number($("brushOpacity").value) || 1);
@@ -460,6 +468,49 @@ window.Studio = (() => {
     state.historyIndex += 1;
     await restoreSnapshot(state.history[state.historyIndex]);
     renderHistory();
+  }
+
+  async function applyEraserStroke(path) {
+    const target=state.eraserTarget;
+    if(!target || !canvas.contains(target)) {
+      path.globalCompositeOperation="destination-out";
+      assignObjectMetadata(path,"Eraser",{kind:"drawing",source:"studio"});
+      snapshotLabel("Ластик");
+      renderLayers();
+      canvas.requestRenderAll();
+      return;
+    }
+
+    canvas.remove(path);
+    const temp=new F.StaticCanvas(null,{
+      width:state.width,height:state.height,backgroundColor:"#ffffff"
+    });
+    const clone=await path.clone(["name","assetId","source","kind"]);
+    clone.set({
+      globalCompositeOperation:"destination-out",
+      stroke:"#000000",
+      fill:null,
+      opacity:1,
+      selectable:false,evented:false
+    });
+    temp.add(clone);
+    temp.renderAll();
+    const maskUrl=temp.toDataURL({format:"png",multiplier:1});
+    temp.dispose();
+
+    const newMask=await F.FabricImage.fromURL(maskUrl);
+    newMask.set({
+      left:0,top:0,originX:"left",originY:"top",
+      absolutePositioned:true,selectable:false,evented:false
+    });
+    target.clipPath=target.clipPath
+      ? F.util.mergeClipPaths(target.clipPath,newMask)
+      : newMask;
+    target.dirty=true;
+    canvas.setActiveObject(target);
+    canvas.requestRenderAll();
+    snapshotLabel("Eraser mask");
+    syncSelectionUi();
   }
 
   function renderHistory() {
@@ -1628,14 +1679,15 @@ window.Studio = (() => {
     });
     canvas.on("object:moving",event=>{if(!isHelper(event.target))snapObject(event.target)});
     canvas.on("after:render",drawGuides);
-    canvas.on("path:created",event=>{
+    canvas.on("path:created",async event=>{
       const path=event.path;if(!path)return;
       if(state.tool==="eraser"){
-        path.globalCompositeOperation="destination-out";
-        path.name="Eraser";
+        await applyEraserStroke(path);
+        return;
       }
-      assignObjectMetadata(path,state.tool==="eraser"?"Eraser":"Brush",{kind:"drawing",source:"studio"});
-      snapshotLabel(state.tool==="eraser"?"Ластик":"Кисть");renderLayers();canvas.requestRenderAll();
+      assignObjectMetadata(path,state.tool==="pencil"?"Pencil":"Brush",{kind:"drawing",source:"studio"});
+      snapshotLabel(state.tool==="pencil"?"Карандаш":"Кисть");
+      renderLayers();canvas.requestRenderAll();
     });
 
     canvas.on("mouse:down:before",()=>{
