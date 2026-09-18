@@ -1,205 +1,297 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Skooma Multitool</title>
-<link rel="stylesheet" href="styles.css">
-<script src="https://js.puter.com/v2/"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0b0f14">
+  <title>Skooma Multitool</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://js.puter.com/v2/"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
 </head>
 <body>
-<div class="app">
-<header>
-  <div class="brand"><span class="dot"></span>Skooma Multitool</div>
-  <div class="top">
-    <span id="puterState" class="chip">Puter: проверка...</span>
-    <button id="puterLoginBtn" class="btn ghost">Войти Puter</button>
-    <button id="settingsBtn" class="btn ghost">Настройки</button>
-  </div>
-</header>
+<div class="app-shell">
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <span>Skooma Multitool</span>
+    </div>
 
-<nav class="tabs">
-  <button class="tab active" data-view="studioView">Studio</button>
-  <button class="tab" data-view="photopeaView">Photopea</button>
-  <button class="tab" data-view="vectorpeaView">Vectorpea</button>
-  <button class="tab" data-view="jampeaView">Jampea</button>
-  <button class="tab" data-view="mediaView">Media Finder</button>
-  <button class="tab" data-view="perchanceView">Perchance</button>
-</nav>
+    <nav class="menu-strip" aria-label="Главное меню">
+      <button class="menu-button" id="newDocBtn">Файл</button>
+      <button class="menu-button" id="openImageBtn">Открыть</button>
+      <button class="menu-button" id="saveProjectBtn">Сохранить</button>
+    </nav>
 
-<section id="studioView" class="view active">
-<div class="studio">
-  <aside class="side">
-    <div class="card">
-      <h2>AI генерация</h2>
-      <div class="field"><label>Промпт</label><textarea id="prompt" placeholder="Опиши изображение"></textarea></div>
-      <div class="field">
-        <label>Модель</label>
-        <select id="model">
-          <option value="gpt-image-1-mini">GPT Image 1 Mini</option>
-          <option value="grok-imagine-image">Grok Imagine</option>
+    <div class="header-center">
+      <label class="editor-switch">
+        <span>Редактор</span>
+        <select id="editorSelect">
+          <option value="skooma">Skooma Studio</option>
+          <option value="photopea">Photopea</option>
+          <option value="vectorpea">Vectorpea</option>
+          <option value="jampea">Jampea</option>
         </select>
-      </div>
-      <div class="row">
-        <div class="field"><label>Формат</label><select id="ratio"><option>1:1</option><option selected>16:9</option><option>9:16</option><option>4:3</option><option>3:4</option></select></div>
-        <div class="field"><label>Качество</label><select id="quality"><option>low</option><option>medium</option><option selected>high</option></select></div>
-      </div>
-      <label class="hint"><input id="testMode" type="checkbox" style="width:auto"> тестовый режим Puter</label>
-      <button id="generateBtn" class="btn primary" style="width:100%;margin-top:10px">Сгенерировать и добавить как слой</button>
-      <div id="studioStatus" class="status">Готов.</div>
+      </label>
     </div>
 
-    <div class="card">
-      <h2>AI результат</h2>
-      <div id="previewBox" class="preview"><div class="empty">Здесь появится изображение</div></div>
-      <div class="stack" style="margin-top:9px">
-        <button id="addGeneratedBtn" class="btn" disabled>Добавить ещё раз как слой</button>
-        <button id="downloadBtn" class="btn" disabled>Скачать результат</button>
-      </div>
+    <div class="header-actions">
+      <span class="status-chip" id="autosaveState">Autosave</span>
+      <span class="status-chip" id="puterState">Puter</span>
+      <button class="icon-text-button" id="puterLoginBtn">Войти Puter</button>
+      <button class="icon-button" id="settingsBtn" title="Настройки">⚙</button>
+    </div>
+  </header>
+
+  <section class="context-toolbar" id="contextToolbar">
+    <div id="contextDefault" class="context-row">
+      <span class="context-title">Skooma Studio</span>
+      <span class="muted">Выберите инструмент слева. Параметры появятся здесь.</span>
     </div>
 
-    <div class="card">
-      <h2>Импорт</h2>
-      <div class="field"><label>Изображение</label><input id="reference" type="file" accept="image/*"></div>
-      <button id="addTextBtn" class="btn" style="width:100%">Добавить текст</button>
-      <p class="hint" style="margin:10px 0 0">Studio работает самостоятельно. Photopea, Vectorpea и Jampea открываются отдельными рабочими вкладками внутри мультитула.</p>
-    </div>
-  </aside>
-
-  <main class="main">
-    <div class="toolbar">
-      <div class="toolgroup">
-        <button data-tool="select" class="btn tool-btn primary">Выбор</button>
-        <button data-tool="brush" class="btn tool-btn">Кисть</button>
-        <button id="fitBtn" class="btn">Вписать</button>
-      </div>
-      <div class="toolgroup"><button id="undoBtn" class="btn">Undo</button><button id="redoBtn" class="btn">Redo</button></div>
-      <div class="toolgroup"><button id="exportBtn" class="btn good">Экспорт PNG</button><button id="clearBtn" class="btn danger">Очистить</button></div>
-      <div class="spacer"></div>
-      <span class="hint">Собственный canvas, без зависимости от Photopea</span>
-    </div>
-    <section id="workspace" class="workspace"><canvas id="stage" width="1280" height="720"></canvas></section>
-    <div class="statusbar"><span id="leftStatus">Инструмент: выбор</span><span id="rightStatus">1280 x 720</span></div>
-  </main>
-
-  <section class="inspector">
-    <div class="card">
-      <h2>Документ</h2>
-      <div class="row">
-        <div class="field"><label>Ширина</label><input id="docWidth" type="number" value="1280" min="64"></div>
-        <div class="field"><label>Высота</label><input id="docHeight" type="number" value="720" min="64"></div>
-      </div>
-      <button id="resizeDocBtn" class="btn" style="width:100%">Изменить размер</button>
+    <div id="contextBrush" class="context-row hidden">
+      <span class="context-title">Кисть</span>
+      <label>Размер <input id="brushSize" class="compact-number" type="number" min="1" max="300" value="18"></label>
+      <label>Прозрачность <input id="brushOpacity" type="range" min="0.05" max="1" step="0.05" value="1"></label>
+      <label>Цвет <input id="brushColor" class="color-input" type="color" value="#ffffff"></label>
     </div>
 
-    <div class="card">
-      <h2>Кисть</h2>
-      <div class="field"><label>Цвет</label><input id="brushColor" type="color" value="#ffffff"></div>
-      <div class="field"><label>Размер: <span id="brushSizeValue">14</span> px</label><input id="brushSize" type="range" min="1" max="80" value="14"></div>
+    <div id="contextText" class="context-row hidden">
+      <span class="context-title">Текст</span>
+      <label>Размер <input id="textSize" class="compact-number" type="number" min="8" max="500" value="48"></label>
+      <label>Цвет <input id="textColor" class="color-input" type="color" value="#ffffff"></label>
+      <label>Выравнивание
+        <select id="textAlign" class="compact-select">
+          <option value="left">Left</option>
+          <option value="center">Center</option>
+          <option value="right">Right</option>
+        </select>
+      </label>
     </div>
 
-    <div class="card">
-      <h2>Слои</h2>
-      <div class="stack" style="margin-bottom:9px">
-        <button id="duplicateLayerBtn" class="btn">Дублировать</button>
-        <button id="deleteLayerBtn" class="btn danger">Удалить</button>
-      </div>
-      <div id="layerList" class="layer-list"></div>
+    <div id="contextMove" class="context-row hidden">
+      <span class="context-title">Объект</span>
+      <label>X <input id="ctxX" class="compact-number" type="number"></label>
+      <label>Y <input id="ctxY" class="compact-number" type="number"></label>
+      <label>W <input id="ctxW" class="compact-number" type="number"></label>
+      <label>H <input id="ctxH" class="compact-number" type="number"></label>
+      <label>° <input id="ctxAngle" class="compact-number" type="number"></label>
+      <button id="applyTransformBtn" class="toolbar-button">Применить</button>
     </div>
-
-    <div class="card">
-      <h2>Свойства</h2>
-      <div id="noSelection" class="hint">Выбери слой.</div>
-      <div id="propertiesPanel" class="hidden">
-        <div class="field"><label>Имя</label><input id="propName"></div>
-        <div class="row"><div class="field"><label>X</label><input id="propX" type="number"></div><div class="field"><label>Y</label><input id="propY" type="number"></div></div>
-        <div class="row"><div class="field"><label>Ширина</label><input id="propWidth" type="number" min="1"></div><div class="field"><label>Высота</label><input id="propHeight" type="number" min="1"></div></div>
-        <div class="field"><label>Прозрачность</label><input id="propOpacity" type="range" min="0" max="1" step="0.01"></div>
-        <div id="textProps" class="hidden">
-          <div class="field"><label>Текст</label><textarea id="propText"></textarea></div>
-          <div class="row"><div class="field"><label>Размер шрифта</label><input id="propFontSize" type="number" min="8"></div><div class="field"><label>Цвет</label><input id="propTextColor" type="color"></div></div>
-        </div>
-        <button id="applyPropsBtn" class="btn primary" style="width:100%">Применить</button>
-      </div>
-    </div>
-
-    <div class="card"><h2>История</h2><div id="historyList" class="history-list"></div></div>
   </section>
-</div>
-</section>
 
-<section id="photopeaView" class="view">
-<div class="external">
-  <div class="external-bar"><strong>Photopea</strong><span class="hint">растровый редактор</span><div class="spacer"></div><button class="btn ghost ext-open" data-url="https://www.photopea.com/">Открыть отдельно</button></div>
-  <iframe data-src="https://www.photopea.com/" title="Photopea"></iframe>
-</div>
-</section>
+  <div class="workbench">
+    <aside class="tool-rail" aria-label="Инструменты">
+      <button class="tool-button active" data-tool="move" title="Move (V)"><span>↖</span><small>V</small></button>
+      <button class="tool-button" data-tool="brush" title="Brush (B)"><span>🖌</span><small>B</small></button>
+      <button class="tool-button" data-tool="eraser" title="Eraser (E)"><span>⌫</span><small>E</small></button>
+      <button class="tool-button" data-tool="text" title="Text (T)"><span>T</span><small>T</small></button>
+      <button class="tool-button" data-tool="rect" title="Rectangle (R)"><span>▭</span><small>R</small></button>
+      <button class="tool-button" data-tool="ellipse" title="Ellipse (O)"><span>○</span><small>O</small></button>
+      <button class="tool-button" data-tool="hand" title="Hand (H)"><span>✋</span><small>H</small></button>
+      <button class="tool-button" data-tool="zoom" title="Zoom (Z)"><span>⌕</span><small>Z</small></button>
 
-<section id="vectorpeaView" class="view">
-<div class="external">
-  <div class="external-bar"><strong>Vectorpea</strong><span class="hint">векторный редактор</span><div class="spacer"></div><button class="btn ghost ext-open" data-url="https://www.vectorpea.com/">Открыть отдельно</button></div>
-  <iframe data-src="https://www.vectorpea.com/" title="Vectorpea"></iframe>
-</div>
-</section>
+      <div class="rail-divider"></div>
 
-<section id="jampeaView" class="view">
-<div class="external">
-  <div class="external-bar"><strong>Jampea</strong><span class="hint">MIDI и музыкальный редактор</span><div class="spacer"></div><button class="btn ghost ext-open" data-url="https://jampea.com/">Открыть отдельно</button></div>
-  <iframe data-src="https://jampea.com/" title="Jampea"></iframe>
-</div>
-</section>
+      <button class="tool-button accent-tool" data-panel="ai" title="AI генерация"><span>✦</span><small>AI</small></button>
+      <button class="tool-button accent-tool" data-panel="media" title="Media Finder"><span>🎬</span><small>Media</small></button>
+      <button class="tool-button accent-tool" data-panel="assets" title="Assets"><span>▦</span><small>Assets</small></button>
+    </aside>
 
-<section id="perchanceView" class="view">
-<div class="external">
-  <div class="external-bar"><strong>Perchance</strong><span class="hint">AI text-to-image plugin</span><div class="spacer"></div><button class="btn ghost ext-open" data-url="https://perchance.org/text-to-image-plugin">Открыть отдельно</button></div>
-  <iframe data-src="https://perchance.org/text-to-image-plugin" title="Perchance"></iframe>
-</div>
-</section>
+    <aside class="tool-drawer collapsed" id="toolDrawer">
+      <div class="drawer-head">
+        <div>
+          <strong id="drawerTitle">Инструменты</strong>
+          <div class="muted" id="drawerSubtitle">AI, Media и Assets открываются здесь</div>
+        </div>
+        <button class="icon-button" id="closeDrawerBtn" title="Закрыть">×</button>
+      </div>
 
-<section id="mediaView" class="view">
-<div class="media">
-  <aside class="media-side">
-    <div class="card">
-      <h2>Поиск фильмов</h2>
-      <div class="field"><label>Название</label><input id="mediaQuery" placeholder="Например: The Godfather"></div>
-      <div class="row"><button id="tmdbSearchBtn" class="btn primary">TMDB</button><button id="kinoriumSearchBtn" class="btn">Kinorium</button></div>
-      <div id="mediaStatus" class="status">Настрой API ключи через кнопку Настройки.</div>
+      <section class="drawer-panel hidden" id="aiDrawer">
+        <div class="field">
+          <label for="aiPrompt">Промпт</label>
+          <textarea id="aiPrompt" rows="6" placeholder="Опишите изображение"></textarea>
+        </div>
+        <div class="field">
+          <label for="aiProvider">Провайдер</label>
+          <select id="aiProvider">
+            <option value="puter">Puter</option>
+            <option value="perchance">Perchance (external)</option>
+          </select>
+        </div>
+        <div id="puterAiFields">
+          <div class="field">
+            <label for="aiModel">Модель</label>
+            <select id="aiModel">
+              <option value="gpt-image-1-mini">GPT Image 1 Mini</option>
+              <option value="grok-imagine-image">Grok Imagine</option>
+            </select>
+          </div>
+          <div class="two-col">
+            <div class="field">
+              <label for="aiRatio">Формат</label>
+              <select id="aiRatio">
+                <option value="1:1">1:1</option>
+                <option value="16:9" selected>16:9</option>
+                <option value="9:16">9:16</option>
+                <option value="4:3">4:3</option>
+                <option value="3:4">3:4</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="aiQuality">Качество</label>
+              <select id="aiQuality">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high" selected>High</option>
+              </select>
+            </div>
+          </div>
+          <label class="checkbox-line"><input id="aiTestMode" type="checkbox"> Тестовый режим Puter</label>
+          <button class="primary-button full" id="generateAiBtn">Сгенерировать</button>
+          <div class="drawer-status" id="aiStatus">Готов.</div>
+        </div>
+        <div id="perchanceFields" class="hidden">
+          <div class="native-fallback compact-fallback">
+            <strong>Perchance работает как внешний AI provider</strong>
+            <p>Сайт блокирует обычное встраивание. Не показываем сломанный iframe.</p>
+            <button class="secondary-button full" id="openPerchanceBtn">Открыть Perchance</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="drawer-panel hidden" id="mediaDrawer">
+        <div class="search-row">
+          <input id="mediaQuery" placeholder="Фильм или сериал">
+          <button class="primary-button" id="mediaSearchBtn">Найти</button>
+        </div>
+        <div class="provider-line" id="providerLine">
+          <span class="provider-chip active">TVmaze</span>
+          <span class="provider-chip" id="omdbProviderChip">OMDb</span>
+          <span class="provider-chip" id="tmdbProviderChip">TMDB</span>
+        </div>
+        <div class="drawer-status" id="mediaStatus">TVmaze работает без ключа.</div>
+        <div id="mediaResults" class="media-results"></div>
+      </section>
+
+      <section class="drawer-panel hidden" id="assetsDrawer">
+        <div class="asset-toolbar">
+          <button class="secondary-button" id="importAssetBtn">Импорт</button>
+          <button class="secondary-button" id="clearAssetsBtn">Очистить</button>
+        </div>
+        <div id="assetGridDrawer" class="asset-grid"></div>
+      </section>
+    </aside>
+
+    <main class="center-workspace">
+      <div id="skoomaHost" class="editor-host active">
+        <div id="canvasViewport" class="canvas-viewport">
+          <div class="canvas-frame" id="canvasFrame">
+            <canvas id="studioCanvas" width="1280" height="720"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="externalHost" class="editor-host">
+        <iframe id="externalEditorFrame" title="Внешний редактор" allow="clipboard-read; clipboard-write"></iframe>
+        <div id="externalFallback" class="native-fallback hidden">
+          <div class="fallback-icon">↗</div>
+          <h2 id="externalFallbackTitle">Редактор нельзя встроить</h2>
+          <p id="externalFallbackText">Откройте сервис в новой вкладке.</p>
+          <button id="externalOpenBtn" class="primary-button">Открыть отдельно</button>
+        </div>
+      </div>
+    </main>
+
+    <aside class="inspector">
+      <div class="inspector-tabs">
+        <button class="inspector-tab active" data-inspector="layers">Layers</button>
+        <button class="inspector-tab" data-inspector="properties">Properties</button>
+        <button class="inspector-tab" data-inspector="assets">Assets</button>
+        <button class="inspector-tab" data-inspector="history">History</button>
+      </div>
+
+      <section class="inspector-panel active" id="layersPanel">
+        <div class="panel-actions">
+          <button class="small-button" id="duplicateBtn">Duplicate</button>
+          <button class="small-button danger-button" id="deleteBtn">Delete</button>
+        </div>
+        <div id="layersList" class="layers-list"></div>
+      </section>
+
+      <section class="inspector-panel" id="propertiesPanel">
+        <div id="emptyProperties" class="empty-state">Выберите объект на холсте.</div>
+        <div id="objectProperties" class="hidden">
+          <div class="field"><label>Имя</label><input id="propName"></div>
+          <div class="two-col">
+            <div class="field"><label>X</label><input id="propX" type="number"></div>
+            <div class="field"><label>Y</label><input id="propY" type="number"></div>
+          </div>
+          <div class="two-col">
+            <div class="field"><label>W</label><input id="propWidth" type="number"></div>
+            <div class="field"><label>H</label><input id="propHeight" type="number"></div>
+          </div>
+          <div class="two-col">
+            <div class="field"><label>Rotation</label><input id="propAngle" type="number"></div>
+            <div class="field"><label>Opacity</label><input id="propOpacity" type="number" min="0" max="1" step="0.05"></div>
+          </div>
+          <button class="primary-button full" id="applyPropertiesBtn">Применить</button>
+        </div>
+      </section>
+
+      <section class="inspector-panel" id="assetsPanel">
+        <div id="assetGridInspector" class="asset-grid"></div>
+      </section>
+
+      <section class="inspector-panel" id="historyPanel">
+        <div class="panel-actions">
+          <button class="small-button" id="undoBtn">Undo</button>
+          <button class="small-button" id="redoBtn">Redo</button>
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="status-bar">
+    <span id="toolStatus">Move (V)</span>
+    <span id="selectionStatus">Ничего не выбрано</span>
+    <span id="zoomStatus">100%</span>
+    <span id="docStatus">1280 × 720</span>
+  </footer>
+</div>
+
+<input id="fileInput" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,image/*" hidden>
+<input id="assetInput" type="file" accept=".png,.jpg,.jpeg,.webp,.svg,image/*" multiple hidden>
+
+<div class="modal-backdrop hidden" id="newDocModal">
+  <div class="modal-card">
+    <div class="modal-head"><h2>Новый документ</h2><button class="icon-button modal-close">×</button></div>
+    <div class="two-col">
+      <div class="field"><label>Ширина</label><input id="newDocWidth" type="number" value="1280" min="64"></div>
+      <div class="field"><label>Высота</label><input id="newDocHeight" type="number" value="720" min="64"></div>
     </div>
-
-    <div class="card">
-      <h2>Kinorium URL parser</h2>
-      <div class="field"><label>Ссылка на страницу Kinorium</label><input id="kinoriumUrl" placeholder="https://ru.kinorium.com/123456/"></div>
-      <button id="kinoriumParseBtn" class="btn" style="width:100%">Разобрать страницу</button>
-      <p class="hint" style="margin:10px 0 0">Публичного официального Kinorium API я не нашла. Для открытых страниц используется Jina Reader.</p>
-    </div>
-
-    <div class="card">
-      <h2>Источники</h2>
-      <p class="hint">TMDB: поиск, metadata, posters, backdrops, logos через официальный API.</p>
-      <p class="hint">fanart.tv: artwork через официальный API v3.2 по TMDB ID.</p>
-      <p class="hint">Kinorium: чтение публичной страницы через Jina Reader.</p>
-    </div>
-  </aside>
-
-  <main class="media-content">
-    <div id="mediaResults" class="results"></div>
-    <div id="mediaDetails" style="margin-top:14px"></div>
-  </main>
-</div>
-</section>
-
-<div id="settings" class="settings">
-  <div class="settings-panel">
-    <div class="settings-head"><h2>Настройки мультитула</h2><button id="closeSettings" class="btn ghost">Закрыть</button></div>
-    <div class="note">Ключи сохраняются только в localStorage этого браузера и не коммитятся в GitHub. Позже их лучше вынести в serverless backend.</div>
-    <div class="field" style="margin-top:12px"><label>TMDB API Read Access Token</label><textarea id="tmdbToken" placeholder="Bearer token"></textarea></div>
-    <div class="field"><label>fanart.tv API key</label><input id="fanartKey" placeholder="Project or personal key"></div>
-    <div class="field"><label>Jina Reader API key, опционально</label><input id="jinaKey" placeholder="jina_..."></div>
-    <button id="saveSettings" class="btn good" style="width:100%">Сохранить</button>
-    <p class="hint" style="margin:12px 0 0">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    <label class="checkbox-line"><input id="newDocTransparent" type="checkbox" checked> Прозрачный фон</label>
+    <button id="createDocBtn" class="primary-button full">Создать</button>
   </div>
 </div>
 
+<div class="modal-backdrop hidden" id="settingsModal">
+  <div class="modal-card settings-card">
+    <div class="modal-head"><h2>Настройки</h2><button class="icon-button modal-close">×</button></div>
+    <div class="notice">
+      TVmaze работает без ключа. OMDb и TMDB включаются только если вы добавили ключи.
+      Ключи временно сохраняются локально в браузере и не коммитятся в GitHub.
+    </div>
+    <div class="field"><label>OMDb API key</label><input id="omdbKey" placeholder="xxxxxxxx"></div>
+    <div class="field"><label>TMDB API Read Access Token</label><textarea id="tmdbToken" rows="4"></textarea></div>
+    <div class="field"><label>fanart.tv API key</label><input id="fanartKey"></div>
+    <button id="saveSettingsBtn" class="primary-button full">Сохранить настройки</button>
+    <p class="attribution">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+  </div>
+</div>
+
+<script src="storage.js"></script>
 <script src="app.js"></script>
 <script src="studio.js"></script>
 <script src="media.js"></script>
