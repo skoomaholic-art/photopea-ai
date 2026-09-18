@@ -860,17 +860,90 @@ window.Studio = (() => {
     snapshotLabel("Добавлен прямоугольник"); syncSelectionUi();
   }
 
-  function nodeScenePoint(object,index) {
-    const point=object.points[index];
-    const local=new F.Point(point.x-object.pathOffset.x,point.y-object.pathOffset.y);
+  function vectorNodeSpecs(object) {
+    if (object instanceof F.Polyline) {
+      return object.points.map((point,index)=>({
+        key:"point-"+index,label:"Node "+(index+1),kind:"endpoint",
+        get:()=>({x:point.x,y:point.y}),
+        set:(x,y)=>{object.points[index]={x,y}}
+      }));
+    }
+    if (!(object instanceof F.Path) || !Array.isArray(object.path)) return [];
+
+    const specs=[];
+    let currentX=0,currentY=0,startX=0,startY=0;
+    object.path.forEach((command,commandIndex)=>{
+      const code=String(command[0]||"").toUpperCase();
+      const add=(kind,xIndex,yIndex,xFallback,yFallback,label)=>{
+        specs.push({
+          key:commandIndex+"-"+kind+"-"+String(xIndex)+"-"+String(yIndex),
+          label,kind,commandIndex,xIndex,yIndex,
+          get:()=>({
+            x:xIndex==null?xFallback():Number(command[xIndex]),
+            y:yIndex==null?yFallback():Number(command[yIndex])
+          }),
+          set:(x,y)=>{
+            if(xIndex!=null)command[xIndex]=x;
+            if(yIndex!=null)command[yIndex]=y;
+          }
+        });
+      };
+      if(code==="M"||code==="L"||code==="T"){
+        add("endpoint",1,2,()=>currentX,()=>currentY,"Node "+(commandIndex+1));
+        currentX=Number(command[1]);currentY=Number(command[2]);
+        if(code==="M"){startX=currentX;startY=currentY}
+      }else if(code==="H"){
+        const fixedY=currentY;
+        add("endpoint",1,null,()=>currentX,()=>fixedY,"Node "+(commandIndex+1));
+        currentX=Number(command[1]);
+      }else if(code==="V"){
+        const fixedX=currentX;
+        add("endpoint",null,1,()=>fixedX,()=>currentY,"Node "+(commandIndex+1));
+        currentY=Number(command[1]);
+      }else if(code==="C"){
+        add("control1",1,2,()=>currentX,()=>currentY,"Bezier control 1");
+        add("control2",3,4,()=>currentX,()=>currentY,"Bezier control 2");
+        add("endpoint",5,6,()=>currentX,()=>currentY,"Node "+(commandIndex+1));
+        currentX=Number(command[5]);currentY=Number(command[6]);
+      }else if(code==="S"||code==="Q"){
+        add("control",1,2,()=>currentX,()=>currentY,"Bezier control");
+        add("endpoint",3,4,()=>currentX,()=>currentY,"Node "+(commandIndex+1));
+        currentX=Number(command[3]);currentY=Number(command[4]);
+      }else if(code==="A"){
+        add("endpoint",6,7,()=>currentX,()=>currentY,"Node "+(commandIndex+1));
+        currentX=Number(command[6]);currentY=Number(command[7]);
+      }else if(code==="Z"){
+        currentX=startX;currentY=startY;
+      }
+    });
+    return specs;
+  }
+
+  function vectorNodeScenePoint(object,spec) {
+    const raw=spec.get();
+    const local=new F.Point(raw.x-object.pathOffset.x,raw.y-object.pathOffset.y);
     return F.util.sendPointToPlane(local,object.calcTransformMatrix(),undefined);
+  }
+
+  function recalcVectorBounds(object,absoluteCenter=null) {
+    const center=absoluteCenter||object.getCenterPoint();
+    if(object instanceof F.Path && typeof object._setPath==="function"){
+      object._setPath(object.path);
+    }else if(typeof object.setDimensions==="function"){
+      object.setDimensions();
+    }
+    object.setPositionByOrigin(center,"center","center");
+    object.setCoords();
+    object.dirty=true;
   }
 
   function refreshNodeHandles() {
     const object=state.nodeTarget;
     if(!object)return;
-    state.nodeHandles.forEach((handle,index)=>{
-      const scene=nodeScenePoint(object,index);
+    state.nodeHandles.forEach(handle=>{
+      const spec=handle.nodeSpec;
+      if(!spec)return;
+      const scene=vectorNodeScenePoint(object,spec);
       handle.set({left:scene.x,top:scene.y});
       handle.setCoords();
     });
@@ -881,54 +954,56 @@ window.Studio = (() => {
     if(state.nodeTarget){
       state.nodeTarget.selectable=true;
       state.nodeTarget.evented=true;
+      state.nodeTarget.setCoords();
     }
     state.nodeHandles.forEach(handle=>canvas.remove(handle));
     state.nodeHandles=[];
     state.nodeTarget=null;
+    canvas.requestRenderAll();
   }
 
   function enterNodeEdit() {
     exitNodeEdit();
     const object=canvas.getActiveObject();
-    if(!object || object instanceof F.ActiveSelection || !(object instanceof F.Polyline)){
-      $("selectionStatus").textContent="Node Edit: выберите Polyline / Polygon";
+    const editable=object && !(object instanceof F.ActiveSelection) &&
+      (object instanceof F.Polyline || object instanceof F.Path);
+    if(!editable){
+      $("selectionStatus").textContent="Node Edit: выберите Polyline / Polygon / Path. SVG group можно Ungroup.";
       return;
     }
+
+    const specs=vectorNodeSpecs(object);
+    if(!specs.length){
+      $("selectionStatus").textContent="Node Edit: в выбранном vector нет редактируемых узлов.";
+      return;
+    }
+
     state.nodeTarget=object;
     object.selectable=false;
     object.evented=false;
     canvas.discardActiveObject();
-    state.nodeHandles=object.points.map((point,index)=>{
-      const scene=nodeScenePoint(object,index);
+
+    state.nodeHandles=specs.map((spec,index)=>{
+      const scene=vectorNodeScenePoint(object,spec);
+      const isControl=spec.kind!=="endpoint";
       const handle=new F.Circle({
-        left:scene.x,top:scene.y,radius:5,originX:"center",originY:"center",
-        fill:"#ffffff",stroke:"#6f7dff",strokeWidth:2,
+        left:scene.x,top:scene.y,radius:isControl?4:5,originX:"center",originY:"center",
+        fill:isControl?"#ffd166":"#ffffff",stroke:"#6f7dff",strokeWidth:2,
         selectable:true,evented:true,hasControls:false,hasBorders:false,
-        excludeFromExport:true,helper:true,name:"Node "+(index+1)
+        excludeFromExport:true,helper:true,name:spec.label
       });
-      handle.nodeIndex=index;
-      let anchorIndex=index>0?index-1:Math.max(0,object.points.length-1);
-      let absoluteAnchor=null;
-      handle.on("mousedown",()=>{
-        const anchor=object.points[anchorIndex];
-        const local=new F.Point(anchor.x-object.pathOffset.x,anchor.y-object.pathOffset.y);
-        absoluteAnchor=F.util.sendPointToPlane(local,object.calcTransformMatrix(),undefined);
-      });
+      handle.nodeSpec=spec;
+      let centerBefore=null;
+      handle.on("mousedown",()=>{centerBefore=object.getCenterPoint()});
       handle.on("moving",()=>{
         const scenePoint=handle.getCenterPoint();
         const local=F.util.sendPointToPlane(scenePoint,undefined,object.calcTransformMatrix());
-        object.points[index]={x:local.x+object.pathOffset.x,y:local.y+object.pathOffset.y};
-        object.setDimensions();
-        if(absoluteAnchor){
-          const anchor=object.points[anchorIndex];
-          const newX=(anchor.x-object.pathOffset.x)/(object.width||1);
-          const newY=(anchor.y-object.pathOffset.y)/(object.height||1);
-          object.setPositionByOrigin(absoluteAnchor,newX+.5,newY+.5);
-        }
-        object.setCoords();
-        refreshNodeHandles();
+        spec.set(local.x+object.pathOffset.x,local.y+object.pathOffset.y);
+        object.dirty=true;
+        canvas.requestRenderAll();
       });
       handle.on("modified",()=>{
+        recalcVectorBounds(object,centerBefore);
         refreshNodeHandles();
         snapshotLabel("Изменён vector node");
       });
@@ -936,7 +1011,7 @@ window.Studio = (() => {
       canvas.bringObjectToFront(handle);
       return handle;
     });
-    $("selectionStatus").textContent="Node Edit: "+object.points.length+" nodes";
+    $("selectionStatus").textContent="Node Edit: "+specs.filter(spec=>spec.kind==="endpoint").length+" nodes";
     canvas.requestRenderAll();
   }
 
