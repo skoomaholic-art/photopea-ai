@@ -47,7 +47,12 @@ window.Studio = (() => {
     penPoints: [],
     penHelper: null,
     aiReference: null,
-    lastAiSrc: null
+    lastAiSrc: null,
+    selectionBase: [],
+    adjustingSelection: false,
+    wandWorker: null,
+    wandWorkerSeq: 0,
+    wandWorkerPending: new Map()
   };
 
   const MAX_HISTORY = 40;
@@ -764,16 +769,19 @@ window.Studio = (() => {
     return inside;
   }
 
-  function applyObjectSelection(objects) {
+  function applyObjectSelection(objects, baseOverride = null) {
     const mode = $("selectionMode").value;
-    const current = canvas.getActiveObjects().filter(object => !isHelper(object));
+    const current = (baseOverride || canvas.getActiveObjects()).filter(object => !isHelper(object));
     let result = objects;
     if (mode === "add") result = [...new Set([...current,...objects])];
     if (mode === "subtract") result = current.filter(object => !objects.includes(object));
+    if (mode === "intersect") result = current.filter(object => objects.includes(object));
+    state.adjustingSelection = true;
     canvas.discardActiveObject();
     if (result.length === 1) canvas.setActiveObject(result[0]);
     else if (result.length > 1) canvas.setActiveObject(new F.ActiveSelection(result,{ canvas }));
     canvas.requestRenderAll();
+    state.adjustingSelection = false;
     syncSelectionUi();
   }
 
@@ -973,9 +981,14 @@ window.Studio = (() => {
   function groupSelected() {
     const active=canvas.getActiveObject();
     if (!(active instanceof F.ActiveSelection)) return;
-    const objects=active.removeAll().filter(object=>!isHelper(object));
+    const matrix=active.calcTransformMatrix();
+    const objects=active.getObjects().filter(object=>!isHelper(object));
+    active.removeAll();
     canvas.discardActiveObject();
-    objects.forEach(object=>canvas.remove(object));
+    objects.forEach(object=>{
+      F.util.sendObjectToPlane(object,matrix,undefined);
+      canvas.remove(object);
+    });
     const group=new F.Group(objects,{ subTargetCheck:true });
     assignObjectMetadata(group,"Group",{ kind:"group",source:"studio" });
     canvas.add(group);canvas.setActiveObject(group);canvas.requestRenderAll();
@@ -985,9 +998,14 @@ window.Studio = (() => {
   function ungroupSelected() {
     const active=canvas.getActiveObject();
     if (!(active instanceof F.Group) || active instanceof F.ActiveSelection) return;
-    const items=active.removeAll();
+    const matrix=active.calcTransformMatrix();
+    const items=active.getObjects();
+    active.removeAll();
     canvas.remove(active);
-    items.forEach(object=>canvas.add(object));
+    items.forEach(object=>{
+      F.util.sendObjectToPlane(object,matrix,undefined);
+      canvas.add(object);
+    });
     const selection=new F.ActiveSelection(items,{ canvas });
     canvas.setActiveObject(selection);canvas.requestRenderAll();
     snapshotLabel("Разгруппированы слои");syncSelectionUi();
@@ -1266,7 +1284,14 @@ window.Studio = (() => {
   }
 
   function bindEvents() {
-    canvas.on("selection:created",syncSelectionUi);
+    canvas.on("selection:created",event=>{
+      if(state.tool==="marquee"&&!state.adjustingSelection&&$("selectionMode").value!=="replace"){
+        const selected=(event.selected||canvas.getActiveObjects()).filter(object=>!isHelper(object));
+        applyObjectSelection(selected,state.selectionBase);
+        return;
+      }
+      syncSelectionUi();
+    });
     canvas.on("selection:updated",syncSelectionUi);
     canvas.on("selection:cleared",syncSelectionUi);
     canvas.on("object:modified",event=>{
@@ -1283,6 +1308,10 @@ window.Studio = (() => {
       }
       assignObjectMetadata(path,state.tool==="eraser"?"Eraser":"Brush",{kind:"drawing",source:"studio"});
       snapshotLabel(state.tool==="eraser"?"Ластик":"Кисть");renderLayers();canvas.requestRenderAll();
+    });
+
+    canvas.on("mouse:down:before",()=>{
+      if(state.tool==="marquee") state.selectionBase=canvas.getActiveObjects().filter(object=>!isHelper(object));
     });
 
     canvas.on("mouse:down",event=>{
