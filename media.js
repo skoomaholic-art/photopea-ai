@@ -387,7 +387,7 @@ window.Media = (() => {
     card.draggable=true;
     card.innerHTML='<img src="'+artwork.url+'" alt=""><div class="asset-info"><div class="asset-name">'+
       APP.escapeHtml(artwork.kind)+'</div><div class="asset-source">'+APP.escapeHtml(artwork.source)+'</div></div>'+
-      '<div class="media-art-actions"><button class="small-button add-art">Add</button><button class="small-button bg-art">BG</button><button class="small-button dl-art">↓</button></div>';
+      '<div class="media-art-actions"><button class="small-button add-art">Add</button><button class="small-button bg-art">BG</button><button class="small-button copy-art">Copy</button><button class="small-button dl-art">↓</button></div>';
     card.title="Double click: add to canvas";
     card.ondblclick=()=>addArtworkToProject(artwork,item.title);
     card.ondragstart=event=>{
@@ -398,6 +398,22 @@ window.Media = (() => {
     };
     card.querySelector(".add-art").onclick=event=>{event.stopPropagation();addArtworkToProject(artwork,item.title)};
     card.querySelector(".bg-art").onclick=event=>{event.stopPropagation();setArtworkBackground(artwork,item.title)};
+    card.querySelector(".copy-art").onclick=async event=>{
+      event.stopPropagation();
+      try{
+        const response=await fetch(artwork.url);
+        const blob=await response.blob();
+        if(navigator.clipboard?.write&&window.ClipboardItem){
+          await navigator.clipboard.write([new ClipboardItem({[blob.type||"image/png"]:blob})]);
+          status("Изображение скопировано.","ok");
+        }else{
+          await navigator.clipboard.writeText(artwork.url);
+          status("Ссылка на изображение скопирована.","ok");
+        }
+      }catch{
+        try{await navigator.clipboard.writeText(artwork.url);status("Ссылка скопирована.","ok")}catch{}
+      }
+    };
     card.querySelector(".dl-art").onclick=event=>{event.stopPropagation();downloadArtwork(artwork,item.title)};
     return card;
   }
