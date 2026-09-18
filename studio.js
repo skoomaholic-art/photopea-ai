@@ -1658,12 +1658,36 @@ window.Studio = (() => {
     ctx.restore();
   }
 
+  function readFilterState(image) {
+    const defaults={ brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false,invert:false,sharpen:false };
+    const saved=state.filterState.get(image);
+    if(saved)return saved;
+    const values={...defaults};
+    for(const filter of image?.filters||[]){
+      const type=String(filter?.type||filter?.constructor?.name||"").toLowerCase();
+      if(type.includes("brightness"))values.brightness=Number(filter.brightness||0);
+      else if(type.includes("contrast"))values.contrast=Number(filter.contrast||0);
+      else if(type.includes("saturation"))values.saturation=Number(filter.saturation||0);
+      else if(type.includes("blur"))values.blur=Number(filter.blur||0);
+      else if(type.includes("grayscale"))values.grayscale=true;
+      else if(type.includes("sepia"))values.sepia=true;
+      else if(type.includes("invert"))values.invert=true;
+      else if(type.includes("convolute"))values.sharpen=true;
+    }
+    state.filterState.set(image,values);
+    return values;
+  }
+
   function syncFilterControls(image) {
-    const saved=state.filterState.get(image) || { brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false,invert:false,sharpen:false };
+    const saved=readFilterState(image);
     $("filterBrightness").value=saved.brightness;
     $("filterContrast").value=saved.contrast;
     $("filterSaturation").value=saved.saturation;
     $("filterBlur").value=saved.blur;
+    ["grayscale","sepia","invert","sharpen"].forEach(type=>{
+      const btn=$("filter"+type.charAt(0).toUpperCase()+type.slice(1)+"Btn");
+      if(btn)btn.classList.toggle("active-filter",!!saved[type]);
+    });
   }
 
   function applyImageFilters(commit=false) {
@@ -1693,7 +1717,7 @@ window.Studio = (() => {
   function toggleImageFilter(type) {
     const image=canvas.getActiveObject();
     if (!(image instanceof F.FabricImage)) return;
-    const values=state.filterState.get(image) || { brightness:0,contrast:0,saturation:0,blur:0,grayscale:false,sepia:false,invert:false,sharpen:false };
+    const values=readFilterState(image);
     values[type]=!values[type];
     state.filterState.set(image,values);
     applyImageFilters(true);
