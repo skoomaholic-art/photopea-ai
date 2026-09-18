@@ -59,7 +59,9 @@
     <div id="contextBrush" class="context-row hidden">
       <span class="context-title" id="brushContextTitle">Кисть</span>
       <label>Размер <input id="brushSize" class="compact-number" type="number" min="1" max="300" value="18"></label>
+      <label>Hardness <input id="brushHardness" type="range" min="0" max="1" step="0.05" value="1"></label>
       <label>Opacity <input id="brushOpacity" type="range" min="0.05" max="1" step="0.05" value="1"></label>
+      <label>Flow <input id="brushFlow" type="range" min="0.05" max="1" step="0.05" value="1"></label>
       <label>Цвет <input id="brushColor" class="color-input" type="color" value="#ffffff"></label>
     </div>
 
@@ -74,7 +76,15 @@
           <option value="monospace">Monospace</option>
         </select>
       </label>
+      <label>Weight
+        <select id="textWeight" class="compact-select">
+          <option value="400">Regular</option>
+          <option value="600">Semibold</option>
+          <option value="700">Bold</option>
+        </select>
+      </label>
       <label>Размер <input id="textSize" class="compact-number" type="number" min="8" max="500" value="48"></label>
+      <label>Line <input id="textLineHeight" class="compact-number" type="number" min="0.5" max="4" step="0.1" value="1.16"></label>
       <label>Цвет <input id="textColor" class="color-input" type="color" value="#ffffff"></label>
       <label>Align
         <select id="textAlign" class="compact-select">
@@ -92,6 +102,7 @@
       <label>W <input id="ctxW" class="compact-number" type="number"></label>
       <label>H <input id="ctxH" class="compact-number" type="number"></label>
       <label>° <input id="ctxAngle" class="compact-number" type="number"></label>
+      <label><input id="ctxLockRatio" type="checkbox" style="width:auto"> Lock ratio</label>
       <button id="applyTransformBtn" class="toolbar-button">Применить</button>
     </div>
 
