@@ -10,6 +10,7 @@ async function mockStatus(page, extra = {}) {
     contentType: "application/json",
     body: JSON.stringify({
       ok: true,
+      apiVersion: "2026-09-22-openrouter-v2",
       providers: { xai: true, openai: true },
       background: { carve: true, removal: true },
       posters: { tvmaze: true, tmdb: false },
@@ -303,6 +304,7 @@ test("missing provider keys disable paid API actions clearly", async ({ page }) 
     contentType: "application/json",
     body: JSON.stringify({
       ok: true,
+      apiVersion: "2026-09-22-openrouter-v2",
       providers: { xai: false, openai: false },
       background: { carve: false, removal: false },
       posters: { tvmaze: true, tmdb: false }
