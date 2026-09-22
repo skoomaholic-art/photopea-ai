@@ -18,6 +18,11 @@ async function mockStatus(page, extra = {}) {
   }));
 }
 
+function pngSize(buffer) {
+  if (buffer.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") throw new Error("Not a PNG");
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
 function zipEntries(buffer) {
   const entries = [];
   let offset = 0;
@@ -130,6 +135,12 @@ test("train editor constrains sticker and exports exact 4 folders / 24 PNG", asy
   await page.waitForFunction(() => !!window.TrainEditor);
 
   await page.locator("#trainAddTextBtn").click();
+  const withText = await page.evaluate(() => window.TrainEditor.inspect().objectCount);
+  await page.locator("#trainUndoBtn").click();
+  await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().objectCount)).toBe(withText - 1);
+  await page.locator("#trainRedoBtn").click();
+  await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().objectCount)).toBe(withText);
+
   await page.locator("#stickerSelect").selectOption({ label: "Премьера" });
   const inspect = await page.evaluate(() => window.TrainEditor.inspect());
   expect(inspect.objectCount).toBeGreaterThanOrEqual(2);
@@ -157,7 +168,28 @@ test("train editor constrains sticker and exports exact 4 folders / 24 PNG", asy
   for (const folder of folders) for (let part = 1; part <= 6; part++) expected.push(`${folder}/part_${part}.png`);
   expect(entries.map(x => x.name)).toEqual(expected);
   expect(entries).toHaveLength(24);
-  for (const entry of entries) expect(entry.data.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  const dims = {
+    "1 - 164x122": [164, 122],
+    "2 - 246x183": [246, 183],
+    "3 - 328x244": [328, 244],
+    "4 - 492x366": [492, 366]
+  };
+  for (const entry of entries) {
+    expect(entry.data.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    const folder = entry.name.split("/")[0];
+    expect(pngSize(entry.data)).toEqual({ width: dims[folder][0], height: dims[folder][1] });
+  }
+
+  await page.locator("#trainSizeSelect").selectOption("246x183");
+  const selectedPromise = page.waitForEvent("download");
+  await page.locator("#trainDownloadSelectedBtn").click();
+  const selectedDownload = await selectedPromise;
+  expect(selectedDownload.suggestedFilename()).toBe("Паровозик-246x183.zip");
+  const selectedEntries = zipEntries(await readFile(await selectedDownload.path()));
+  expect(selectedEntries.map(x => x.name)).toEqual([
+    "part_1.png", "part_2.png", "part_3.png", "part_4.png", "part_5.png", "part_6.png"
+  ]);
+  for (const entry of selectedEntries) expect(pngSize(entry.data)).toEqual({ width: 246, height: 183 });
 });
 
 test("project autosave survives reload for posters and train sticker", async ({ page }) => {
@@ -178,6 +210,51 @@ test("project autosave survives reload for posters and train sticker", async ({ 
   await page.locator('[data-workspace="train"]').click();
   const inspect = await page.evaluate(() => window.TrainEditor.inspect());
   expect(inspect.sticker?.text).toBe("Жаңа маусым");
+});
+
+test("API errors are surfaced without breaking editor state", async ({ page }) => {
+  await mockStatus(page);
+  await page.route("**/api/posters?*", route => route.fulfill({
+    status: 429,
+    contentType: "application/json",
+    body: JSON.stringify({ error: "TVmaze: превышен лимит 20 запросов за 10 секунд.", code: "rate_limit" })
+  }));
+  await page.route("**/api/remove-background", route => route.fulfill({
+    status: 429,
+    contentType: "application/json",
+    body: JSON.stringify({ error: "Carve.Photos: превышен лимит запросов. Повторите позже.", code: "rate_limit" })
+  }));
+  await page.goto("/");
+  await page.locator("#posterSearchInput").fill("Rate limit");
+  await page.locator("#posterSearchBtn").click();
+  await expect(page.locator("#posterSearchStatus")).toContainText("превышен лимит");
+
+  await page.locator("#posterFileInput").setInputFiles({ name: "safe.png", mimeType: "image/png", buffer: PNG });
+  const before = await page.evaluate(() => window.PosterApp.getState().vertical);
+  await page.locator("#removeBackgroundBtn").click();
+  await expect(page.locator("#bgRemoveStatus")).toContainText("превышен лимит");
+  const after = await page.evaluate(() => window.PosterApp.getState().vertical);
+  expect(after.poster).toBe(before.poster);
+  expect(after.posterScale).toBe(before.posterScale);
+  expect(after.posterRotation).toBe(before.posterRotation);
+});
+
+test("missing provider keys disable paid API actions clearly", async ({ page }) => {
+  await page.route("**/api/status", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      ok: true,
+      providers: { xai: false, openai: false },
+      background: { carve: false, removal: false },
+      posters: { tvmaze: true, tmdb: false }
+    })
+  }));
+  await page.goto("/");
+  await expect(page.locator("#generateBtn")).toBeDisabled();
+  await expect(page.locator("#removeBackgroundBtn")).toBeDisabled();
+  await expect(page.locator("#aiStatus")).toContainText("не задан");
+  await expect(page.locator("#bgRemoveStatus")).toContainText("не настроен");
 });
 
 test("Photopea remains a separate workspace", async ({ page }) => {
