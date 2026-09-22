@@ -404,7 +404,11 @@
     } catch (error) {
       setBgStatus(error.message || "Ошибка удаления фона.", "error");
     } finally {
-      updateBgAvailability();
+      const provider = $("bgProviderSelect").value;
+      const ready = provider === "auto"
+        ? Object.values(state.backgroundProviders).some(Boolean)
+        : !!state.backgroundProviders[provider];
+      button.disabled = !ready;
     }
   }
 
