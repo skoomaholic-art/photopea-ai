@@ -676,7 +676,10 @@
           width: sticker.getScaledWidth(),
           height: sticker.getScaledHeight()
         } : null,
-        background: canvas.backgroundColor
+        badges: canvas.getObjects().filter(obj => obj.kind === "badge").map(obj => obj.badgeText),
+        background: canvas.backgroundColor,
+        masterSize: { width: canvas.getWidth(), height: canvas.getHeight() },
+        displayZoom: state.displayZoom
       };
     },
     constants: { MASTER_W, MASTER_H, SEG_W, SEG_H, EXPORT_SIZES }
