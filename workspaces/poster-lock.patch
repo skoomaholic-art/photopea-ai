@@ -1,0 +1,105 @@
+From ea4a68941d70e001976659497318a5430597b1b2 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Tue, 22 Sep 2026 14:05:12 +0400
+Subject: [PATCH] Add poster lock control
+
+---
+ index.html           |  4 ++--
+ poster-app.js        | 25 ++++++++++++++++++-------
+ poster-overrides.css |  6 ++++++
+ 3 files changed, 26 insertions(+), 9 deletions(-)
+
+diff --git a/index.html b/index.html
+index f3e2943..e734e31 100644
+--- a/index.html
++++ b/index.html
+@@ -20,11 +20,11 @@
+       <section><h2>Формат постера</h2><div class="format-grid"><button class="format-card active" data-format="vertical"><span>▯</span><b>Вертикальный</b><small>800 × 1200</small></button><button class="format-card" data-format="horizontal"><span>▭</span><b>Горизонтальный</b><small>1920 × 1080</small></button></div></section>
+       <section><h2>Исходники</h2><label class="upload-card"><span class="upload-icon">↥</span><b>Загрузить постер</b><small>JPG, PNG или WEBP</small><em id="posterFileName">Файл не выбран</em><input id="posterFileInput" type="file" accept="image/png,image/jpeg,image/webp"></label><label class="upload-card"><span class="upload-icon">✦</span><b>Загрузить логотип</b><small>PNG с прозрачным фоном</small><em id="logoFileName">Файл не выбран</em><input id="logoFileInput" type="file" accept="image/png"></label></section>
+       <section><h2>Позиция логотипа</h2><select id="positionSelect"><option value="center">По центру</option><option value="top-left">Сверху слева</option><option value="top-center">Сверху по центру</option><option value="top-right">Сверху справа</option><option value="middle-left">Слева по центру</option><option value="middle-right">Справа по центру</option><option value="bottom-left">Снизу слева</option><option value="bottom-center">Снизу по центру</option><option value="bottom-right">Снизу справа</option></select><div class="control-head"><span>Масштаб логотипа</span><output id="scaleValue">100%</output></div><input id="scaleInput" type="range" min="10" max="300" value="100"><div class="button-row"><button id="centerBtn">Центрировать</button><button id="resetBtn">Сбросить</button></div></section>
+-      <section><h2>Постер</h2><div class="control-head"><span>Масштаб постера</span><output id="posterScaleValue">100%</output></div><input id="posterScaleInput" type="range" min="100" max="180" value="100"><label class="field compact-field"><span>Положение постера</span><select id="posterPositionSelect"><option value="center">По центру</option><option value="top">Сверху</option><option value="bottom">Снизу</option><option value="left">Слева</option><option value="right">Справа</option></select></label><button class="wide-button" id="resetPosterBtn">Сбросить постер</button></section>
++      <section><div class="section-title-row"><h2>Постер</h2><label class="lock-control"><input id="posterLockInput" type="checkbox" checked><span class="lock-icon" aria-hidden="true">🔒</span><span id="posterLockLabel">Заблокирован</span></label></div><div class="control-head"><span>Масштаб постера</span><output id="posterScaleValue">100%</output></div><input id="posterScaleInput" type="range" min="100" max="180" value="100"><label class="field compact-field"><span>Положение постера</span><select id="posterPositionSelect"><option value="center">По центру</option><option value="top">Сверху</option><option value="bottom">Снизу</option><option value="left">Слева</option><option value="right">Справа</option></select></label><button class="wide-button" id="resetPosterBtn">Сбросить постер</button></section>
+     </aside>
+     <section class="center-panel panel"><div class="stage-header"><b>Окно редактирования</b><span id="stageMeta">Вертикальный · 800 × 1200</span></div><div class="stage" id="stage"><div class="empty" id="empty"><span>▧</span><strong>Соберите постер</strong><small>Загрузите фон и логотип слева, затем перетащите логотип по изображению.</small></div><img id="posterImage" class="poster-image" alt="Постер" hidden><img id="logoImage" class="logo-image" alt="Логотип" hidden><button class="remove-logo" id="removeLogoBtn" type="button" aria-label="Удалить логотип" title="Удалить логотип">×</button><div class="stage-hint">Логотип: перетаскивание · колесо меняет размер<br>Постер: перетаскивание · масштаб ниже</div></div></section>
+     <aside class="right-column">
+-      <section class="panel help-panel"><h2>Управление</h2><p>Логотип можно двигать мышью или пальцем. Для точного размера используйте ползунок.</p><div class="shortcut"><span>Двигать логотип</span><kbd>drag</kbd></div><div class="shortcut"><span>Изменить размер</span><kbd>wheel</kbd></div><div class="shortcut"><span>Сбросить позицию</span><kbd>R</kbd></div><div class="status" id="status"><i></i>Готов к работе</div></section>
++      <section class="panel help-panel"><h2>Управление</h2><p>Логотип можно двигать мышью или пальцем. Для точного размера используйте ползунок.</p><div class="shortcut"><span>Двигать логотип</span><kbd>drag</kbd></div><div class="shortcut"><span>Изменить размер</span><kbd>wheel</kbd></div><div class="shortcut"><span>Замок постера</span><kbd>🔒</kbd></div><div class="shortcut"><span>Сбросить позицию</span><kbd>R</kbd></div><div class="status" id="status"><i></i>Готов к работе</div></section>
+       <section class="panel ai-panel"><div class="ai-title"><h2>GROK / GPT</h2><span>AI</span></div><label class="field"><span>Провайдер</span><select id="aiProvider"><option value="grok">Grok Imagine</option><option value="gpt">GPT Image</option></select></label><label class="field"><span>Язык адаптации</span><select id="aiLanguage"><option value="kk">Казахский язык</option><option value="ru">Русский язык</option></select></label><label class="field"><span>Промпт</span><textarea id="aiPrompt" rows="3">Адаптируй логотип на выбранный язык, сохрани стиль, шрифт, композицию и цвета. Не меняй форму логотипа.</textarea></label><div class="ai-actions"><button class="primary" id="generateBtn">Адаптировать логотип</button><label class="file-mini">Загрузить PNG<input id="aiLogoInput" type="file" accept="image/png"></label></div><div class="result-head"><span>Результаты</span><small id="aiStatus">Выберите PNG-логотип</small></div><div class="results" id="results"><div class="result-empty">Здесь появятся варианты адаптированного логотипа.</div></div><div class="ai-bottom"><button id="moveResultBtn" disabled>Переместить на постер</button><button id="downloadResultBtn" disabled>Скачать отдельно</button></div></section>
+     </aside>
+   </main>
+diff --git a/poster-app.js b/poster-app.js
+index 8ecf1fe..cd7853c 100644
+--- a/poster-app.js
++++ b/poster-app.js
+@@ -3,7 +3,7 @@
+   const formats = { vertical: { w: 800, h: 1200, label: "Вертикальный" }, horizontal: { w: 1920, h: 1080, label: "Горизонтальный" } };
+   const positions = { center: [50, 50], "top-left": [18, 18], "top-center": [50, 18], "top-right": [82, 18], "middle-left": [18, 50], "middle-right": [82, 50], "bottom-left": [18, 82], "bottom-center": [50, 82], "bottom-right": [82, 82] };
+   const posterPositions = { center: [50, 50], top: [50, 35], bottom: [50, 65], left: [35, 50], right: [65, 50] };
+-  const state = { format: "vertical", poster: null, logo: null, x: 50, y: 50, scale: 100, posterX: 50, posterY: 50, posterScale: 100, drag: null, grabX: 0, grabY: 0, selectedResult: null };
++  const state = { format: "vertical", poster: null, logo: null, x: 50, y: 50, scale: 100, posterX: 50, posterY: 50, posterScale: 100, posterLocked: true, drag: null, grabX: 0, grabY: 0, selectedResult: null };
+   const stage = $("stage"), posterImage = $("posterImage"), logo = $("logoImage"), removeLogo = $("removeLogoBtn");
+   const setStatus = (text, kind = "") => { $("status").innerHTML = "<i></i>" + text; $("status").className = "status " + kind; };
+   const setAiStatus = (text, kind = "") => { $("aiStatus").textContent = text; $("aiStatus").className = kind; };
+@@ -61,6 +61,16 @@
+     $("posterScaleValue").textContent = state.posterScale + "%";
+   }
+ 
++  function updatePosterLock() {
++    state.posterLocked = $("posterLockInput").checked;
++    $("posterLockLabel").textContent = state.posterLocked ? "Заблокирован" : "Разблокирован";
++    $("posterScaleInput").disabled = state.posterLocked;
++    $("posterPositionSelect").disabled = state.posterLocked;
++    $("resetPosterBtn").disabled = state.posterLocked;
++    $("posterScaleInput").closest("section").classList.toggle("poster-controls-locked", state.posterLocked);
++    if (state.posterLocked) { state.drag = state.drag === "poster" ? null : state.drag; posterImage.classList.remove("dragging"); }
++  }
++
+   function setLogoPosition(name) { const p = positions[name] || positions.center; state.x = p[0]; state.y = p[1]; applyLogo(); }
+   function setPosterPosition(name) { const p = posterPositions[name] || posterPositions.center; state.posterX = p[0]; state.posterY = p[1]; applyPoster(); }
+ 
+@@ -142,9 +152,10 @@
+   $("scaleInput").oninput = e => { state.scale = +e.target.value; applyLogo(); };
+   $("centerBtn").onclick = () => setLogoPosition("center");
+   $("resetBtn").onclick = () => { state.scale = 100; $("scaleInput").value = 100; $("positionSelect").value = "center"; setLogoPosition("center"); };
+-  $("posterScaleInput").oninput = e => { state.posterScale = +e.target.value; applyPoster(); };
+-  $("posterPositionSelect").onchange = e => setPosterPosition(e.target.value);
+-  $("resetPosterBtn").onclick = () => { state.posterScale = 100; state.posterX = 50; state.posterY = 50; $("posterPositionSelect").value = "center"; applyPoster(); };
++  $("posterLockInput").onchange = updatePosterLock;
++  $("posterScaleInput").oninput = e => { if (state.posterLocked) return; state.posterScale = +e.target.value; applyPoster(); };
++  $("posterPositionSelect").onchange = e => { if (!state.posterLocked) setPosterPosition(e.target.value); };
++  $("resetPosterBtn").onclick = () => { if (state.posterLocked) return; state.posterScale = 100; state.posterX = 50; state.posterY = 50; $("posterPositionSelect").value = "center"; applyPoster(); };
+   $("removeLogoBtn").onclick = removeUploadedLogo;
+   $("downloadBtn").onclick = exportPoster;
+   $("generateBtn").onclick = generate;
+@@ -153,12 +164,12 @@
+   $("downloadResultBtn").onclick = () => { if (!state.selectedResult) return; fetch(state.selectedResult).then(r => r.blob()).then(b => downloadBlob(b, "adapted-logo.png")).catch(() => window.open(state.selectedResult, "_blank", "noopener")); };
+ 
+   logo.addEventListener("pointerdown", e => { if (logo.hidden || e.button !== 0) return; const r = logo.getBoundingClientRect(); state.drag = "logo"; state.grabX = e.clientX - (r.left + r.width / 2); state.grabY = e.clientY - (r.top + r.height / 2); logo.classList.add("dragging", "selected"); logo.setPointerCapture(e.pointerId); e.preventDefault(); });
+-  posterImage.addEventListener("pointerdown", e => { if (posterImage.hidden || e.button !== 0) return; const r = posterImage.getBoundingClientRect(); state.drag = "poster"; state.grabX = e.clientX - (r.left + r.width / 2); state.grabY = e.clientY - (r.top + r.height / 2); posterImage.classList.add("dragging"); posterImage.setPointerCapture(e.pointerId); e.preventDefault(); });
++  posterImage.addEventListener("pointerdown", e => { if (state.posterLocked || posterImage.hidden || e.button !== 0) return; const r = posterImage.getBoundingClientRect(); state.drag = "poster"; state.grabX = e.clientX - (r.left + r.width / 2); state.grabY = e.clientY - (r.top + r.height / 2); posterImage.classList.add("dragging"); posterImage.setPointerCapture(e.pointerId); e.preventDefault(); });
+   stage.addEventListener("pointermove", e => { if (!state.drag) return; const r = stage.getBoundingClientRect(); if (state.drag === "logo") { state.x = (e.clientX - state.grabX - r.left) / r.width * 100; state.y = (e.clientY - state.grabY - r.top) / r.height * 100; applyLogo(); } else { state.posterX = (e.clientX - state.grabX - r.left) / r.width * 100; state.posterY = (e.clientY - state.grabY - r.top) / r.height * 100; applyPoster(); } });
+   ["pointerup", "pointercancel"].forEach(type => stage.addEventListener(type, () => { state.drag = null; logo.classList.remove("dragging"); posterImage.classList.remove("dragging"); }));
+   logo.addEventListener("wheel", e => { e.preventDefault(); state.scale = Math.max(10, Math.min(300, state.scale + (e.deltaY < 0 ? 5 : -5))); $("scaleInput").value = state.scale; applyLogo(); }, { passive: false });
+-  posterImage.addEventListener("wheel", e => { e.preventDefault(); state.posterScale = Math.max(100, Math.min(180, state.posterScale + (e.deltaY < 0 ? 5 : -5))); applyPoster(); }, { passive: false });
++  posterImage.addEventListener("wheel", e => { if (state.posterLocked) return; e.preventDefault(); state.posterScale = Math.max(100, Math.min(180, state.posterScale + (e.deltaY < 0 ? 5 : -5))); applyPoster(); }, { passive: false });
+   window.addEventListener("resize", updateRemoveButton);
+   document.addEventListener("keydown", e => { if (e.key.toLowerCase() === "r") setLogoPosition("center"); });
+-  setFormat("vertical"); updateEmpty();
++  setFormat("vertical"); updatePosterLock(); updateEmpty();
+ })();
+diff --git a/poster-overrides.css b/poster-overrides.css
+index 320e381..3dcd398 100644
+--- a/poster-overrides.css
++++ b/poster-overrides.css
+@@ -5,3 +5,9 @@
+ .compact-field{margin-top:12px}
+ .wide-button{width:100%;margin-top:10px;border:1px solid var(--line);border-radius:9px;background:#17251b;color:var(--text);padding:10px;font-weight:700}
+ .wide-button:hover{border-color:var(--green)}
++.section-title-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
++.section-title-row h2{margin:0}
++.lock-control{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10px;cursor:pointer;white-space:nowrap}
++.lock-control input{accent-color:var(--green);margin:0}
++.lock-control:has(input:checked){color:var(--green2)}
++.poster-controls-locked{opacity:.55}
+-- 
+2.51.1
