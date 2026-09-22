@@ -3,10 +3,25 @@
   const formats = { vertical: { w: 800, h: 1200, label: "Вертикальный" }, horizontal: { w: 1920, h: 1080, label: "Горизонтальный" } };
   const positions = { center: [50, 50], "top-left": [18, 18], "top-center": [50, 18], "top-right": [82, 18], "middle-left": [18, 50], "middle-right": [82, 50], "bottom-left": [18, 82], "bottom-center": [50, 82], "bottom-right": [82, 82] };
   const posterPositions = { center: [50, 50], top: [50, 35], bottom: [50, 65], left: [35, 50], right: [65, 50] };
-  const state = { format: "vertical", poster: null, logo: null, x: 50, y: 50, scale: 100, posterX: 50, posterY: 50, posterScale: 100, posterLocked: true, drag: null, grabX: 0, grabY: 0, selectedResult: null };
+  const aiApiBase = (document.querySelector('meta[name="poster-ai-api"]')?.content || "").replace(/\/$/, "");
+  const state = { format: "vertical", poster: null, logo: null, x: 50, y: 50, scale: 100, posterX: 50, posterY: 50, posterScale: 100, posterLocked: true, drag: null, grabX: 0, grabY: 0, selectedResult: null, aiProviders: { xai: false, openai: false } };
   const stage = $("stage"), posterImage = $("posterImage"), logo = $("logoImage"), removeLogo = $("removeLogoBtn");
   const setStatus = (text, kind = "") => { $("status").innerHTML = "<i></i>" + text; $("status").className = "status " + kind; };
   const setAiStatus = (text, kind = "") => { $("aiStatus").textContent = text; $("aiStatus").className = kind; };
+
+  function switchWorkspace(name) {
+    document.querySelectorAll("[data-workspace-panel]").forEach(panel => {
+      const active = panel.dataset.workspacePanel === name;
+      panel.hidden = !active;
+      panel.classList.toggle("active", active);
+    });
+    document.querySelectorAll(".workspace-tab").forEach(button => {
+      const active = button.dataset.workspace === name;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    if (name === "photopea" && $("photopeaFrame").src === "about:blank") $("photopeaFrame").src = $("photopeaFrame").dataset.src;
+  }
 
   function setFormat(name) {
     const f = formats[name] || formats.vertical;
@@ -91,15 +106,18 @@
 
   function removeUploadedLogo() {
     state.logo = null;
+    state.selectedResult = null;
     logo.src = "";
     logo.hidden = true;
     $("logoFileInput").value = "";
+    $("aiLogoInput").value = "";
     $("logoFileName").textContent = "Файл не выбран";
     removeLogo.classList.remove("visible");
+    $("moveResultBtn").disabled = true;
+    $("downloadResultBtn").disabled = true;
     updateEmpty();
   }
 
-  function imageToDataUrl(src) { return fetch(src).then(r => r.blob()).then(blob => new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = reject; fr.readAsDataURL(blob); })).catch(() => src); }
   function downloadBlob(blob, name) { const url = URL.createObjectURL(blob), a = document.createElement("a"); a.href = url; a.download = name; a.style.display = "none"; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000); }
 
   function drawCover(ctx, image, rect, stageRect, canvasWidth, canvasHeight) {
@@ -129,21 +147,62 @@
     poster.src = state.poster; logoImage.src = state.logo;
   }
 
-  function renderResults(items) { const root = $("results"); root.innerHTML = ""; items.forEach((src, i) => { const card = document.createElement("button"); card.className = "result-card" + (i === 0 ? " active" : ""); card.innerHTML = `<img src="${src}" alt="Вариант ${i + 1}">`; card.onclick = () => selectResult(card, src); root.appendChild(card); }); if (items[0]) selectResult(root.firstElementChild, items[0]); }
-  function selectResult(card, src) { document.querySelectorAll(".result-card").forEach(x => x.classList.remove("active")); card.classList.add("active"); state.selectedResult = src; $("moveResultBtn").disabled = false; $("downloadResultBtn").disabled = false; }
-  async function generate() {
-    const source = state.logo || window.aiLogoSrc;
-    if (!source) { setAiStatus("Сначала загрузите PNG-логотип.", "error"); return; }
-    const button = $("generateBtn"), old = button.textContent; button.disabled = true; button.textContent = "Генерирую..."; setAiStatus("Создаю варианты...");
-    const lang = $("aiLanguage").value === "kk" ? "казахский" : "русский", prompt = `${$("aiPrompt").value.trim()} Язык результата: ${lang}. Сделай чистый PNG-логотип с прозрачным фоном.`;
-    try {
-      if (!window.puter?.ai?.txt2img) throw new Error("Puter AI недоступен. Откройте страницу через интернет и войдите в Puter.");
-      const model = $("aiProvider").value === "grok" ? "grok-imagine-image" : "gpt-image-1-mini", out = [];
-      for (let i = 0; i < 3; i++) { const result = await puter.ai.txt2img(prompt + (i ? ` Вариант ${i + 1}, немного другой дизайн адаптации.` : ""), { model, quality: "high", ratio: { w: 1, h: 1 }, input_image: source }); out.push(await imageToDataUrl(result.src)); }
-      renderResults(out); setAiStatus("Готово · выберите вариант", "ok");
-    } catch (error) { setAiStatus("Ошибка: " + (error.message || error), "error"); } finally { button.disabled = false; button.textContent = old; }
+  function renderResults(items) {
+    const root = $("results"); root.innerHTML = "";
+    items.forEach((src, i) => { const card = document.createElement("button"); card.className = "result-card" + (i === 0 ? " active" : ""); const img = document.createElement("img"); img.src = src; img.alt = `Вариант ${i + 1}`; card.appendChild(img); card.onclick = () => selectResult(card, src); root.appendChild(card); });
+    if (items[0]) selectResult(root.firstElementChild, items[0]);
   }
 
+  function selectResult(card, src) { document.querySelectorAll(".result-card").forEach(x => x.classList.remove("active")); card.classList.add("active"); state.selectedResult = src; $("moveResultBtn").disabled = false; $("downloadResultBtn").disabled = false; }
+
+  function updateAiAvailability() {
+    const provider = $("aiProvider").value;
+    const ready = !!state.aiProviders[provider];
+    $("generateBtn").disabled = !ready;
+    if (!ready) setAiStatus(provider === "xai" ? "Ключ xAI не настроен на сервере" : "Ключ OpenAI не настроен на сервере", "error");
+    else if (!state.logo) setAiStatus("AI готов · загрузите PNG-логотип", "ok");
+    else setAiStatus("AI готов к генерации", "ok");
+  }
+
+  async function checkAiServer() {
+    if (!aiApiBase) { $("aiServerBadge").textContent = "не настроен"; $("aiServerBadge").className = "error"; setAiStatus("Не указан адрес AI-сервера", "error"); return; }
+    try {
+      const response = await fetch(`${aiApiBase}/api/status`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      state.aiProviders = { xai: !!data.providers?.xai, openai: !!data.providers?.openai };
+      const count = Object.values(state.aiProviders).filter(Boolean).length;
+      $("aiServerBadge").textContent = count ? `${count}/2 online` : "ключи не заданы";
+      $("aiServerBadge").className = count ? "ok" : "error";
+      updateAiAvailability();
+    } catch (error) {
+      state.aiProviders = { xai: false, openai: false };
+      $("aiServerBadge").textContent = "offline";
+      $("aiServerBadge").className = "error";
+      $("generateBtn").disabled = true;
+      setAiStatus("AI-сервер недоступен. Проверьте Cloudflare Worker.", "error");
+    }
+  }
+
+  async function generate() {
+    const source = state.logo;
+    const provider = $("aiProvider").value;
+    if (!source) { setAiStatus("Сначала загрузите PNG-логотип.", "error"); return; }
+    if (!state.aiProviders[provider]) { updateAiAvailability(); return; }
+    const button = $("generateBtn"), old = button.textContent; button.disabled = true; button.textContent = "Генерирую..."; setAiStatus("Создаю 3 варианта...");
+    const lang = $("aiLanguage").value === "kk" ? "казахский" : "русский";
+    const prompt = `${$("aiPrompt").value.trim()} Язык результата: ${lang}. Сохрани прозрачный фон и верни чистый PNG-логотип без мокапа, рамки и дополнительного фона.`;
+    try {
+      const response = await fetch(`${aiApiBase}/api/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, prompt, image: source, count: 3 }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      if (!Array.isArray(data.images) || !data.images.length) throw new Error("Сервер не вернул изображения.");
+      renderResults(data.images); setAiStatus(`Готово · ${data.images.length} варианта`, "ok");
+    } catch (error) { setAiStatus("Ошибка: " + (error.message || error), "error"); }
+    finally { button.disabled = !state.aiProviders[provider]; button.textContent = old; }
+  }
+
+  document.querySelectorAll(".workspace-tab").forEach(button => button.onclick = () => switchWorkspace(button.dataset.workspace));
   $("openPhotopeaBtn").onclick = () => window.open("https://www.photopea.com/", "_blank", "noopener");
   document.querySelectorAll(".format-card").forEach(b => b.onclick = () => setFormat(b.dataset.format));
   $("posterFileInput").onchange = e => readFile(e.target.files?.[0], posterImage, "poster");
@@ -159,6 +218,7 @@
   $("removeLogoBtn").onclick = removeUploadedLogo;
   $("downloadBtn").onclick = exportPoster;
   $("generateBtn").onclick = generate;
+  $("aiProvider").onchange = updateAiAvailability;
   $("aiLogoInput").onchange = e => { const file = e.target.files?.[0]; if (file) { readFile(file, logo, "logo"); setAiStatus("PNG-логотип загружен", "ok"); } };
   $("moveResultBtn").onclick = () => { if (!state.selectedResult) return; state.logo = state.selectedResult; logo.src = state.selectedResult; logo.hidden = false; $("logoFileName").textContent = "Адаптированный результат"; setLogoPosition("center"); setAiStatus("Вариант перемещён на постер", "ok"); };
   $("downloadResultBtn").onclick = () => { if (!state.selectedResult) return; fetch(state.selectedResult).then(r => r.blob()).then(b => downloadBlob(b, "adapted-logo.png")).catch(() => window.open(state.selectedResult, "_blank", "noopener")); };
@@ -170,6 +230,7 @@
   logo.addEventListener("wheel", e => { e.preventDefault(); state.scale = Math.max(10, Math.min(300, state.scale + (e.deltaY < 0 ? 5 : -5))); $("scaleInput").value = state.scale; applyLogo(); }, { passive: false });
   posterImage.addEventListener("wheel", e => { if (state.posterLocked) return; e.preventDefault(); state.posterScale = Math.max(100, Math.min(180, state.posterScale + (e.deltaY < 0 ? 5 : -5))); applyPoster(); }, { passive: false });
   window.addEventListener("resize", updateRemoveButton);
-  document.addEventListener("keydown", e => { if (e.key.toLowerCase() === "r") setLogoPosition("center"); });
-  setFormat("vertical"); updatePosterLock(); updateEmpty();
+  document.addEventListener("keydown", e => { if (e.key.toLowerCase() === "r" && !/input|textarea|select/i.test(e.target.tagName)) setLogoPosition("center"); });
+
+  switchWorkspace("poster"); setFormat("vertical"); updatePosterLock(); updateEmpty(); checkAiServer();
 })();
