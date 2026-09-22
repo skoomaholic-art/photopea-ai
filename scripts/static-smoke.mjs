@@ -29,7 +29,8 @@ if (duplicates.length) {
 const idSet = new Set(ids);
 const localScripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)]
   .map(m => m[1])
-  .filter(src => !/^https?:\/\//.test(src));
+  .filter(src => !/^https?:\/\//.test(src))
+  .map(src => src.split(/[?#]/, 1)[0]);
 const jsFiles = localScripts;
 const missingIds = new Set();
 
