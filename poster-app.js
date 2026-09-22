@@ -241,9 +241,12 @@
           data = await response.json().catch(() => ({}));
           if (response.ok && Array.isArray(data.results)) return { items: data.results, direct: false };
         }
-      } catch {
-        // The public TVmaze fallback below intentionally keeps poster search usable
-        // while the optional Worker is unavailable or waiting for deployment.
+
+        if (response.status === 429) throw new Error(data.error || "Превышен лимит поиска. Повторите позже.");
+        if (response.status >= 500) throw new Error(data.error || "Сервис поиска временно недоступен.");
+      } catch (error) {
+        if (/лимит|temporarily|временно/i.test(String(error?.message || ""))) throw error;
+        // Network/legacy-Worker failures fall through to the public TVmaze API.
       }
     }
     return { items: await searchTVmazeDirect(q), direct: true };
