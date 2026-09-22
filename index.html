@@ -3,46 +3,258 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#08100b">
-  <meta name="poster-ai-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
-  <title>Poster Markup</title>
+  <meta name="theme-color" content="#07100b">
+  <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
+  <title>Poster Editor</title>
+  <link rel="icon" type="image/svg+xml" href="app-icon.svg">
   <link rel="stylesheet" href="poster-app.css">
-  <link rel="stylesheet" href="poster-overrides.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
+  <script defer src="storage.js"></script>
+  <script defer src="zip-store.js"></script>
+  <script defer src="poster-app.js"></script>
+  <script defer src="train-editor.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="brand-mark">P</span><div><span class="eyebrow">FREEDOM TOOLKIT</span><strong>Poster Markup</strong></div></div>
-    <nav class="workspace-tabs" aria-label="Рабочая область">
-      <button class="workspace-tab active" type="button" data-workspace="poster" aria-selected="true">Poster Markup</button>
-      <button class="workspace-tab" type="button" data-workspace="photopea" aria-selected="false">Photopea</button>
+    <a class="brand" href="#" aria-label="Poster Editor">
+      <img class="brand-icon" src="app-icon.svg" alt="">
+      <span><small>FREEDOM TOOLKIT</small><strong>Poster Editor</strong></span>
+    </a>
+
+    <nav class="workspace-tabs" aria-label="Рабочие пространства">
+      <button class="workspace-tab active" data-workspace="vertical" aria-selected="true">Вертикальный</button>
+      <button class="workspace-tab" data-workspace="horizontal" aria-selected="false">Горизонтальный</button>
+      <button class="workspace-tab" data-workspace="train" aria-selected="false">Паровозик</button>
+      <button class="workspace-tab" data-workspace="photopea" aria-selected="false">Photopea</button>
     </nav>
-    <span class="local-note">Постер обрабатывается локально · AI отправляет только выбранный логотип</span>
+
+    <div class="header-actions">
+      <button id="saveProjectBtn" class="ghost">Сохранить проект</button>
+      <label class="ghost file-button">Открыть проект<input id="projectFileInput" type="file" accept="application/json"></label>
+    </div>
   </header>
 
   <main id="posterWorkspace" class="workspace active" data-workspace-panel="poster">
-    <div class="layout">
-      <aside class="left-panel panel">
-        <section><h2>Формат постера</h2><div class="format-grid"><button class="format-card active" data-format="vertical"><span>▯</span><b>Вертикальный</b><small>800 × 1200</small></button><button class="format-card" data-format="horizontal"><span>▭</span><b>Горизонтальный</b><small>1920 × 1080</small></button></div></section>
-        <section><h2>Исходники</h2><label class="upload-card"><span class="upload-icon">↥</span><b>Загрузить постер</b><small>JPG, PNG или WEBP</small><em id="posterFileName">Файл не выбран</em><input id="posterFileInput" type="file" accept="image/png,image/jpeg,image/webp"></label><label class="upload-card"><span class="upload-icon">✦</span><b>Загрузить логотип</b><small>PNG с прозрачным фоном</small><em id="logoFileName">Файл не выбран</em><input id="logoFileInput" type="file" accept="image/png"></label></section>
-        <section><h2>Позиция логотипа</h2><select id="positionSelect"><option value="center">По центру</option><option value="top-left">Сверху слева</option><option value="top-center">Сверху по центру</option><option value="top-right">Сверху справа</option><option value="middle-left">Слева по центру</option><option value="middle-right">Справа по центру</option><option value="bottom-left">Снизу слева</option><option value="bottom-center">Снизу по центру</option><option value="bottom-right">Снизу справа</option></select><div class="control-head"><span>Масштаб логотипа</span><output id="scaleValue">100%</output></div><input id="scaleInput" type="range" min="10" max="300" value="100"><div class="button-row"><button id="centerBtn">Центрировать</button><button id="resetBtn">Сбросить</button></div></section>
-        <section><div class="section-title-row"><h2>Постер</h2><label class="lock-control"><input id="posterLockInput" type="checkbox" checked><span class="lock-icon" aria-hidden="true">🔒</span><span id="posterLockLabel">Заблокирован</span></label></div><div class="control-head"><span>Масштаб постера</span><output id="posterScaleValue">100%</output></div><input id="posterScaleInput" type="range" min="100" max="180" value="100"><label class="field compact-field"><span>Положение постера</span><select id="posterPositionSelect"><option value="center">По центру</option><option value="top">Сверху</option><option value="bottom">Снизу</option><option value="left">Слева</option><option value="right">Справа</option></select></label><button class="wide-button" id="resetPosterBtn">Сбросить постер</button></section>
+    <div class="poster-layout">
+      <aside class="panel sidebar">
+        <section>
+          <div class="section-head"><h2 id="posterEditorTitle">Вертикальный постер</h2><span id="posterSizeLabel">800 × 1200</span></div>
+          <label class="upload-card">Постер<input id="posterFileInput" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <label class="upload-card">Логотип<input id="logoFileInput" type="file" accept="image/png,image/webp"></label>
+        </section>
+
+        <section>
+          <h3>Поиск постеров</h3>
+          <div class="search-row">
+            <input id="posterSearchInput" placeholder="Название фильма или сериала">
+            <button id="posterSearchBtn" class="primary">Показать постеры</button>
+          </div>
+          <div id="posterSearchStatus" class="mini-status">TVmaze работает без ключа. TMDB включается только при лицензии.</div>
+          <div id="posterSearchResults" class="poster-results"></div>
+          <p class="attribution">Данные TVmaze: CC BY-SA. <a href="https://www.tvmaze.com/" target="_blank" rel="noopener">TVmaze</a></p>
+        </section>
+
+        <section>
+          <h3>Выбранный слой</h3>
+          <label class="field">Слой
+            <select id="posterLayerSelect">
+              <option value="poster">Постер</option>
+              <option value="logo">Логотип</option>
+            </select>
+          </label>
+          <div class="control-grid">
+            <label>Масштаб <input id="layerScaleInput" type="range" min="10" max="300" value="100"></label>
+            <label>Поворот <input id="layerRotationInput" type="range" min="-180" max="180" value="0"></label>
+          </div>
+          <div class="button-row">
+            <button id="centerLayerBtn">Центрировать</button>
+            <button id="resetLayerBtn">Сбросить</button>
+          </div>
+          <div class="button-row">
+            <button id="posterLayerUpBtn">Слой выше</button>
+            <button id="posterLayerDownBtn">Слой ниже</button>
+          </div>
+          <label class="lock-line"><input id="posterLockInput" type="checkbox" checked> Заблокировать постер</label>
+          <label class="field">Фон холста <input id="posterBgInput" type="color" value="#000000"></label>
+        </section>
+
+        <section>
+          <div class="section-head"><h3>Удаление фона</h3><span id="bgProviderBadge">проверка</span></div>
+          <label class="field">Провайдер
+            <select id="bgProviderSelect">
+              <option value="auto">Авто</option>
+              <option value="carve">Carve.Photos</option>
+              <option value="removal">Removal.AI</option>
+            </select>
+          </label>
+          <button id="removeBackgroundBtn" class="wide" disabled>Удалить фон выбранного изображения</button>
+          <div id="bgRemoveStatus" class="mini-status">Проверяю сервер...</div>
+        </section>
       </aside>
 
-      <section class="center-panel panel"><div class="stage-header"><b>Окно редактирования</b><span id="stageMeta">Вертикальный · 800 × 1200</span></div><div class="stage" id="stage"><div class="empty" id="empty"><span>▧</span><strong>Соберите постер</strong><small>Загрузите фон и логотип слева, затем перетащите логотип по изображению.</small></div><img id="posterImage" class="poster-image" alt="Постер" hidden><img id="logoImage" class="logo-image" alt="Логотип" hidden><button class="remove-logo" id="removeLogoBtn" type="button" aria-label="Удалить логотип" title="Удалить логотип">×</button><div class="stage-hint">Логотип: перетаскивание · колесо меняет размер<br>Постер: разблокируйте замок для перемещения</div></div></section>
+      <section class="panel stage-panel">
+        <div class="stage-head">
+          <strong>Рабочее окно</strong>
+          <span id="stageMeta">Вертикальный · 800 × 1200</span>
+        </div>
+        <div id="stage" class="poster-stage">
+          <div id="posterEmpty" class="empty-state">Загрузите или найдите постер</div>
+          <img id="posterImage" class="poster-image" alt="Постер" hidden>
+          <img id="logoImage" class="logo-image" alt="Логотип" hidden>
+        </div>
+        <div id="posterStatus" class="status-line">Готов к работе</div>
+      </section>
 
-      <aside class="right-column">
-        <section class="panel help-panel"><h2>Управление</h2><p>Логотип можно двигать мышью или пальцем. Для точного размера используйте ползунок.</p><div class="shortcut"><span>Двигать логотип</span><kbd>drag</kbd></div><div class="shortcut"><span>Изменить размер</span><kbd>wheel</kbd></div><div class="shortcut"><span>Замок постера</span><kbd>🔒</kbd></div><div class="shortcut"><span>Сбросить позицию</span><kbd>R</kbd></div><div class="status" id="status"><i></i>Готов к работе</div></section>
-        <section class="panel ai-panel"><div class="ai-title"><h2>GROK / GPT</h2><span id="aiServerBadge">проверка</span></div><p class="ai-note">Официальные API. Ключи хранятся только на сервере и никогда не попадают в браузер.</p><label class="field"><span>Провайдер</span><select id="aiProvider"><option value="xai">Grok Imagine</option><option value="openai">GPT Image</option></select></label><label class="field"><span>Язык адаптации</span><select id="aiLanguage"><option value="kk">Казахский язык</option><option value="ru">Русский язык</option></select></label><label class="field"><span>Промпт</span><textarea id="aiPrompt" rows="3">Адаптируй логотип на выбранный язык, сохрани стиль, шрифт, композицию и цвета. Не меняй форму логотипа.</textarea></label><div class="ai-actions"><button class="primary" id="generateBtn" disabled>Адаптировать логотип</button><label class="file-mini">Загрузить PNG<input id="aiLogoInput" type="file" accept="image/png"></label></div><div class="result-head"><span>Результаты</span><small id="aiStatus">Проверяю AI-сервер...</small></div><div class="results" id="results"><div class="result-empty">Здесь появятся варианты адаптированного логотипа.</div></div><div class="ai-bottom"><button id="moveResultBtn" disabled>Переместить на постер</button><button id="downloadResultBtn" disabled>Скачать отдельно</button></div></section>
+      <aside class="panel sidebar">
+        <section>
+          <div class="section-head"><h3>Grok / GPT</h3><span id="aiServerBadge">проверка</span></div>
+          <p class="muted">Ключи хранятся только в Worker.</p>
+          <label class="field">Провайдер
+            <select id="aiProvider">
+              <option value="xai">Grok Imagine</option>
+              <option value="openai">GPT Image</option>
+            </select>
+          </label>
+          <label class="field">Язык
+            <select id="aiLanguage"><option value="kk">Казахский</option><option value="ru">Русский</option></select>
+          </label>
+          <label class="field">Промпт
+            <textarea id="aiPrompt" rows="4">Адаптируй логотип на выбранный язык, сохрани стиль, композицию и цвета. Верни чистый логотип на прозрачном фоне.</textarea>
+          </label>
+          <button id="generateBtn" class="primary wide" disabled>Адаптировать логотип</button>
+          <div id="aiStatus" class="mini-status">Проверяю AI-сервер...</div>
+          <div id="results" class="ai-results"></div>
+          <div class="button-row">
+            <button id="moveResultBtn" disabled>На постер</button>
+            <button id="downloadResultBtn" disabled>Скачать</button>
+          </div>
+        </section>
+
+        <section>
+          <h3>Экспорт постеров</h3>
+          <button id="downloadVerticalBtn" class="wide">Скачать вертикальный постер</button>
+          <button id="downloadHorizontalBtn" class="wide">Скачать горизонтальный постер</button>
+          <button id="downloadPostersZipBtn" class="primary wide">Скачать всё</button>
+        </section>
       </aside>
     </div>
-    <footer class="footer"><span id="formatFooter">PNG · 800 × 1200</span><button class="download-main" id="downloadBtn">Скачать готовый PNG</button></footer>
+  </main>
+
+  <main id="trainWorkspace" class="workspace" data-workspace-panel="train" hidden>
+    <div class="train-layout">
+      <aside class="panel sidebar train-tools">
+        <section>
+          <div class="section-head"><h2>Паровозик</h2><span>2952 × 366</span></div>
+          <label class="upload-card">Широкий фон<input id="trainBackgroundInput" type="file" accept="image/*"></label>
+          <label class="upload-card">Добавить изображение<input id="trainImageInput" type="file" accept="image/*" multiple></label>
+          <label class="upload-card">Добавить логотип<input id="trainLogoInput" type="file" accept="image/*"></label>
+          <div class="search-row">
+            <input id="trainTextInput" value="Новый текст" aria-label="Текст">
+            <button id="trainAddTextBtn">+ Текст</button>
+          </div>
+          <div class="button-row">
+            <button id="trainAddRectBtn">+ Плашка</button>
+            <button id="trainDuplicateBtn">Дублировать</button>
+          </div>
+          <label class="field">Фон <input id="trainBgColor" type="color" value="#101010"></label>
+        </section>
+
+        <section>
+          <h3>Выбранный объект</h3>
+          <div class="control-grid">
+            <label>Поворот <input id="trainRotationInput" type="number" min="-360" max="360" value="0"></label>
+            <label>Прозрачность <input id="trainOpacityInput" type="range" min="0" max="1" step="0.05" value="1"></label>
+          </div>
+          <div class="crop-grid">
+            <label>Crop L %<input id="cropLeftInput" type="number" min="0" max="45" value="0"></label>
+            <label>Crop T %<input id="cropTopInput" type="number" min="0" max="45" value="0"></label>
+            <label>Crop R %<input id="cropRightInput" type="number" min="0" max="45" value="0"></label>
+            <label>Crop B %<input id="cropBottomInput" type="number" min="0" max="45" value="0"></label>
+          </div>
+          <button id="applyCropBtn" class="wide">Применить обрезку</button>
+          <div class="button-row">
+            <button id="trainUndoBtn">Отменить</button>
+            <button id="trainRedoBtn">Повторить</button>
+          </div>
+        </section>
+
+        <section>
+          <h3>Стикер первого сегмента</h3>
+          <select id="stickerSelect">
+            <option>Без стикера</option>
+            <option>Премьера</option>
+            <option>Новые серии</option>
+            <option>Жаңа сериялар</option>
+            <option>Новый сезон</option>
+            <option>Жаңа маусым</option>
+            <option>Все серии</option>
+            <option>Барлық сериялар</option>
+            <option>Новинка</option>
+            <option>Жаңа</option>
+            <option>Эксклюзив</option>
+            <option>Скоро…</option>
+            <option>Жуырда…</option>
+            <option>Скоро уйдёт</option>
+            <option>Көріп үлгер</option>
+          </select>
+        </section>
+      </aside>
+
+      <section class="panel train-center">
+        <div class="train-toolbar">
+          <div class="segmented">
+            <button id="trainCanvasModeBtn" class="active">Единый холст</button>
+            <button id="trainDeviceModeBtn">Как на устройстве</button>
+          </div>
+          <label>Размер предпросмотра
+            <select id="trainSizeSelect">
+              <option value="164x122">164 × 122</option>
+              <option value="246x183">246 × 183</option>
+              <option value="328x244">328 × 244</option>
+              <option value="492x366" selected>492 × 366</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="trainCanvasView" class="train-canvas-view">
+          <div id="trainCanvasShell" class="train-canvas-shell">
+            <canvas id="trainCanvas" width="2952" height="366"></canvas>
+            <div id="segmentGuides" class="segment-guides" aria-hidden="true">
+              <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+            </div>
+          </div>
+        </div>
+        <div id="trainDeviceView" class="device-preview" hidden>
+          <canvas data-part="1"></canvas><canvas data-part="2"></canvas><canvas data-part="3"></canvas>
+          <canvas data-part="4"></canvas><canvas data-part="5"></canvas><canvas data-part="6"></canvas>
+        </div>
+        <div id="trainStatus" class="status-line">Мастер-холст 2952 × 366</div>
+      </section>
+
+      <aside class="panel sidebar">
+        <section>
+          <div class="section-head"><h3>Слои</h3><button id="trainDeleteBtn">Удалить</button></div>
+          <div class="button-row">
+            <button id="trainLayerUpBtn">Выше</button>
+            <button id="trainLayerDownBtn">Ниже</button>
+          </div>
+          <div id="trainLayers" class="layers-list"></div>
+        </section>
+        <section>
+          <h3>Экспорт</h3>
+          <button id="trainDownloadSelectedBtn" class="wide">Скачать выбранный размер</button>
+          <button id="trainDownloadAllBtn" class="primary wide">Скачать все размеры</button>
+          <p class="muted">Направляющие, номера, промежутки и скругления предпросмотра в PNG не экспортируются.</p>
+        </section>
+      </aside>
+    </div>
   </main>
 
   <main id="photopeaWorkspace" class="workspace photopea-workspace" data-workspace-panel="photopea" hidden>
-    <div class="photopea-toolbar"><div><b>Photopea</b><small>Встроенный редактор для точной ручной доработки</small></div><button id="openPhotopeaBtn" class="photopea-button" type="button">Открыть отдельно ↗</button></div>
-    <iframe id="photopeaFrame" title="Photopea" src="about:blank" data-src="https://www.photopea.com/" allow="clipboard-read; clipboard-write" referrerpolicy="no-referrer"></iframe>
+    <div class="photopea-toolbar"><strong>Photopea</strong><button id="openPhotopeaBtn">Открыть отдельно ↗</button></div>
+    <iframe id="photopeaFrame" title="Photopea" src="about:blank" data-src="https://www.photopea.com/" allow="clipboard-read; clipboard-write"></iframe>
   </main>
 
-  <script src="poster-app.js"></script>
+  <div id="toast" class="toast" hidden></div>
 </body>
 </html>

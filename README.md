@@ -1,135 +1,110 @@
-# Skooma Multitool
+# Poster Editor
 
-Единое браузерное creative workspace для графики, AI и медиаматериалов.
+Веб-редактор постеров и непрерывного шестисегментного баннера «Паровозик».
 
-## Текущая архитектура
+## Рабочие пространства
 
-Skooma Multitool больше не использует модель "несколько отдельных страниц".
+- Вертикальный постер — 800 × 1200.
+- Горизонтальный постер — 1920 × 1080.
+- Паровозик — мастер-холст 2952 × 366, 6 сегментов по 492 × 366.
+- Photopea — отдельное встроенное рабочее пространство.
 
-Главный shell остаётся на месте, а центральная рабочая область переключает редактор:
+Вертикальный и горизонтальный постеры используют независимые состояния: отдельные изображения, логотипы, позиции, масштабы, повороты, блокировку и фон.
 
-- Skooma Studio
-- Photopea
-- Vectorpea
-- Jampea fallback
+Проект сохраняется в IndexedDB и может быть выгружен в poster-project.json.
 
-AI, Media Finder и Assets открываются как инструменты внутри общего приложения.
+## Поиск постеров
 
-## Skooma Studio
+Публичный поиск всегда использует TVmaze Public API:
 
-Основной редактор переведён с самописного canvas engine на Fabric.js 7.4.0.
+- бесплатный публичный API;
+- лимит Free tier: 20 запросов за 10 секунд на IP;
+- лицензия CC BY-SA, требуется атрибуция;
+- разрешено коммерческое использование при соблюдении лицензии.
 
-Работает:
-
-- object selection;
-- transform handles;
-- resize;
-- rotate;
-- image layers;
-- editable text;
-- rectangle / ellipse;
-- brush;
-- eraser strokes;
-- layer visibility;
-- layer locking;
-- drag reorder;
-- duplicate / delete;
-- object properties;
-- PNG / JPG / WEBP export;
-- PNG / JPG / JPEG / WEBP import;
-- SVG import;
-- drag & drop;
-- paste image from clipboard;
-- Ctrl+C / Ctrl+X / Ctrl+V for objects;
-- Ctrl+D;
-- Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y;
-- Space temporary Hand;
-- IndexedDB autosave;
-- restore autosave after reload.
+TMDB реализован как опциональный серверный источник, но по умолчанию отключён. Для коммерческого проекта требуется коммерческая лицензия TMDB. Даже при наличии токена источник не включится, пока TMDB_COMMERCIAL_APPROVED не установлен в true.
 
 ## AI
 
-AI является инструментом Studio, а не отдельной страницей.
+Ключи никогда не попадают в браузер. Cloudflare Worker читает secrets:
 
-Проверенные модели:
+- XAI_API_KEY — grok-imagine-image-2.0;
+- OPENAI_API_KEY — gpt-image-1-mini.
 
-- GPT Image 1 Mini
-- Grok Imagine
+По состоянию на 22.09.2026:
 
-Результат генерации:
+- OpenAI gpt-image-1-mini: Free API tier не поддерживается; low 1024×1024 стоит $0.005 за сгенерированное изображение, плюс тарификация входных image/text tokens для edit.
+- xAI grok-imagine-image-2.0: платный API; 1K low output $0.04/image, image input $0.01/image.
 
-AI -> Asset Library -> новый image layer.
+Интерфейс показывает состояния «ключ не задан», «лимит исчерпан», «rate limit» и «сервис недоступен».
 
-Perchance не встраивается сломанным iframe. Он показывается как внешний provider с нормальным fallback.
+## Удаление фона
 
-## Media Finder
+Поддерживаются только публично документированные API.
 
-Media Finder находится внутри общего shell.
+### Carve.Photos
 
-Provider architecture:
+Secret: CARVE_API_KEY.
 
-- TVmaze - работает без ключа;
-- OMDb - включается при наличии API key;
-- TMDB - включается при наличии Read Access Token;
-- fanart.tv - дополнительный artwork provider для TMDB movie results.
+- официальный API и SDK;
+- новым пользователям заявлены 10 тестовых баллов;
+- 1 балл = 1 обработка изображения через API;
+- дальнейшее использование оплачивается баллами.
 
-Kinorium / Jina удалены из критической цепочки.
+### Removal.AI
 
-Найденный poster / artwork можно добавить в Studio.
+Secret: REMOVAL_AI_KEY.
 
-## Assets
+- официальный endpoint POST /3.0/remove;
+- Preview до 0.25 MP, full resolution до 25 MP;
+- официальные страницы сейчас расходятся по числу бесплатных API preview: API docs указывают 10 preview credits/month, signup/pricing может показывать 50. Поэтому приложение не обещает фиксированный бесплатный лимит и показывает фактическую ошибку quota от API.
 
-Общая Asset Library хранит:
+## Паровозик
 
-- uploads;
-- AI generated images;
-- media artwork.
+Редактор построен на Fabric.js 7.4.0.
 
-Assets сохраняются через IndexedDB.
+Поддерживаются широкий фон, несколько изображений, логотипы, текст, плашки, перемещение, масштабирование, вращение, процентная обрезка изображений, управление слоями, undo/redo, стикер первого сегмента и сохранение/восстановление.
 
-## External editors
+Направляющие сегментов находятся в HTML overlay и не входят в Fabric canvas, поэтому не могут попасть в экспорт.
 
-Photopea и Vectorpea могут открываться в центральной workspace area.
+Размеры сегмента:
 
-Jampea по результатам тестирования не считается надёжно embeddable, поэтому вместо белого / пустого iframe показывается native fallback с кнопкой открытия сервиса отдельно.
+1. 164 × 122 → полный ряд 984 × 122
+2. 246 × 183 → полный ряд 1476 × 183
+3. 328 × 244 → полный ряд 1968 × 244
+4. 492 × 366 → полный ряд 2952 × 366
 
-## Licensing
+Паровозик.zip содержит ровно 24 PNG в четырёх папках:
+- 1 - 164x122
+- 2 - 246x183
+- 3 - 328x244
+- 4 - 492x366
 
-См. [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+В каждой папке part_1.png … part_6.png. Все сегменты режутся из одного мастер-холста по точным координатам.
 
-Canvas engine decision:
+## Cloudflare Worker
 
-[docs/CANVAS_ENGINE_DECISION.md](docs/CANVAS_ENGINE_DECISION.md)
+Файл: worker/ai-worker.js
 
-## Deployment
+Secrets:
 
-GitHub Pages deploy выполняется через GitHub Actions.
+    cd worker
+    npx wrangler secret put XAI_API_KEY
+    npx wrangler secret put OPENAI_API_KEY
+    npx wrangler secret put CARVE_API_KEY
+    npx wrangler secret put REMOVAL_AI_KEY
+    npx wrangler secret put TMDB_BEARER_TOKEN
 
-Перед каждым deploy выполняется:
+Для TMDB коммерческий источник также требует установить TMDB_COMMERCIAL_APPROVED = true только после получения подходящей лицензии.
 
-`node scripts/static-smoke.mjs`
+Деплой:
 
-Smoke check проверяет:
+    cd worker
+    npx wrangler deploy
 
-- обязательные файлы;
-- JavaScript syntax;
-- duplicate DOM ids;
-- JavaScript references to missing DOM ids;
-- local script references from index.html.
+## Проверки
 
-Сайт:
+    npm run smoke
+    npm run test:e2e
 
-https://skoomaholic-art.github.io/photopea-ai/
-
-## Следующие этапы
-
-1. Crop / marquee / lasso / magic wand.
-2. Proper raster eraser and raster masks based on reviewed miniPaint MIT implementations.
-3. Blend modes / merge / flatten / groups.
-4. Better zoom / pan / guides / snapping.
-5. Asset categories and media details UX.
-6. OMDb / TMDB provider polish and caching.
-7. Wikidata fallback.
-8. SVG path/node editing based on reviewed SVG-Edit architecture.
-9. Project JSON import/export.
-10. Performance profiling on large images.
+CI проверяет DOM-контракт, отсутствие секретов в клиентском bundle, независимые постеры, поиск и background removal через моки, сохранение после reload, экспорт постеров, границы стикера и ZIP «Паровозика» с точными 24 PNG.

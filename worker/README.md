@@ -1,19 +1,29 @@
-# Poster Markup AI Worker
+# Poster Editor Worker
 
-Cloudflare Worker proxy for the Poster Markup AI panel. API keys are server-side secrets and must never be placed in `index.html` or `poster-app.js`.
+Cloudflare Worker keeps all provider credentials on the server side.
 
-Required secrets:
+## Endpoints
 
-- `XAI_API_KEY` for Grok Imagine (`grok-imagine-image-2.0`)
-- `OPENAI_API_KEY` for GPT Image (`gpt-image-1-mini`)
+- GET /api/status
+- GET /api/posters?q=...
+- GET /api/image?url=...
+- POST /api/generate
+- POST /api/remove-background
 
-Optional variable:
+## Secrets
 
-- `ALLOWED_ORIGINS` - comma-separated additional origins. The production GitHub Pages origin is already allowed by default.
+Configure only the providers you intend to use:
 
-Endpoints:
+    npx wrangler secret put XAI_API_KEY
+    npx wrangler secret put OPENAI_API_KEY
+    npx wrangler secret put CARVE_API_KEY
+    npx wrangler secret put REMOVAL_AI_KEY
+    npx wrangler secret put TMDB_BEARER_TOKEN
 
-- `GET /api/status` - returns only whether each provider is configured.
-- `POST /api/generate` - accepts `{ provider, prompt, image, count }` and returns `{ images }`.
+TMDB remains disabled unless wrangler.toml has TMDB_COMMERCIAL_APPROVED = "true". Do not set it to true unless the deployment has a license that permits its commercial use.
 
-The official image APIs are paid. The UI therefore reports providers as unavailable until the corresponding server secret exists; it does not claim an unlimited/free API tier.
+Deploy with:
+
+    npx wrangler deploy
+
+The browser receives only availability booleans and API results. Provider secrets are never serialized to the client.

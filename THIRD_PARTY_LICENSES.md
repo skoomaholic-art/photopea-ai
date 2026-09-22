@@ -1,93 +1,67 @@
-# Third-party libraries and references
+# Third-party software and services
 
-This file tracks third-party software used by Skooma Multitool and projects consulted as references.
+This file tracks runtime libraries and external APIs used by Poster Editor.
 
-## Runtime dependency
+## Fabric.js
 
-### Fabric.js
 - Repository: https://github.com/fabricjs/fabric.js
 - License: MIT
-- Version pinned in the app: 7.4.0
-- Use: interactive canvas/object model, selection, transform controls, text, shapes, free drawing, serialization and export.
-- Integration: loaded from jsDelivr. No Fabric source code is copied into this repository.
+- Version: 7.4.0
+- Use: interactive object canvas for the «Паровозик» workspace.
+- Loaded from jsDelivr; Fabric source code is not copied into this repository.
 
-## Raster implementation reference
+## Playwright
 
-### miniPaint
-- Repository: https://github.com/viliusle/miniPaint
-- License: MIT
-- Use: reference for raster editor architecture and future brush / fill / magic-wand / filter work.
-- Current status: no miniPaint source code copied into this repository.
-
-## Vector implementation reference
-
-### SVG-Edit
-- Repository: https://github.com/SVG-Edit/svgedit
-- Primary project license: MIT
-- Use: reference for SVG editing architecture and future path/node tooling.
-- Important: SVG-Edit ships some bundled files under additional licenses. Any future code reuse must be reviewed file-by-file before copying.
-- Current status: no SVG-Edit source code copied into this repository.
-
-## UX / architecture references only
-
-### Excalidraw
-- Repository: https://github.com/excalidraw/excalidraw
-- License: MIT
-- Use: tool switching, shortcuts, selection and interaction references.
-- No code copied.
-
-### Penpot
-- Repository: https://github.com/penpot/penpot
-- License: MPL-2.0
-- Use: UX and application architecture reference only.
-- No code copied.
-
-### tldraw
-- Website: https://tldraw.dev/
-- Use: interaction reference only.
-- The production SDK requires an appropriate license key.
-- Not included as a dependency.
-
-### Jellyfin Web / Radarr / Sonarr
-- Use: media-browser UX references only.
-- No GPL application code copied.
-
-## External services
-
-### Puter.js
-- Website: https://puter.com/
-- Use: browser-side AI image generation and Puter authentication.
-- Models exposed by this project are limited to the models verified in the current application.
-
-### TVmaze
-- API: https://www.tvmaze.com/api
-- Use: free TV metadata/search provider.
-
-### TMDB
-- API: https://developer.themoviedb.org/
-- Use: optional movie / TV metadata and artwork provider when a token is configured.
-- Required attribution is shown in the application.
-
-### OMDb
-- API: https://www.omdbapi.com/
-- Use: optional movie / series / episode metadata provider when an API key is configured.
-
-### fanart.tv
-- API: https://fanart.tv/api-docs/
-- Use: optional artwork provider when an API key is configured.
-
-No proprietary Photopea, Vectorpea or Jampea source code is included in this repository.
-
-
-### magic-wand-tool
-- Repository: https://github.com/Tamersoul/magic-wand-js
-- Package: magic-wand-tool 1.1.7
-- License: MIT
-- Use: fuzzy color selection / Magic Wand mask generation.
-- Integration: browser CDN dependency, pinned to version 1.1.7.
-
-### Playwright
 - Repository: https://github.com/microsoft/playwright
-- Package: @playwright/test 1.63.0
 - License: Apache-2.0
-- Use: development / CI browser smoke testing only. Not shipped as application runtime code.
+- Use: CI browser testing only.
+
+## TVmaze
+
+- API: https://www.tvmaze.com/api
+- Public API license: CC BY-SA.
+- Free public rate: 20 calls per 10 seconds per IP.
+- Use: title search and poster artwork.
+- Attribution is shown in the application.
+
+## TMDB
+
+- API: https://developer.themoviedb.org/
+- Free API use is for non-commercial purposes with attribution.
+- Commercial usage requires an appropriate commercial license.
+- The Worker keeps TMDB disabled unless both a server token and TMDB_COMMERCIAL_APPROVED=true are configured.
+
+## Carve.Photos
+
+- Website: https://carve.photos/
+- API base: https://api.carve.photos/api/v1
+- Official SDK: https://github.com/Carve-Photos/sdk-node
+- Use: optional server-side background removal.
+- Requires CARVE_API_KEY.
+
+## Removal.AI
+
+- API docs: https://removal.ai/api-documentation/
+- Endpoint used: POST https://api.removal.ai/3.0/remove
+- Use: optional server-side background removal.
+- Requires REMOVAL_AI_KEY.
+
+## OpenAI
+
+- API docs: https://developers.openai.com/
+- Model: gpt-image-1-mini
+- Use: optional server-side logo image edit.
+- Requires OPENAI_API_KEY.
+
+## xAI / SpaceXAI
+
+- API docs: https://docs.x.ai/
+- Model: grok-imagine-image-2.0
+- Use: optional server-side logo image edit.
+- Requires XAI_API_KEY.
+
+## Photopea
+
+- Website: https://www.photopea.com/
+- Use: external editor loaded in a dedicated iframe workspace.
+- No Photopea source code is copied into this repository.
