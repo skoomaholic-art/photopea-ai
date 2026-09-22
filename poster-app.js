@@ -9,7 +9,7 @@
     poster: null, logo: null, posterName: "", logoName: "",
     posterX: 50, posterY: 50, posterScale: 100, posterRotation: 0,
     logoX: 50, logoY: 50, logoScale: 100, logoRotation: 0,
-    posterLocked: true, background: "#000000"
+    posterLocked: true, background: "#000000", order: ["poster", "logo"]
   });
 
   const state = {
@@ -116,6 +116,10 @@
     if (s.poster && posterImage.src !== s.poster) posterImage.src = s.poster;
     if (s.logo && logoImage.src !== s.logo) logoImage.src = s.logo;
 
+    const order = Array.isArray(s.order) ? s.order : ["poster", "logo"];
+    posterImage.style.zIndex = String(order.indexOf("poster") + 1);
+    logoImage.style.zIndex = String(order.indexOf("logo") + 1);
+
     posterImage.style.left = s.posterX + "%";
     posterImage.style.top = s.posterY + "%";
     posterImage.style.transform = `translate(-50%,-50%) rotate(${s.posterRotation}deg) scale(${s.posterScale / 100})`;
@@ -167,6 +171,20 @@
       s.posterX = 50; s.posterY = 50; s.posterScale = 100; s.posterRotation = 0;
     }
     state.selectedLayer = layer;
+    renderPoster();
+    scheduleAutosave();
+  }
+
+  function changePosterLayerOrder(delta) {
+    const s = current();
+    const order = Array.isArray(s.order) ? [...s.order] : ["poster", "logo"];
+    const index = order.indexOf(state.selectedLayer);
+    if (index < 0) return;
+    const target = Math.max(0, Math.min(order.length - 1, index + delta));
+    if (target === index) return;
+    order.splice(index, 1);
+    order.splice(target, 0, state.selectedLayer);
+    s.order = order;
     renderPoster();
     scheduleAutosave();
   }
@@ -420,21 +438,23 @@
     ctx.fillStyle = s.background || "#000";
     ctx.fillRect(0, 0, f.w, f.h);
 
-    if (s.poster) {
+    async function drawPosterLayer() {
+      if (!s.poster) return;
       const image = await loadImage(s.poster);
       const crop = coverCrop(image, f.w, f.h);
-      const layer = document.createElement("canvas");
-      layer.width = f.w; layer.height = f.h;
-      layer.getContext("2d").drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, f.w, f.h);
+      const layerCanvas = document.createElement("canvas");
+      layerCanvas.width = f.w; layerCanvas.height = f.h;
+      layerCanvas.getContext("2d").drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, f.w, f.h);
       ctx.save();
       ctx.translate(f.w * s.posterX / 100, f.h * s.posterY / 100);
       ctx.rotate(s.posterRotation * Math.PI / 180);
       ctx.scale(s.posterScale / 100, s.posterScale / 100);
-      ctx.drawImage(layer, -f.w / 2, -f.h / 2);
+      ctx.drawImage(layerCanvas, -f.w / 2, -f.h / 2);
       ctx.restore();
     }
 
-    if (s.logo) {
+    async function drawLogoLayer() {
+      if (!s.logo) return;
       const image = await loadImage(s.logo);
       const baseW = f.w * 0.35;
       const baseH = baseW * image.naturalHeight / image.naturalWidth;
@@ -444,6 +464,12 @@
       ctx.scale(s.logoScale / 100, s.logoScale / 100);
       ctx.drawImage(image, -baseW / 2, -baseH / 2, baseW, baseH);
       ctx.restore();
+    }
+
+    const drawOrder = Array.isArray(s.order) ? s.order : ["poster", "logo"];
+    for (const layer of drawOrder) {
+      if (layer === "poster") await drawPosterLayer();
+      if (layer === "logo") await drawLogoLayer();
     }
 
     return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("PNG export failed.")), "image/png"));
@@ -594,6 +620,8 @@
   $("layerRotationInput").addEventListener("input", e => { current()[state.selectedLayer + "Rotation"] = +e.target.value; renderPoster(); scheduleAutosave(); });
   $("centerLayerBtn").addEventListener("click", () => { current()[state.selectedLayer + "X"] = 50; current()[state.selectedLayer + "Y"] = 50; renderPoster(); scheduleAutosave(); });
   $("resetLayerBtn").addEventListener("click", resetSelectedLayer);
+  $("posterLayerUpBtn").addEventListener("click", () => changePosterLayerOrder(1));
+  $("posterLayerDownBtn").addEventListener("click", () => changePosterLayerOrder(-1));
   $("posterLockInput").addEventListener("change", e => { current().posterLocked = e.target.checked; scheduleAutosave(); });
   $("posterBgInput").addEventListener("input", e => { current().background = e.target.value; renderPoster(); scheduleAutosave(); });
   $("aiProvider").addEventListener("change", updateAiAvailability);
