@@ -64,14 +64,14 @@ for (const folder of ["1 - 164x122","2 - 246x183","3 - 328x244","4 - 492x366"]) 
 }
 
 requireAll("secure worker", worker, [
-  "env.XAI_API_KEY",
-  "env.OPENAI_API_KEY",
+  "env.OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
   "env.CARVE_API_KEY",
   "env.REMOVAL_AI_KEY",
   "env.TMDB_BEARER_TOKEN",
   'env.TMDB_COMMERCIAL_APPROVED === "true"',
-  "https://api.x.ai/v1/images/edits",
-  "https://api.openai.com/v1/images/edits",
+  "https://openrouter.ai/api/v1",
+  "/images",
   "https://api.tvmaze.com/search/shows",
   "https://api.carve.photos/api/v1/images/remove_bg",
   "https://api.removal.ai/3.0/remove"

@@ -303,7 +303,7 @@
     const ready = !!state.aiProviders[provider];
     $("generateBtn").disabled = !ready;
     setAiStatus(
-      ready ? "Провайдер готов." : (provider === "xai" ? "Ключ xAI не задан на сервере." : "Ключ OpenAI не задан на сервере."),
+      ready ? "Провайдер готов через OpenRouter." : "OpenRouter не задан на сервере.",
       ready ? "ok" : "error"
     );
   }

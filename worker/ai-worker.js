@@ -59,55 +59,84 @@ function providerError(provider, response, data) {
   return new ApiError(String(message), response.status >= 500 ? 502 : 400, "provider_error");
 }
 
-async function callOpenAI(env, prompt, imageDataUrl, count) {
-  if (!env.OPENAI_API_KEY) throw new ApiError("OPENAI_API_KEY не настроен на сервере.", 503, "not_configured");
-  const { type, bytes } = parseDataUrl(imageDataUrl);
-  const form = new FormData();
-  form.append("model", "gpt-image-1-mini");
-  form.append("prompt", prompt);
-  form.append("image", new Blob([bytes], { type }), "logo.png");
-  form.append("n", String(count));
-  form.append("size", "1024x1024");
-  form.append("quality", "low");
-  form.append("background", "transparent");
-  form.append("output_format", "png");
+function openRouterHeaders(env) {
+  if (!env.OPENROUTER_API_KEY) {
+    throw new ApiError("OPENROUTER_API_KEY не настроен на сервере.", 503, "not_configured");
+  }
+  const headers = {
+    Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+    "Content-Type": "application/json"
+  };
+  if (env.OPENROUTER_SITE_URL) headers["HTTP-Referer"] = env.OPENROUTER_SITE_URL;
+  if (env.OPENROUTER_APP_TITLE) headers["X-OpenRouter-Title"] = env.OPENROUTER_APP_TITLE;
+  return headers;
+}
 
-  const response = await fetch("https://api.openai.com/v1/images/edits", {
+function openRouterImageModel(env, provider) {
+  if (provider === "openai") {
+    return env.OPENROUTER_OPENAI_IMAGE_MODEL || "openai/gpt-image-1";
+  }
+  if (provider === "xai") {
+    return env.OPENROUTER_XAI_IMAGE_MODEL || "x-ai/grok-imagine-image-2.0";
+  }
+  throw new ApiError("Неизвестный AI-провайдер.", 400, "bad_provider");
+}
+
+function extractOpenRouterImages(data) {
+  return (data?.data || [])
+    .map(item => {
+      if (item?.b64_json) {
+        const mediaType = item.media_type || "image/png";
+        return `data:${mediaType};base64,${item.b64_json}`;
+      }
+      return item?.url || null;
+    })
+    .filter(Boolean);
+}
+
+async function requestOpenRouterImage(env, payload) {
+  const baseUrl = String(env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/images`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` },
-    body: form
+    headers: openRouterHeaders(env),
+    body: JSON.stringify(payload)
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw providerError("OpenAI", response, data);
-  const images = (data.data || [])
-    .map(item => item.b64_json ? `data:image/png;base64,${item.b64_json}` : item.url)
-    .filter(Boolean);
-  if (!images.length) throw new ApiError("OpenAI не вернул изображение.", 502, "empty_result");
+  if (!response.ok) throw providerError("OpenRouter", response, data);
+
+  const images = extractOpenRouterImages(data);
+  if (!images.length) throw new ApiError("OpenRouter не вернул изображение.", 502, "empty_result");
   return images;
 }
 
+async function callOpenAI(env, prompt, imageDataUrl, count) {
+  const payload = {
+    model: openRouterImageModel(env, "openai"),
+    prompt,
+    input_references: [
+      { type: "image_url", image_url: { url: imageDataUrl } }
+    ],
+    n: count,
+    aspect_ratio: "1:1",
+    quality: "low",
+    background: "transparent"
+  };
+  return requestOpenRouterImage(env, payload);
+}
+
 async function callXAI(env, prompt, imageDataUrl, count) {
-  if (!env.XAI_API_KEY) throw new ApiError("XAI_API_KEY не настроен на сервере.", 503, "not_configured");
+  const common = {
+    model: openRouterImageModel(env, "xai"),
+    prompt,
+    input_references: [
+      { type: "image_url", image_url: { url: imageDataUrl } }
+    ],
+    n: 1,
+    aspect_ratio: "1:1"
+  };
   const jobs = Array.from({ length: count }, async () => {
-    const response = await fetch("https://api.x.ai/v1/images/edits", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${env.XAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "grok-imagine-image-2.0",
-        prompt,
-        image: { url: imageDataUrl, type: "image_url" },
-        response_format: "url",
-        quality: "low"
-      })
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw providerError("xAI", response, data);
-    const url = data.data?.[0]?.url;
-    if (!url) throw new ApiError("xAI не вернул URL изображения.", 502, "empty_result");
-    return responseToDataUrl(url);
+    const images = await requestOpenRouterImage(env, common);
+    return images[0];
   });
   return Promise.all(jobs);
 }
@@ -294,7 +323,12 @@ export default {
       if (request.method === "GET" && url.pathname === "/api/status") {
         return json({
           ok: true,
-          providers: { xai: !!env.XAI_API_KEY, openai: !!env.OPENAI_API_KEY },
+          providers: { xai: !!env.OPENROUTER_API_KEY, openai: !!env.OPENROUTER_API_KEY },
+          aiProvider: "openrouter",
+          aiModels: {
+            xai: openRouterImageModel(env, "xai"),
+            openai: openRouterImageModel(env, "openai")
+          },
           background: { carve: !!env.CARVE_API_KEY, removal: !!env.REMOVAL_AI_KEY },
           posters: {
             tvmaze: true,
@@ -330,7 +364,7 @@ export default {
         if (provider === "openai") images = await callOpenAI(env, prompt, image, count);
         else if (provider === "xai") images = await callXAI(env, prompt, image, count);
         else throw new ApiError("Неизвестный AI-провайдер.", 400, "bad_provider");
-        return json({ images }, 200, origin);
+        return json({ images, provider: "openrouter", model: openRouterImageModel(env, provider) }, 200, origin);
       }
 
       if (request.method === "POST" && url.pathname === "/api/remove-background") {
