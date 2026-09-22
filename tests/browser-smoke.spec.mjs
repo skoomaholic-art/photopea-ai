@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLQ7wAAAABJRU5ErkJggg==", "base64");
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGP8z8DwnwEJMDGgAcICAIPRAgYCkO9YAAAAAElFTkSuQmCC", "base64");
 const PNG_DATA = "data:image/png;base64," + PNG.toString("base64");
 
 async function mockStatus(page, extra = {}) {
@@ -43,7 +43,7 @@ test("boots with four workspaces, icon and server-backed controls", async ({ pag
   await mockStatus(page);
   await page.goto("/");
   await expect(page.locator(".brand strong")).toHaveText("Poster Editor");
-  await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", "app-icon.svg");
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /app-icon\.svg\?v=/);
   await expect(page.locator(".workspace-tab")).toHaveCount(4);
   await expect(page.locator("#posterWorkspace")).toBeVisible();
   await expect(page.locator("#generateBtn")).toBeEnabled();
@@ -106,6 +106,58 @@ test("poster search, background removal and vertical/horizontal states are indep
   expect(afterSwitches).toEqual(states);
 });
 
+test("poster bleed, wheel scaling and independent logo lock work", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({ name: "poster.png", mimeType: "image/png", buffer: PNG });
+  await page.locator("#logoFileInput").setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: PNG });
+
+  await expect(page.locator("#posterImage")).toHaveCSS("width", /.+/);
+  expect(await page.locator("#posterImage").evaluate(el => el.style.width)).toBe("107%");
+
+  await page.locator("#posterLayerSelect").selectOption("logo");
+  await page.locator("#logoImage").hover();
+  const logoBefore = (await page.evaluate(() => window.PosterApp.getState().vertical)).logoScale;
+  await page.mouse.wheel(0, -120);
+  await expect.poll(async () => (await page.evaluate(() => window.PosterApp.getState().vertical)).logoScale).toBeGreaterThan(logoBefore);
+
+  await page.locator("#logoLockInput").check();
+  const logoLocked = (await page.evaluate(() => window.PosterApp.getState().vertical)).logoScale;
+  await page.locator("#logoImage").hover();
+  await page.mouse.wheel(0, -120);
+  await page.waitForTimeout(80);
+  expect((await page.evaluate(() => window.PosterApp.getState().vertical)).logoScale).toBe(logoLocked);
+
+  await page.locator("#posterLayerSelect").selectOption("poster");
+  await page.locator("#posterLockInput").uncheck();
+  const posterBefore = (await page.evaluate(() => window.PosterApp.getState().vertical)).posterScale;
+  await page.locator("#posterImage").hover();
+  await page.mouse.wheel(0, -120);
+  await expect.poll(async () => (await page.evaluate(() => window.PosterApp.getState().vertical)).posterScale).toBeGreaterThan(posterBefore);
+});
+
+test("legacy Use POST search response is recovered automatically", async ({ page }) => {
+  await mockStatus(page);
+  const methods = [];
+  await page.route("**/api/posters*", async route => {
+    methods.push(route.request().method());
+    if (route.request().method() === "GET") {
+      return route.fulfill({ status: 405, contentType: "application/json", body: JSON.stringify({ error: "Use POST" }) });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [{ id: "legacy-1", title: "Legacy", source: "TVmaze", quality: "original", image: PNG_DATA }] })
+    });
+  });
+  await page.goto("/");
+  await page.locator("#posterSearchInput").fill("Legacy");
+  await page.locator("#posterSearchBtn").click();
+  await expect(page.locator(".poster-card")).toHaveCount(1);
+  expect(methods).toEqual(["GET", "POST"]);
+  await expect(page.locator("#posterSearchStatus")).not.toContainText("Use POST");
+});
+
 test("poster exports create PNGs and a two-file ZIP", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
@@ -140,6 +192,12 @@ test("train editor constrains sticker and exports exact 4 folders / 24 PNG", asy
   await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().objectCount)).toBe(withText - 1);
   await page.locator("#trainRedoBtn").click();
   await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().objectCount)).toBe(withText);
+
+  await page.locator("#trainBadgeSelect").selectOption({ label: "Эксклюзив" });
+  await page.locator("#trainAddRectBtn").click();
+  const badgeInspect = await page.evaluate(() => window.TrainEditor.inspect());
+  expect(badgeInspect.badges).toContain("Эксклюзив");
+  expect(badgeInspect.masterSize).toEqual({ width: 2952, height: 366 });
 
   await page.locator("#stickerSelect").selectOption({ label: "Премьера" });
   const inspect = await page.evaluate(() => window.TrainEditor.inspect());
