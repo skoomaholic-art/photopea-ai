@@ -19,6 +19,7 @@
     posters: { vertical: makePosterState(), horizontal: makePosterState() },
     aiProviders: { xai: false, openai: false },
     backgroundProviders: { carve: false, removal: false },
+    workerVersion: null,
     selectedAiResult: null,
     drag: null,
     autosaveTimer: null
@@ -327,6 +328,20 @@
       const response = await fetch(apiBase + "/api/status", { cache: "no-store" });
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
+      state.workerVersion = data.apiVersion || "legacy";
+      if (state.workerVersion !== "2026-09-22-openrouter-v2") {
+        state.aiProviders = { xai: false, openai: false };
+        state.backgroundProviders = { carve: false, removal: false };
+        $("aiServerBadge").textContent = "нужен deploy";
+        $("aiServerBadge").className = "error";
+        $("bgProviderBadge").textContent = "нужен deploy";
+        $("bgProviderBadge").className = "error";
+        $("generateBtn").disabled = true;
+        $("removeBackgroundBtn").disabled = true;
+        setAiStatus("На Cloudflare работает старая версия Worker. Нужен повторный deploy.", "error");
+        setBgStatus("На Cloudflare работает старая версия Worker. Нужен повторный deploy.", "error");
+        return;
+      }
       state.aiProviders = {
         xai: !!data.providers?.xai,
         openai: !!data.providers?.openai
