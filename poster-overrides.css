@@ -11,3 +11,17 @@
 .lock-control input{accent-color:var(--green);margin:0}
 .lock-control:has(input:checked){color:var(--green2)}
 .poster-controls-locked{opacity:.55}
+.workspace-tabs{display:flex;gap:6px;padding:4px;border:1px solid var(--line);border-radius:12px;background:#0d1510}
+.workspace-tab{border:0;border-radius:8px;background:transparent;color:var(--muted);padding:9px 14px;font-weight:800}
+.workspace-tab.active{background:var(--green);color:#071007}
+.workspace{display:none}.workspace.active{display:block}
+.photopea-workspace{max-width:1450px;height:calc(100vh - 100px);margin:0 auto 18px;padding:0 24px}
+.photopea-toolbar{height:54px;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-bottom:0;border-radius:16px 16px 0 0;background:#0e1711;padding:8px 12px}
+.photopea-toolbar div{display:flex;flex-direction:column}.photopea-toolbar small{color:var(--muted);font-size:10px}
+#photopeaFrame{display:block;width:100%;height:calc(100% - 54px);border:1px solid var(--line);border-radius:0 0 16px 16px;background:#111}
+.ai-note{margin:-3px 0 10px;color:var(--muted);font-size:10px;line-height:1.35}
+#aiServerBadge{background:#2d2d2d;color:var(--muted)}
+#aiServerBadge.ok{background:#19351d;color:var(--green2)}
+#aiServerBadge.error{background:#381b18;color:#ff9e94}
+#generateBtn:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:720px){.topbar{grid-template-columns:1fr}.workspace-tabs{order:3;width:100%}.workspace-tab{flex:1}.photopea-workspace{height:calc(100vh - 160px);padding:0 10px}.local-note{display:none}}
