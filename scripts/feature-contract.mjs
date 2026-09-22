@@ -23,6 +23,8 @@ requireAll("workspace UI", html, [
   "Скачать вертикальный постер",
   "Скачать горизонтальный постер",
   "Скачать всё",
+  "Заблокировать логотип",
+  "trainBadgeSelect",
   "Скачать выбранный размер",
   "Скачать все размеры"
 ]);
@@ -34,7 +36,11 @@ requireAll("poster independent state", app, [
   "/api/posters?q=",
   "/api/remove-background",
   "saveAutosave",
-  "restoreProject"
+  "restoreProject",
+  "POSTER_BLEED = 0.035",
+  "logoLocked: false",
+  "scaleWithWheel",
+  "searchTVmazeDirect"
 ]);
 
 requireAll("train master canvas", train, [
@@ -48,7 +54,10 @@ requireAll("train master canvas", train, [
   "canvas.loadFromJSON",
   "object:moving",
   "object:scaling",
-  "applyCrop"
+  "applyCrop",
+  "buildPromoBadge",
+  "cssOnly: true",
+  'canvas.on("mouse:wheel"'
 ]);
 
 for (const sticker of [
