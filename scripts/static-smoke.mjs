@@ -7,12 +7,8 @@ const read = p => fs.readFileSync(path.join(root,p),"utf8");
 
 const required = [
   "index.html",
-  "styles.css",
-  "app.js",
-  "storage.js",
-  "studio.js",
-  "media.js",
-  "raster-worker.js",
+  "poster-app.css",
+  "poster-app.js",
   "THIRD_PARTY_LICENSES.md",
   "docs/CANVAS_ENGINE_DECISION.md"
 ];
@@ -31,7 +27,10 @@ if (duplicates.length) {
 }
 
 const idSet = new Set(ids);
-const jsFiles = ["app.js","storage.js","studio.js","media.js","raster-worker.js"];
+const localScripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)]
+  .map(m => m[1])
+  .filter(src => !/^https?:\/\//.test(src));
+const jsFiles = localScripts;
 const missingIds = new Set();
 
 for (const file of jsFiles) {
@@ -45,10 +44,6 @@ for (const file of jsFiles) {
 if (missingIds.size) {
   throw new Error("JavaScript references missing DOM ids: " + [...missingIds].join(", "));
 }
-
-const localScripts = [...html.matchAll(/<script[^>]+src="([^"]+)"/g)]
-  .map(m => m[1])
-  .filter(src => !/^https?:\/\//.test(src));
 
 for (const src of localScripts) {
   if (!fs.existsSync(path.join(root,src))) {
