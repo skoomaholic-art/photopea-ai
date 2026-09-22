@@ -298,7 +298,8 @@
 
   function syncObjectControls() {
     const obj = activeObject();
-    $("trainRotationInput").value = obj ? Math.round(obj.angle || 0) : 0;
+    $("trainRotationInput").value = obj?.sticker ? 0 : (obj ? Math.round(obj.angle || 0) : 0);
+    $("trainRotationInput").disabled = !!obj?.sticker;
     $("trainOpacityInput").value = obj ? (obj.opacity ?? 1) : 1;
     $("applyCropBtn").disabled = !(obj instanceof F.FabricImage);
   }
@@ -377,6 +378,7 @@
       originX: "left", originY: "top",
       lockScalingFlip: true,
       lockUniScaling: true,
+      lockRotation: true,
       sticker: true,
       stickerText: text,
       name: "Стикер: " + text,
@@ -621,6 +623,7 @@
   $("trainRedoBtn").addEventListener("click", redo);
   $("trainRotationInput").addEventListener("change", e => {
     const obj = activeObject(); if (!obj) return;
+    if (obj.sticker) { obj.rotate(0); e.target.value = "0"; return; }
     obj.rotate(+e.target.value || 0); obj.setCoords(); canvas.requestRenderAll(); snapshot("Поворот объекта");
   });
   $("trainOpacityInput").addEventListener("input", e => {
