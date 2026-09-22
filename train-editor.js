@@ -20,7 +20,7 @@
   }
 
   const existingProps = F.FabricObject.customProperties || [];
-  F.FabricObject.customProperties = [...new Set([...existingProps, "name", "kind", "sticker", "stickerText", "source", "rawWidth", "rawHeight"])] ;
+  F.FabricObject.customProperties = [...new Set([...existingProps, "name", "kind", "sticker", "stickerText", "badgeText", "source", "rawWidth", "rawHeight"])] ;
 
   const canvas = new F.Canvas("trainCanvas", {
     preserveObjectStacking: true,
@@ -83,14 +83,23 @@
   function resizeDisplay() {
     const viewport = $("trainCanvasView");
     if (!viewport) return;
-    const available = Math.max(640, viewport.clientWidth - 38);
-    const zoom = Math.min(1, available / MASTER_W);
-    state.displayZoom = zoom;
-    canvas.setDimensions({ width: Math.round(MASTER_W * zoom), height: Math.round(MASTER_H * zoom) });
-    canvas.setViewportTransform([zoom, 0, 0, zoom, 0, 0]);
+    const available = Math.max(320, viewport.clientWidth - 36);
+    const displayW = Math.min(MASTER_W, available);
+    const displayH = Math.round(displayW * MASTER_H / MASTER_W);
+    state.displayZoom = displayW / MASTER_W;
+
+    // Keep Fabric's backing store at the full 2952 × 366 master resolution.
+    // Only CSS dimensions are reduced for the editor. This removes the blurry
+    // low-resolution preview and keeps pointer coordinates aligned.
+    if (canvas.getWidth() !== MASTER_W || canvas.getHeight() !== MASTER_H) {
+      canvas.setDimensions({ width: MASTER_W, height: MASTER_H });
+    }
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    canvas.setDimensions({ width: displayW, height: displayH }, { cssOnly: true });
+
     const shell = $("trainCanvasShell");
-    shell.style.width = Math.round(MASTER_W * zoom) + "px";
-    shell.style.height = Math.round(MASTER_H * zoom) + "px";
+    shell.style.width = displayW + "px";
+    shell.style.height = displayH + "px";
     canvas.requestRenderAll();
   }
 
@@ -202,21 +211,11 @@
   }
 
   function addRect() {
-    const rect = metadata(new F.Rect({
-      left: MASTER_W / 2,
-      top: MASTER_H / 2,
-      originX: "center",
-      originY: "center",
-      width: 360,
-      height: 110,
-      rx: 24,
-      ry: 24,
-      fill: "#183d28",
-      stroke: "#8cf06b",
-      strokeWidth: 2
-    }), "Плашка", "shape");
-    canvas.add(rect);
-    canvas.setActiveObject(rect);
+    const text = $("trainBadgeSelect").value || "Премьера";
+    const badge = buildPromoBadge(text, false);
+    canvas.add(badge);
+    canvas.setActiveObject(badge);
+    canvas.requestRenderAll();
   }
 
   function duplicateActive() {
@@ -346,7 +345,7 @@
     return { fill: null, text: "#ffffff", stroke: "#2fb9a5", strokeWidth: 1 };
   }
 
-  function buildSticker(text) {
+  function buildPromoBadge(text, firstSegmentSticker = false) {
     const style = stickerStyle(text);
     const label = new F.IText(text, {
       left: 18, top: 11,
@@ -374,20 +373,25 @@
     }
     const rect = new F.Rect(rectOptions);
     const group = new F.Group([rect, label], {
-      left: 24, top: 22,
-      originX: "left", originY: "top",
+      left: firstSegmentSticker ? 24 : MASTER_W / 2,
+      top: firstSegmentSticker ? 22 : MASTER_H / 2,
+      originX: firstSegmentSticker ? "left" : "center",
+      originY: firstSegmentSticker ? "top" : "center",
       lockScalingFlip: true,
       lockUniScaling: true,
-      lockRotation: true,
-      sticker: true,
-      stickerText: text,
-      name: "Стикер: " + text,
-      kind: "sticker"
+      lockRotation: firstSegmentSticker,
+      sticker: firstSegmentSticker,
+      stickerText: firstSegmentSticker ? text : "",
+      badgeText: text,
+      name: (firstSegmentSticker ? "Стикер: " : "Плашка: ") + text,
+      kind: firstSegmentSticker ? "sticker" : "badge"
     });
-    group.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false, mtr: false });
-    metadata(group, "Стикер: " + text, "sticker");
-    group.sticker = true;
-    group.stickerText = text;
+    if (firstSegmentSticker) group.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false, mtr: false });
+    else group.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false });
+    metadata(group, (firstSegmentSticker ? "Стикер: " : "Плашка: ") + text, firstSegmentSticker ? "sticker" : "badge");
+    group.sticker = firstSegmentSticker;
+    group.stickerText = firstSegmentSticker ? text : "";
+    group.badgeText = text;
     return group;
   }
 
@@ -412,7 +416,7 @@
     state.muted = true;
     if (old) canvas.remove(old);
     if (text !== "Без стикера") {
-      const sticker = buildSticker(text);
+      const sticker = buildPromoBadge(text, true);
       canvas.add(sticker);
       canvas.setActiveObject(sticker);
     } else {
@@ -467,20 +471,10 @@
   async function toMasterCanvas() {
     const active = canvas.getActiveObject();
     canvas.discardActiveObject();
-    const oldW = canvas.getWidth();
-    const oldH = canvas.getHeight();
-    const oldVpt = canvas.viewportTransform ? [...canvas.viewportTransform] : [1,0,0,1,0,0];
-
-    state.muted = true;
-    canvas.setDimensions({ width: MASTER_W, height: MASTER_H });
-    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
     canvas.requestRenderAll();
     const result = canvas.toCanvasElement(1);
-    canvas.setDimensions({ width: oldW, height: oldH });
-    canvas.setViewportTransform(oldVpt);
     if (active) canvas.setActiveObject(active);
     canvas.requestRenderAll();
-    state.muted = false;
     return result;
   }
 
@@ -548,10 +542,15 @@
     try {
       const spec = EXPORT_SIZES.find(x => x.key === $("trainSizeSelect").value) || EXPORT_SIZES[3];
       const master = await toMasterCanvas();
+      const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
       document.querySelectorAll("#trainDeviceView canvas").forEach((part, i) => {
-        part.width = spec.segW;
-        part.height = spec.segH;
-        part.getContext("2d").drawImage(master, i * SEG_W, 0, SEG_W, SEG_H, 0, 0, spec.segW, spec.segH);
+        part.width = Math.round(spec.segW * dpr);
+        part.height = Math.round(spec.segH * dpr);
+        part.style.aspectRatio = spec.segW + " / " + spec.segH;
+        const ctx = part.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(master, i * SEG_W, 0, SEG_W, SEG_H, 0, 0, part.width, part.height);
       });
     } catch (error) {
       setStatus("Не удалось обновить предпросмотр.", "error");
@@ -593,6 +592,23 @@
   });
   canvas.on("object:moving", e => constrainSticker(e.target));
   canvas.on("object:scaling", e => constrainSticker(e.target));
+  let wheelSnapshotTimer;
+  canvas.on("mouse:wheel", opt => {
+    const obj = activeObject();
+    if (!obj || obj.lockScalingX || obj.lockScalingY) return;
+    const event = opt.e;
+    const factor = event.deltaY < 0 ? 1.04 : 0.96;
+    const currentScale = Math.max(obj.scaleX || 1, obj.scaleY || 1);
+    const nextScale = Math.max(0.05, Math.min(8, currentScale * factor));
+    obj.scale(nextScale);
+    constrainSticker(obj);
+    obj.setCoords();
+    canvas.requestRenderAll();
+    event.preventDefault();
+    event.stopPropagation();
+    clearTimeout(wheelSnapshotTimer);
+    wheelSnapshotTimer = setTimeout(() => snapshot("Масштаб объекта"), 180);
+  });
   canvas.on("selection:created", renderLayers);
   canvas.on("selection:updated", renderLayers);
   canvas.on("selection:cleared", renderLayers);
@@ -660,7 +676,10 @@
           width: sticker.getScaledWidth(),
           height: sticker.getScaledHeight()
         } : null,
-        background: canvas.backgroundColor
+        badges: canvas.getObjects().filter(obj => obj.kind === "badge").map(obj => obj.badgeText),
+        background: canvas.backgroundColor,
+        masterSize: { width: canvas.getWidth(), height: canvas.getHeight() },
+        displayZoom: state.displayZoom
       };
     },
     constants: { MASTER_W, MASTER_H, SEG_W, SEG_H, EXPORT_SIZES }

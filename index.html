@@ -6,18 +6,18 @@
   <meta name="theme-color" content="#07100b">
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
-  <link rel="icon" type="image/svg+xml" href="app-icon.svg">
-  <link rel="stylesheet" href="poster-app.css">
+  <link rel="icon" type="image/svg+xml" href="app-icon.svg?v=20260922c">
+  <link rel="stylesheet" href="poster-app.css?v=20260922c">
   <script defer src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
-  <script defer src="storage.js"></script>
-  <script defer src="zip-store.js"></script>
-  <script defer src="poster-app.js"></script>
-  <script defer src="train-editor.js"></script>
+  <script defer src="storage.js?v=20260922c"></script>
+  <script defer src="zip-store.js?v=20260922c"></script>
+  <script defer src="poster-app.js?v=20260922c"></script>
+  <script defer src="train-editor.js?v=20260922c"></script>
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="#" aria-label="Poster Editor">
-      <img class="brand-icon" src="app-icon.svg" alt="">
+      <img class="brand-icon" src="app-icon.svg?v=20260922c" alt="">
       <span><small>FREEDOM TOOLKIT</small><strong>Poster Editor</strong></span>
     </a>
 
@@ -75,6 +75,8 @@
             <button id="posterLayerDownBtn">Слой ниже</button>
           </div>
           <label class="lock-line"><input id="posterLockInput" type="checkbox" checked> Заблокировать постер</label>
+          <label class="lock-line"><input id="logoLockInput" type="checkbox"> Заблокировать логотип</label>
+          <p class="muted bleed-note">Постер имеет постоянный вылет 3.5% за края видимой области.</p>
           <label class="field">Фон холста <input id="posterBgInput" type="color" value="#000000"></label>
         </section>
 
@@ -152,8 +154,26 @@
             <input id="trainTextInput" value="Новый текст" aria-label="Текст">
             <button id="trainAddTextBtn">+ Текст</button>
           </div>
+          <label class="field">Плашка
+            <select id="trainBadgeSelect">
+              <option>Премьера</option>
+              <option>Новые серии</option>
+              <option>Жаңа сериялар</option>
+              <option>Новый сезон</option>
+              <option>Жаңа маусым</option>
+              <option>Все серии</option>
+              <option>Барлық сериялар</option>
+              <option>Новинка</option>
+              <option>Жаңа</option>
+              <option>Эксклюзив</option>
+              <option>Скоро…</option>
+              <option>Жуырда…</option>
+              <option>Скоро уйдёт</option>
+              <option>Көріп үлгер</option>
+            </select>
+          </label>
           <div class="button-row">
-            <button id="trainAddRectBtn">+ Плашка</button>
+            <button id="trainAddRectBtn">+ Добавить плашку</button>
             <button id="trainDuplicateBtn">Дублировать</button>
           </div>
           <label class="field">Фон <input id="trainBgColor" type="color" value="#101010"></label>

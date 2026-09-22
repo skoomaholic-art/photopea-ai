@@ -323,6 +323,7 @@ export default {
       if (request.method === "GET" && url.pathname === "/api/status") {
         return json({
           ok: true,
+          apiVersion: "2026-09-22-openrouter-v2",
           providers: { xai: !!env.OPENROUTER_API_KEY, openai: !!env.OPENROUTER_API_KEY },
           aiProvider: "openrouter",
           aiModels: {
@@ -337,8 +338,12 @@ export default {
         }, 200, origin);
       }
 
-      if (request.method === "GET" && url.pathname === "/api/posters") {
-        const q = (url.searchParams.get("q") || "").trim();
+      if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/posters") {
+        let q = (url.searchParams.get("q") || "").trim();
+        if (request.method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          q = String(body.q || body.query || q).trim();
+        }
         if (q.length < 2) throw new ApiError("Запрос должен содержать минимум 2 символа.", 400, "bad_query");
         const tvmaze = await searchTVmaze(q, request);
         const tmdb = await searchTMDB(q, request, env);
@@ -376,7 +381,7 @@ export default {
         return json(result, 200, origin);
       }
 
-      return json({ ok: true, service: "Poster Editor API" }, 200, origin);
+      return json({ error: "Route not found", code: "not_found" }, 404, origin);
     } catch (error) {
       const status = error instanceof ApiError ? error.status : 500;
       const code = error instanceof ApiError ? error.code : "internal_error";

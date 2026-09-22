@@ -5,11 +5,12 @@
     vertical: { w: 800, h: 1200, label: "Вертикальный" },
     horizontal: { w: 1920, h: 1080, label: "Горизонтальный" }
   };
+  const POSTER_BLEED = 0.035;
   const makePosterState = () => ({
     poster: null, logo: null, posterName: "", logoName: "",
     posterX: 50, posterY: 50, posterScale: 100, posterRotation: 0,
     logoX: 50, logoY: 50, logoScale: 100, logoRotation: 0,
-    posterLocked: true, background: "#000000", order: ["poster", "logo"]
+    posterLocked: true, logoLocked: false, background: "#000000", order: ["poster", "logo"]
   });
 
   const state = {
@@ -18,6 +19,7 @@
     posters: { vertical: makePosterState(), horizontal: makePosterState() },
     aiProviders: { xai: false, openai: false },
     backgroundProviders: { carve: false, removal: false },
+    workerVersion: null,
     selectedAiResult: null,
     drag: null,
     autosaveTimer: null
@@ -96,9 +98,12 @@
   function syncLayerControls() {
     const s = current();
     const prefix = state.selectedLayer;
-    $("layerScaleInput").value = s[prefix + "Scale"];
+    const scaleInput = $("layerScaleInput");
+    scaleInput.min = prefix === "poster" ? "100" : "10";
+    scaleInput.value = Math.max(prefix === "poster" ? 100 : 10, s[prefix + "Scale"]);
     $("layerRotationInput").value = s[prefix + "Rotation"];
     $("posterLockInput").checked = s.posterLocked;
+    $("logoLockInput").checked = s.logoLocked;
     $("posterBgInput").value = s.background;
   }
 
@@ -122,7 +127,9 @@
 
     posterImage.style.left = s.posterX + "%";
     posterImage.style.top = s.posterY + "%";
-    posterImage.style.transform = `translate(-50%,-50%) rotate(${s.posterRotation}deg) scale(${s.posterScale / 100})`;
+    posterImage.style.width = (100 * (1 + POSTER_BLEED * 2)) + "%";
+    posterImage.style.height = (100 * (1 + POSTER_BLEED * 2)) + "%";
+    posterImage.style.transform = `translate(-50%,-50%) rotate(${s.posterRotation}deg) scale(${Math.max(100, s.posterScale) / 100})`;
 
     logoImage.style.left = s.logoX + "%";
     logoImage.style.top = s.logoY + "%";
@@ -200,26 +207,71 @@
     scheduleAutosave();
   }
 
+  async function searchTVmazeDirect(q) {
+    const response = await fetch("https://api.tvmaze.com/search/shows?q=" + encodeURIComponent(q), { cache: "no-store" });
+    if (response.status === 429) throw new Error("TVmaze: превышен лимит запросов. Повторите позже.");
+    if (!response.ok) throw new Error("TVmaze временно недоступен.");
+    const rows = await response.json();
+    return (rows || []).slice(0, 12).map(({ show }) => {
+      const image = show?.image?.original || show?.image?.medium || null;
+      return {
+        id: "tvmaze-" + show.id,
+        title: show.name,
+        year: (show.premiered || "").slice(0, 4),
+        type: "TV",
+        source: "TVmaze",
+        quality: show?.image?.original ? "original" : "medium",
+        image
+      };
+    }).filter(item => item.image);
+  }
+
+  async function fetchPosterResults(q) {
+    if (apiBase) {
+      try {
+        let response = await fetch(apiBase + "/api/posters?q=" + encodeURIComponent(q), { cache: "no-store" });
+        let data = await response.json().catch(() => ({}));
+        if (response.ok && Array.isArray(data.results)) return { items: data.results, direct: false };
+
+        if (response.status === 405 || /use\s+post/i.test(String(data.error || data.message || ""))) {
+          response = await fetch(apiBase + "/api/posters", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ q, query: q })
+          });
+          data = await response.json().catch(() => ({}));
+          if (response.ok && Array.isArray(data.results)) return { items: data.results, direct: false };
+        }
+
+        if (response.status === 429) throw new Error(data.error || "Превышен лимит поиска. Повторите позже.");
+        if (response.status >= 500) throw new Error(data.error || "Сервис поиска временно недоступен.");
+      } catch (error) {
+        if (/лимит|temporarily|временно/i.test(String(error?.message || ""))) throw error;
+        // Network/legacy-Worker failures fall through to the public TVmaze API.
+      }
+    }
+    return { items: await searchTVmazeDirect(q), direct: true };
+  }
+
   async function searchPosters() {
     const q = $("posterSearchInput").value.trim();
     if (!q) return setPosterSearchStatus("Введите название.", "error");
-    if (!apiBase) return setPosterSearchStatus("Не указан адрес API-сервера.", "error");
 
     $("posterSearchBtn").disabled = true;
     setPosterSearchStatus("Ищу постеры...");
     $("posterSearchResults").innerHTML = "";
     try {
-      const response = await fetch(apiBase + "/api/posters?q=" + encodeURIComponent(q), { cache: "no-store" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Ошибка поиска.");
-      const items = Array.isArray(data.results) ? data.results : [];
+      const { items, direct } = await fetchPosterResults(q);
       if (!items.length) {
         setPosterSearchStatus("Ничего не найдено.", "error");
         return;
       }
       renderPosterResults(items);
-      const providers = [...new Set(items.map(item => item.source))].join(", ");
-      setPosterSearchStatus(`Найдено: ${items.length}. Источник: ${providers}.`, "ok");
+      const providers = [...new Set(items.map(item => item.source).filter(Boolean))].join(", ") || "TVmaze";
+      setPosterSearchStatus(
+        `Найдено: ${items.length}. Источник: ${providers}.${direct ? " Worker недоступен, используется прямой TVmaze." : ""}`,
+        "ok"
+      );
     } catch (error) {
       setPosterSearchStatus(error.message || "Ошибка сети.", "error");
     } finally {
@@ -249,9 +301,17 @@
       const meta = document.createElement("small");
       meta.textContent = [item.year, item.source, item.quality].filter(Boolean).join(" · ");
       card.append(img, title, meta);
-      card.addEventListener("click", () => {
-        setImageLayer("poster", item.image, item.title || "poster");
-        setPosterSearchStatus("Постер добавлен в " + formats[state.activeFormat].label.toLowerCase() + " редактор.", "ok");
+      card.addEventListener("click", async () => {
+        card.disabled = true;
+        setPosterSearchStatus("Загружаю выбранный постер...");
+        try {
+          let src = item.image;
+          try { src = await sourceToDataUrl(item.image); } catch {}
+          await setImageLayer("poster", src, item.title || "poster");
+          setPosterSearchStatus("Постер добавлен в " + formats[state.activeFormat].label.toLowerCase() + " редактор.", "ok");
+        } finally {
+          card.disabled = false;
+        }
       });
       root.appendChild(card);
     }
@@ -268,6 +328,20 @@
       const response = await fetch(apiBase + "/api/status", { cache: "no-store" });
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
+      state.workerVersion = data.apiVersion || "legacy";
+      if (state.workerVersion !== "2026-09-22-openrouter-v2") {
+        state.aiProviders = { xai: false, openai: false };
+        state.backgroundProviders = { carve: false, removal: false };
+        $("aiServerBadge").textContent = "нужен deploy";
+        $("aiServerBadge").className = "error";
+        $("bgProviderBadge").textContent = "нужен deploy";
+        $("bgProviderBadge").className = "error";
+        $("generateBtn").disabled = true;
+        $("removeBackgroundBtn").disabled = true;
+        setAiStatus("На Cloudflare работает старая версия Worker. Нужен повторный deploy.", "error");
+        setBgStatus("На Cloudflare работает старая версия Worker. Нужен повторный deploy.", "error");
+        return;
+      }
       state.aiProviders = {
         xai: !!data.providers?.xai,
         openai: !!data.providers?.openai
@@ -445,15 +519,17 @@
     async function drawPosterLayer() {
       if (!s.poster) return;
       const image = await loadImage(s.poster);
-      const crop = coverCrop(image, f.w, f.h);
+      const bleedW = Math.ceil(f.w * (1 + POSTER_BLEED * 2));
+      const bleedH = Math.ceil(f.h * (1 + POSTER_BLEED * 2));
+      const crop = coverCrop(image, bleedW, bleedH);
       const layerCanvas = document.createElement("canvas");
-      layerCanvas.width = f.w; layerCanvas.height = f.h;
-      layerCanvas.getContext("2d").drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, f.w, f.h);
+      layerCanvas.width = bleedW; layerCanvas.height = bleedH;
+      layerCanvas.getContext("2d").drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, bleedW, bleedH);
       ctx.save();
       ctx.translate(f.w * s.posterX / 100, f.h * s.posterY / 100);
       ctx.rotate(s.posterRotation * Math.PI / 180);
-      ctx.scale(s.posterScale / 100, s.posterScale / 100);
-      ctx.drawImage(layerCanvas, -f.w / 2, -f.h / 2);
+      ctx.scale(Math.max(100, s.posterScale) / 100, Math.max(100, s.posterScale) / 100);
+      ctx.drawImage(layerCanvas, -bleedW / 2, -bleedH / 2);
       ctx.restore();
     }
 
@@ -573,9 +649,13 @@
     }
   }
 
+  function layerLocked(layer, s = current()) {
+    return layer === "poster" ? !!s.posterLocked : !!s.logoLocked;
+  }
+
   function beginDrag(layer, event) {
     const s = current();
-    if (layer === "poster" && s.posterLocked) return;
+    if (layerLocked(layer, s)) return;
     if (!s[layer]) return;
     selectLayer(layer);
     const rect = stage.getBoundingClientRect();
@@ -607,6 +687,22 @@
     scheduleAutosave();
   }
 
+  function scaleWithWheel(event) {
+    const targetLayer = event.target === logoImage ? "logo" : event.target === posterImage ? "poster" : state.selectedLayer;
+    const s = current();
+    if (!s[targetLayer] || layerLocked(targetLayer, s)) return;
+    event.preventDefault();
+    selectLayer(targetLayer);
+    const key = targetLayer + "Scale";
+    const min = targetLayer === "poster" ? 100 : 10;
+    const max = 300;
+    const direction = event.deltaY < 0 ? 1 : -1;
+    const step = event.shiftKey ? 1 : 4;
+    s[key] = Math.max(min, Math.min(max, Math.round(s[key] + direction * step)));
+    renderPoster();
+    scheduleAutosave();
+  }
+
   document.querySelectorAll(".workspace-tab").forEach(btn => btn.addEventListener("click", () => switchWorkspace(btn.dataset.workspace)));
   $("openPhotopeaBtn").addEventListener("click", () => window.open("https://www.photopea.com/", "_blank", "noopener"));
   $("posterFileInput").addEventListener("change", async e => {
@@ -620,13 +716,18 @@
   $("posterSearchBtn").addEventListener("click", searchPosters);
   $("posterSearchInput").addEventListener("keydown", e => { if (e.key === "Enter") searchPosters(); });
   $("posterLayerSelect").addEventListener("change", e => selectLayer(e.target.value));
-  $("layerScaleInput").addEventListener("input", e => { current()[state.selectedLayer + "Scale"] = +e.target.value; renderPoster(); scheduleAutosave(); });
+  $("layerScaleInput").addEventListener("input", e => {
+    const min = state.selectedLayer === "poster" ? 100 : 10;
+    current()[state.selectedLayer + "Scale"] = Math.max(min, +e.target.value);
+    renderPoster(); scheduleAutosave();
+  });
   $("layerRotationInput").addEventListener("input", e => { current()[state.selectedLayer + "Rotation"] = +e.target.value; renderPoster(); scheduleAutosave(); });
   $("centerLayerBtn").addEventListener("click", () => { current()[state.selectedLayer + "X"] = 50; current()[state.selectedLayer + "Y"] = 50; renderPoster(); scheduleAutosave(); });
   $("resetLayerBtn").addEventListener("click", resetSelectedLayer);
   $("posterLayerUpBtn").addEventListener("click", () => changePosterLayerOrder(1));
   $("posterLayerDownBtn").addEventListener("click", () => changePosterLayerOrder(-1));
   $("posterLockInput").addEventListener("change", e => { current().posterLocked = e.target.checked; scheduleAutosave(); });
+  $("logoLockInput").addEventListener("change", e => { current().logoLocked = e.target.checked; scheduleAutosave(); });
   $("posterBgInput").addEventListener("input", e => { current().background = e.target.value; renderPoster(); scheduleAutosave(); });
   $("aiProvider").addEventListener("change", updateAiAvailability);
   $("generateBtn").addEventListener("click", generateAi);
@@ -648,6 +749,7 @@
   stage.addEventListener("pointermove", moveDrag);
   stage.addEventListener("pointerup", endDrag);
   stage.addEventListener("pointercancel", endDrag);
+  stage.addEventListener("wheel", scaleWithWheel, { passive: false });
   posterImage.addEventListener("click", () => selectLayer("poster"));
   logoImage.addEventListener("click", () => selectLayer("logo"));
 
