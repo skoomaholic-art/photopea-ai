@@ -303,7 +303,7 @@
     const ready = !!state.aiProviders[provider];
     $("generateBtn").disabled = !ready;
     setAiStatus(
-      ready ? "Провайдер готов через OpenRouter." : "OpenRouter не настроен на сервере.",
+      ready ? "Провайдер готов через OpenRouter." : "OpenRouter не задан на сервере.",
       ready ? "ok" : "error"
     );
   }
