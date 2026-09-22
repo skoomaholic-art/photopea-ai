@@ -73,6 +73,7 @@ test("poster search, background removal and vertical/horizontal states are indep
   await page.locator("#posterFileInput").setInputFiles({ name: "vertical.png", mimeType: "image/png", buffer: PNG });
   await page.locator("#layerScaleInput").fill("135");
   await page.locator("#layerRotationInput").fill("17");
+  await page.locator("#posterLayerUpBtn").click();
   await page.locator("#removeBackgroundBtn").click();
   await expect(page.locator("#bgRemoveStatus")).toContainText("Положение и трансформация сохранены");
 
@@ -86,6 +87,8 @@ test("poster search, background removal and vertical/horizontal states are indep
   expect(states.vertical.posterName).toBe("vertical.png");
   expect(states.vertical.posterScale).toBe(135);
   expect(states.vertical.posterRotation).toBe(17);
+  expect(states.vertical.order).toEqual(["logo", "poster"]);
+  expect(states.horizontal.order).toEqual(["poster", "logo"]);
   expect(states.horizontal.posterName).toBe("horizontal.png");
   expect(states.horizontal.posterScale).toBe(165);
   expect(states.horizontal.posterRotation).toBe(-8);
