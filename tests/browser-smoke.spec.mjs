@@ -132,8 +132,9 @@ test("poster bleed, wheel scaling and independent logo lock work", async ({ page
   await page.locator("#posterLayerSelect").selectOption("poster");
   await page.locator("#posterLockInput").uncheck();
   const posterBefore = (await page.evaluate(() => window.PosterApp.getState().vertical)).posterScale;
-  await page.locator("#posterImage").hover();
-  await page.mouse.wheel(0, -120);
+  await page.locator("#posterImage").evaluate(el => {
+    el.dispatchEvent(new WheelEvent("wheel", { deltaY: -120, bubbles: true, cancelable: true }));
+  });
   await expect.poll(async () => (await page.evaluate(() => window.PosterApp.getState().vertical)).posterScale).toBeGreaterThan(posterBefore);
 });
 
