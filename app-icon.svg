@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Poster Editor">
+  <rect width="128" height="128" rx="26" fill="#08100b"/>
+  <path d="M28 28h72v72H28z" fill="none" stroke="#8cf06b" stroke-width="5" rx="12"/>
+  <path d="M41 34c7 6 12 15 13 25m33-25c-7 6-12 15-13 25M51 58l-4 27m30-27 4 27" fill="none" stroke="#eef6ef" stroke-width="4" stroke-linecap="round"/>
+  <path d="M48 80c8-9 24-9 32 0l-4 18H52z" fill="#8cf06b"/>
+  <circle cx="64" cy="72" r="11" fill="#08100b" stroke="#eef6ef" stroke-width="4"/>
+  <path d="M56 72h16M64 64v16" stroke="#eef6ef" stroke-width="3" stroke-linecap="round"/>
+</svg>
