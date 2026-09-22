@@ -75,6 +75,8 @@
             <button id="posterLayerDownBtn">Слой ниже</button>
           </div>
           <label class="lock-line"><input id="posterLockInput" type="checkbox" checked> Заблокировать постер</label>
+          <label class="lock-line"><input id="logoLockInput" type="checkbox"> Заблокировать логотип</label>
+          <p class="muted bleed-note">Постер имеет постоянный вылет 3.5% за края видимой области.</p>
           <label class="field">Фон холста <input id="posterBgInput" type="color" value="#000000"></label>
         </section>
 
@@ -152,8 +154,26 @@
             <input id="trainTextInput" value="Новый текст" aria-label="Текст">
             <button id="trainAddTextBtn">+ Текст</button>
           </div>
+          <label class="field">Плашка
+            <select id="trainBadgeSelect">
+              <option>Премьера</option>
+              <option>Новые серии</option>
+              <option>Жаңа сериялар</option>
+              <option>Новый сезон</option>
+              <option>Жаңа маусым</option>
+              <option>Все серии</option>
+              <option>Барлық сериялар</option>
+              <option>Новинка</option>
+              <option>Жаңа</option>
+              <option>Эксклюзив</option>
+              <option>Скоро…</option>
+              <option>Жуырда…</option>
+              <option>Скоро уйдёт</option>
+              <option>Көріп үлгер</option>
+            </select>
+          </label>
           <div class="button-row">
-            <button id="trainAddRectBtn">+ Плашка</button>
+            <button id="trainAddRectBtn">+ Добавить плашку</button>
             <button id="trainDuplicateBtn">Дублировать</button>
           </div>
           <label class="field">Фон <input id="trainBgColor" type="color" value="#101010"></label>
