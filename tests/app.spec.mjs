@@ -7,7 +7,7 @@ test("poster editor exposes AI adaptation controls", async ({ page }) => {
     body: JSON.stringify({ ok: true, apiVersion: "2026-09-23-assets-v3", providers: { xai: true, openai: true }, background: { carve: false, removal: false } })
   }));
   await page.goto("/");
-  await expect(page.locator("#aiProvider")).toHaveValue("xai");
+  await expect(page.locator("#aiProvider")).toHaveValue("cloudflare");
   await expect(page.locator("#aiLanguage")).toHaveValue("kk");
   await expect(page.locator("#generateBtn")).toHaveText("Адаптировать логотип");
   await expect(page.locator("#generateBtn")).toBeEnabled();
