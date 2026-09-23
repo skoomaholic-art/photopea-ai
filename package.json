@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "smoke": "node scripts/static-smoke.mjs && node scripts/feature-contract.mjs",
+    "smoke": "node scripts/static-smoke.mjs && node scripts/feature-contract.mjs && node tests/image-sources.test.mjs",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
