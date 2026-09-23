@@ -7,19 +7,21 @@
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
   <link rel="icon" type="image/svg+xml" href="app-icon.svg?v=20260922c">
-  <link rel="stylesheet" href="poster-app.css?v=20260923logo-close">
+  <link rel="stylesheet" href="poster-app.css?v=20260923-remaining-a">
   <script defer src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
-  <script defer src="storage.js?v=20260923b"></script>
+  <script defer src="storage.js?v=20260923-remaining-a"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
   <script defer src="asset-manager.js?v=20260923b"></script>
   <script defer src="local-background-removal.js?v=20260923a"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
-  <script defer src="poster-app.js?v=20260923logo-close"></script>
-  <script defer src="train-editor.js?v=20260923logo-close"></script>
-  <script defer src="top10-editor.js?v=20260923logo-close"></script>
+  <script defer src="poster-app.js?v=20260923-remaining-a"></script>
+  <script defer src="train-editor.js?v=20260923-remaining-a"></script>
+  <script defer src="top10-editor.js?v=20260923-remaining-a"></script>
   <script defer src="filter-studio.js?v=20260923top10a"></script>
   <script defer src="source-browser.js?v=20260923b"></script>
   <script defer src="photopea-bridge.js?v=20260923top10a"></script>
+  <script defer src="range-number-sync.js?v=20260923-remaining-a"></script>
+  <script defer src="workspace-tools.js?v=20260923-remaining-a"></script>
 </head>
 <body>
   <header class="topbar">
@@ -155,6 +157,10 @@
           <button id="downloadVerticalBtn" class="wide">Скачать вертикальный постер</button>
           <button id="downloadHorizontalBtn" class="wide">Скачать горизонтальный постер</button>
           <button id="downloadPostersZipBtn" class="primary wide">Скачать всё</button>
+          <div class="workspace-maintenance">
+            <button id="posterArchiveBtn" class="wide">Архив работ</button>
+            <button id="posterResetWorkspaceBtn" class="danger wide">Сбросить</button>
+          </div>
         </section>
       </aside>
     </div>
@@ -268,6 +274,8 @@
           <button id="trainEditPhotopeaBtn" class="wide">Редактировать Паровозик в Photopea</button>
           <button id="trainDownloadSelectedBtn" class="wide">Скачать выбранный размер</button>
           <button id="trainDownloadAllBtn" class="primary wide">Скачать все размеры</button>
+          <button id="trainArchiveBtn" class="wide">Архив работ</button>
+          <button id="trainResetWorkspaceBtn" class="danger wide">Сбросить</button>
           <p class="muted">Направляющие, номера, промежутки и скругления предпросмотра в PNG не экспортируются.</p>
         </section>
       </aside>
@@ -346,6 +354,8 @@
           <h3>Экспорт</h3>
           <button id="top10EditPhotopeaBtn" class="wide">Редактировать ТОП10 в Photopea</button>
           <button id="top10DownloadBtn" class="primary wide">Скачать ТОП10</button>
+          <button id="top10ArchiveBtn" class="wide">Архив работ</button>
+          <button id="top10ResetClassicBtn" class="danger wide">Сбросить до классического стиля</button>
           <p class="muted">Экспорт: PNG 800 × 1400. UI, рамки и selection не попадают в файл.</p>
         </section>
       </aside>
@@ -428,6 +438,28 @@
         <button data-route-target="train">Паровозик<br><small>2952 × 366</small></button>
         <button data-route-target="top10">ТОП10<br><small>800 × 1400</small></button>
       </div>
+    </section>
+  </div>
+
+  <div id="resetConfirmModal" class="modal-backdrop" hidden>
+    <section class="modal-card confirm-card" role="dialog" aria-modal="true" aria-labelledby="resetConfirmTitle">
+      <header class="modal-head"><div><small>CONFIRM RESET</small><h2 id="resetConfirmTitle">Подтверждение</h2></div></header>
+      <p id="resetConfirmMessage" class="confirm-message"></p>
+      <div class="modal-actions">
+        <button id="resetConfirmCancelBtn">Отмена</button>
+        <button id="resetConfirmOkBtn" class="danger">Да, сбросить</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="archiveModal" class="modal-backdrop" hidden>
+    <section class="modal-card archive-card" role="dialog" aria-modal="true" aria-labelledby="archiveTitle">
+      <header class="modal-head">
+        <div><small>WORK ARCHIVE</small><h2 id="archiveTitle">Архив работ</h2></div>
+        <button id="archiveCloseBtn" aria-label="Закрыть">×</button>
+      </header>
+      <div id="archiveStatus" class="mini-status">Загрузка архива...</div>
+      <div id="archiveList" class="archive-list"></div>
     </section>
   </div>
 

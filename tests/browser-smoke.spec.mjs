@@ -640,3 +640,61 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   expect(restored.ranking).toBe("7");
   expect(restored.darkeningIntensity).toBe(81);
 });
+
+
+test("numeric range inputs stay synchronized and clamp values", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  const number = page.locator('[data-range-number-for="layerScaleInput"]');
+  await expect(number).toBeVisible();
+  await page.locator("#layerScaleInput").fill("120");
+  await expect(number).toHaveValue("120");
+  await number.fill("150");
+  await expect(page.locator("#layerScaleInput")).toHaveValue("150");
+  await number.fill("9999");
+  await expect(page.locator("#layerScaleInput")).toHaveValue("300");
+  await page.locator('[data-workspace="top10"]').click();
+  const darkNumber=page.locator('[data-range-number-for="top10DarkIntensity"]');
+  await expect(darkNumber).toHaveValue("94");
+  await darkNumber.fill("71");
+  await expect(page.locator("#top10DarkIntensity")).toHaveValue("71");
+});
+
+test("workspace reset is confirmed and does not delete archive versions", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({ name:"archive.png", mimeType:"image/png", buffer:PNG });
+  const downloadPromise=page.waitForEvent("download");
+  await page.locator("#downloadVerticalBtn").click();
+  await downloadPromise;
+  await expect.poll(() => page.evaluate(async () => (await window.WorkArchive.list("vertical")).length)).toBeGreaterThan(0);
+  await page.locator("#posterResetWorkspaceBtn").click();
+  await expect(page.locator("#resetConfirmModal")).toBeVisible();
+  await page.locator("#resetConfirmCancelBtn").click();
+  expect((await page.evaluate(() => window.PosterApp.getState().vertical.poster))).toBeTruthy();
+  await page.locator("#posterResetWorkspaceBtn").click();
+  await page.locator("#resetConfirmOkBtn").click();
+  await expect.poll(() => page.evaluate(() => window.PosterApp.getState().vertical.poster)).toBeNull();
+  expect(await page.evaluate(async () => (await window.WorkArchive.list("vertical")).length)).toBeGreaterThan(0);
+  await page.locator("#posterArchiveBtn").click();
+  await expect(page.locator("#archiveModal")).toBeVisible();
+  await expect(page.locator(".archive-item")).toHaveCount(1);
+});
+
+test("Train and TOP10 reset buttons restore default state after confirmation", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  await page.locator('[data-workspace="train"]').click();
+  await page.locator("#trainImageInput").setInputFiles({ name:"train.png", mimeType:"image/png", buffer:PNG });
+  await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().objectCount)).toBeGreaterThan(0);
+  await page.locator("#trainResetWorkspaceBtn").click();
+  await page.locator("#resetConfirmOkBtn").click();
+  await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().objectCount)).toBe(0);
+  await page.locator('[data-workspace="top10"]').click();
+  await page.locator("#top10PositionSelect").selectOption("9");
+  await page.locator("#top10DarkIntensity").fill("53");
+  await page.locator("#top10ResetClassicBtn").click();
+  await page.locator("#resetConfirmOkBtn").click();
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().ranking)).toBe("2");
+  expect((await page.evaluate(() => window.Top10Editor.getState().darkeningIntensity))).toBe(94);
+});

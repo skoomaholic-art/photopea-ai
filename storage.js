@@ -1,6 +1,6 @@
 window.SkoomaStore = (() => {
   const DB_NAME = "skooma-multitool";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   let dbPromise;
 
   function openDb() {
@@ -19,6 +19,11 @@ window.SkoomaStore = (() => {
         if (!db.objectStoreNames.contains("cache")) {
           const cache = db.createObjectStore("cache", { keyPath: "key" });
           cache.createIndex("expiresAt", "expiresAt");
+        }
+        if (!db.objectStoreNames.contains("workArchive")) {
+          const archive = db.createObjectStore("workArchive", { keyPath: "archiveId" });
+          archive.createIndex("workspace", "workspace");
+          archive.createIndex("createdAt", "createdAt");
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -151,9 +156,50 @@ window.SkoomaStore = (() => {
     });
   }
 
+  async function saveArchiveEntry(entry) {
+    return tx("workArchive", "readwrite", store => store.put(entry));
+  }
+
+  async function getArchiveEntry(archiveId) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("workArchive", "readonly").objectStore("workArchive").get(archiveId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function listArchiveEntries(workspace = null) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const store = db.transaction("workArchive", "readonly").objectStore("workArchive");
+      const req = workspace ? store.index("workspace").getAll(workspace) : store.getAll();
+      req.onsuccess = () => {
+        const items = req.result || [];
+        items.sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
+        resolve(items);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function deleteArchiveEntry(archiveId) {
+    return tx("workArchive", "readwrite", store => store.delete(archiveId));
+  }
+
+  async function renameArchiveEntry(archiveId, title) {
+    const entry = await getArchiveEntry(archiveId);
+    if (!entry) throw new Error("Архивная запись не найдена.");
+    entry.title = String(title || "").trim() || entry.title;
+    entry.updatedAt = Date.now();
+    await saveArchiveEntry(entry);
+    return entry;
+  }
+
   return {
     saveProject, getProject, listProjects, deleteProject,
     saveAsset, getAsset, deleteAsset, clearAssets, listAssets,
-    getCache, setCache, clearExpiredCache
+    getCache, setCache, clearExpiredCache,
+    saveArchiveEntry, getArchiveEntry, listArchiveEntries, deleteArchiveEntry, renameArchiveEntry
   };
 })();

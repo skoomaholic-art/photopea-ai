@@ -474,7 +474,8 @@
     setStatus("Готовлю PNG 800 × 1400...");
     try{
       PosterApp.downloadBlob(await renderBlob(),"top10.png");
-      setStatus("ТОП10 экспортирован: 800 × 1400 PNG.","ok");
+      await window.WorkArchive?.captureWorkspace?.("top10","download-top10");
+      setStatus("ТОП10 экспортирован: 800 × 1400 PNG. Архивная версия сохранена.","ok");
     }catch(error){setStatus(error.message||"Ошибка экспорта.","error");}
   }
 
@@ -490,6 +491,12 @@
   }
 
   function serialize(){return {version:1,...clone(data)};}
+
+  async function resetClassic(){
+    await restore(null);
+    scheduleAutosave();
+    setStatus("ТОП10 сброшен до классического стиля.","ok");
+  }
 
   async function restore(saved){
     data={...freshState(),...(saved||{})};
@@ -622,7 +629,7 @@
   refreshDarkening();refreshNumber();resizeDisplay();renderLayers();syncControls();
 
   window.Top10Editor={
-    activate,serialize,restore,renderCanvas,renderBlob,download,
+    activate,serialize,restore,resetClassic,renderCanvas,renderBlob,download,
     setBackgroundFromDataUrl,setLogoFromDataUrl,openFilters,inspect,
     getState:()=>clone(data),getSelectedLayer:()=>runtime.selectedLayer,
     constants:{MASTER_W,MASTER_H}

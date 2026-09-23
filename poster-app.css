@@ -149,3 +149,24 @@ body.modal-open{overflow:hidden}
 .asset-clear-btn{display:flex;align-items:center;justify-content:center;min-width:38px;padding:0;border-color:#6b302d;background:#241513;color:#ff7b71;font-size:22px;font-weight:800;line-height:1}
 .asset-clear-btn:hover:not(:disabled){border-color:#db5a50;background:#351916;color:#ff9a92}
 .asset-clear-btn:disabled{opacity:.28;cursor:not-allowed}
+
+
+/* Remaining-work controls: numeric precision, reset confirmation and immutable archive versions */
+.range-number-pair{display:grid;grid-template-columns:minmax(0,1fr) 64px;gap:6px;align-items:center;margin-top:4px}
+.range-number-pair>input[type=range]{min-width:0;width:100%}
+.range-number-value{width:64px!important;min-width:0;padding:5px 6px!important;text-align:right;font-variant-numeric:tabular-nums}
+.workspace-maintenance{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}
+button.danger{border-color:#8a332e!important;background:#2a1513!important;color:#ff9a91!important}
+button.danger:hover{border-color:#d85349!important;background:#3a1916!important;color:#ffd1cc!important}
+.confirm-card{width:min(560px,92vw);margin-top:22vh}
+.confirm-message{white-space:pre-line;color:#d8e5da;line-height:1.55}
+.archive-card{width:min(1120px,94vw)}
+.archive-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-top:12px;max-height:70vh;overflow:auto}
+.archive-item{display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px;border:1px solid #294331;border-radius:12px;background:#0b1510;padding:8px}
+.archive-item>img{width:110px;height:110px;object-fit:contain;background:#030503;border-radius:8px}
+.archive-item-body{min-width:0;display:flex;flex-direction:column;gap:6px}
+.archive-item-body strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.archive-item-body small{color:var(--muted);line-height:1.35}
+.archive-actions{display:flex;flex-wrap:wrap;gap:5px;margin-top:auto}
+.archive-actions button{font-size:9px;padding:6px 7px}
+@media(max-width:620px){.archive-item{grid-template-columns:80px 1fr}.archive-item>img{width:80px;height:80px}.workspace-maintenance{grid-template-columns:1fr}}

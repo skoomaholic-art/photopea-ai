@@ -13,6 +13,8 @@ const filterStudio = read("filter-studio.js");
 const sourceBrowser = read("source-browser.js");
 const photopea = read("photopea-bridge.js");
 const storage = read("storage.js");
+const workspaceTools = read("workspace-tools.js");
+const rangeNumberSync = read("range-number-sync.js");
 const envExample = read(".env.example");
 const zip = read("zip-store.js");
 const icon = read("app-icon.svg");
@@ -72,7 +74,14 @@ requireAll("asset manager", assets, [
 
 requireAll("indexeddb assets", storage, [
   'createObjectStore("assets"',
-  "saveAsset","getAsset","listAssets","getCache","setCache"
+  "saveAsset","getAsset","listAssets","getCache","setCache",
+  'createObjectStore("workArchive"',"saveArchiveEntry","listArchiveEntries","deleteArchiveEntry"
+]);
+requireAll("workspace archive + reset", workspaceTools, [
+  "captureWorkspace","captureAll","resetWorkspace","archiveModal","projectState","previewBlob"
+]);
+requireAll("numeric range precision", rangeNumberSync, [
+  "range-number-pair","range-number-value","rangeNumberFor","clamp"
 ]);
 
 for (const preset of [

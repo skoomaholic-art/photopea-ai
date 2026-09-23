@@ -572,6 +572,7 @@
     try {
       const blob = await renderPosterBlob(format);
       downloadBlob(blob, format === "vertical" ? "poster-vertical.png" : "poster-horizontal.png");
+      await window.WorkArchive?.captureWorkspace?.(format,"download-poster");
     } catch (error) {
       showToast(error.message, "error");
     }
@@ -585,9 +586,29 @@
         { name: "poster-horizontal.png", data: horizontal }
       ]);
       ZipStore.download(zip, "posters.zip");
+      await window.WorkArchive?.captureWorkspace?.("vertical","download-all");
+      await window.WorkArchive?.captureWorkspace?.("horizontal","download-all");
     } catch (error) {
       showToast(error.message, "error");
     }
+  }
+
+  async function resetWorkspace(format) {
+    if (!formats[format]) throw new Error("Неизвестный формат постера.");
+    state.posters[format] = makePosterState();
+    if (state.activeFormat === format) { state.selectedLayer = "poster"; renderPoster(); }
+    await saveAutosave();
+    showToast((format === "vertical" ? "Вертикальный" : "Горизонтальный") + " постер сброшен.", "ok");
+  }
+
+  async function restoreWorkspace(format, snapshot) {
+    if (!formats[format]) throw new Error("Неизвестный формат постера.");
+    state.posters[format] = { ...makePosterState(), ...(snapshot || {}) };
+    if (state.activeFormat === format) {
+      state.selectedLayer = state.posters[format].poster ? "poster" : (state.posters[format].logo ? "logo" : "poster");
+      renderPoster();
+    }
+    await saveAutosave();
   }
 
   function plainProject() {
@@ -618,7 +639,8 @@
     try { await SkoomaStore?.saveProject(project); } catch {}
     const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
     downloadBlob(blob, "poster-project.json");
-    showToast("Проект сохранён локально и в JSON.", "ok");
+    await window.WorkArchive?.captureAll?.("save-project");
+    showToast("Проект сохранён локально, в JSON и Архив работ.", "ok");
   }
 
   async function restoreProject(project) {
@@ -821,6 +843,8 @@
     renderPosterBlob,
     renderCurrentPosterBlob: () => renderPosterBlob(state.activeFormat),
     getState: () => JSON.parse(JSON.stringify(state.posters)),
+    resetWorkspace,
+    restoreWorkspace,
     getSelectedImageContext,
     getActiveFormat: () => state.activeFormat,
     getSelectedLayer: () => state.selectedLayer,

@@ -599,6 +599,27 @@
     }, 700);
   }
 
+  async function resetWorkspace() {
+    state.muted = true;
+    canvas.discardActiveObject();
+    canvas.clear();
+    canvas.backgroundColor = "#101010";
+    $("trainBgColor").value = "#101010";
+    $("stickerSelect").value = "Без стикера";
+    $("trainRotationInput").value = "0";
+    $("trainOpacityInput").value = "1";
+    for (const id of ["cropLeftInput","cropTopInput","cropRightInput","cropBottomInput"]) $(id).value = "0";
+    state.muted = false;
+    state.history = [];
+    state.historyIndex = -1;
+    snapshot("Пустой холст");
+    renderLayers();
+    canvas.requestRenderAll();
+    scheduleDevicePreview();
+    scheduleAutosave();
+    setStatus("Паровозик сброшен.", "ok");
+  }
+
   function serialize() {
     return {
       version: 1,
@@ -658,7 +679,8 @@
       for (let i = 0; i < 6; i++) entries.push({ name: "part_" + (i + 1) + ".png", data: await createSegmentBlob(master, spec, i) });
       const zip = await ZipStore.build(entries);
       ZipStore.download(zip, "Паровозик-" + spec.key + ".zip");
-      setStatus("ZIP " + spec.key + " готов: 6 PNG.", "ok");
+      await window.WorkArchive?.captureWorkspace?.("train","download-selected-size");
+      setStatus("ZIP " + spec.key + " готов: 6 PNG. Архивная версия сохранена.", "ok");
     } catch (error) {
       setStatus(error.message || "Ошибка экспорта.", "error");
     }
@@ -680,7 +702,8 @@
       }
       const zip = await ZipStore.build(entries);
       ZipStore.download(zip, "Паровозик.zip");
-      setStatus("Готово: 4 папки, 24 PNG.", "ok");
+      await window.WorkArchive?.captureWorkspace?.("train","download-all-sizes");
+      setStatus("Готово: 4 папки, 24 PNG. Архивная версия сохранена.", "ok");
     } catch (error) {
       setStatus(error.message || "Ошибка экспорта.", "error");
     } finally {
@@ -823,7 +846,7 @@
   renderLayers();
 
   window.TrainEditor = {
-    activate, serialize, restore,
+    activate, serialize, restore, resetWorkspace,
     exportAllSizes, exportSelectedSize, renderMasterBlob, setBackgroundFromDataUrl,
     inspect: () => {
       const sticker = canvas.getObjects().find(obj => obj.sticker);
