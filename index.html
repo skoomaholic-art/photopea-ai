@@ -16,7 +16,7 @@
   <script defer src="image-filters.js?v=20260923b"></script>
   <script defer src="poster-app.js?v=20260923-transform-handles"></script>
   <script defer src="train-editor.js?v=20260923-layered-model"></script>
-  <script defer src="top10-editor.js?v=20260923-layered-model"></script>
+  <script defer src="top10-editor.js?v=20260923-top10-visible-controls"></script>
   <script defer src="filter-studio.js?v=20260923top10a"></script>
   <script defer src="source-browser.js?v=20260923b"></script>
   <script defer src="photopea-bridge.js?v=20260923-layered-b"></script>
@@ -325,14 +325,14 @@
           <div class="button-row"><button id="top10LogoCenter">Центрировать</button><button id="top10LogoReset">Сбросить</button></div>
           <div class="button-row"><button id="top10LogoUp">Слой выше</button><button id="top10LogoDown">Слой ниже</button></div>
         </section>
-        <section data-top10-controls="darkening" hidden>
+        <section data-top10-controls="darkening" data-top10-always>
           <h3>BOTTOM_DARKENING 🔒</h3>
           <label class="field">Цвет <input id="top10DarkColor" type="color" value="#000000"></label>
           <label class="field">Интенсивность <input id="top10DarkIntensity" type="range" min="0" max="100" value="94"></label>
           <label class="field">Начало градиента <input id="top10DarkStart" type="range" min="0" max="96" value="58"></label>
           <p class="muted">LOCK POSITION · LOCK SIZE · EDIT APPEARANCE</p>
         </section>
-        <section data-top10-controls="number" hidden>
+        <section data-top10-controls="number" data-top10-always>
           <h3>TOP_NUMBER 🔒</h3>
           <label class="field">Позиция в ТОП10
             <select id="top10PositionSelect">

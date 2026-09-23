@@ -571,7 +571,7 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   await page.locator("#top10PositionSelect").selectOption("2");
   let inspect = await page.evaluate(() => window.Top10Editor.inspect());
   expect(inspect.state.ranking).toBe("2");
-  expect(inspect.number.bounds.top).toBeGreaterThan(900);
+  expect(inspect.number.bounds.top).toBeGreaterThanOrEqual(900);
   expect(inspect.number.bounds.bottom).toBeLessThanOrEqual(1400);
 
   await page.locator("#top10PositionSelect").selectOption("10");

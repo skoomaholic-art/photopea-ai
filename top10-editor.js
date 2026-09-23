@@ -304,7 +304,7 @@
 
   function syncControls(){
     document.querySelectorAll("[data-top10-controls]").forEach(section=>{
-      section.hidden=section.dataset.top10Controls!==runtime.selectedLayer;
+      section.hidden=section.dataset.top10Always==null && section.dataset.top10Controls!==runtime.selectedLayer;
     });
     $("top10BgScale").value=String(Math.round(data.backgroundScale));
     $("top10BgRotation").value=String(Math.round(data.backgroundRotation));
