@@ -78,7 +78,7 @@ requireAll("indexeddb assets", storage, [
   'createObjectStore("workArchive"',"saveArchiveEntry","listArchiveEntries","deleteArchiveEntry"
 ]);
 requireAll("workspace archive + reset", workspaceTools, [
-  "captureWorkspace","captureAll","resetWorkspace","archiveModal","projectState","previewBlob"
+  "captureWorkspace","captureAll","resetWorkspace","archiveModal","projectState","previewBlob","bundleAssets","restoreBundledAssets","assets:await bundleAssets"
 ]);
 requireAll("numeric range precision", rangeNumberSync, [
   "range-number-pair","range-number-value","rangeNumberFor","clamp"

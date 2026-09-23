@@ -666,6 +666,41 @@ test("numeric range inputs stay synchronized and clamp values", async ({ page })
   await expect(page.locator("#top10DarkIntensity")).toHaveValue("71");
 });
 
+test("Work Archive creates immutable versions and restores bundled poster assets and transforms", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({ name:"archive-source.png", mimeType:"image/png", buffer:PNG });
+  await page.locator("#posterLockInput").uncheck();
+
+  const scaleNumber=page.locator('[data-range-number-for="layerScaleInput"]');
+  await scaleNumber.fill("125");
+  const d1=page.waitForEvent("download");
+  await page.locator("#downloadVerticalBtn").click();
+  await d1;
+  await expect.poll(() => page.evaluate(async()=> (await WorkArchive.list("vertical")).length)).toBe(1);
+
+  await scaleNumber.fill("175");
+  const d2=page.waitForEvent("download");
+  await page.locator("#downloadVerticalBtn").click();
+  await d2;
+  await expect.poll(() => page.evaluate(async()=> (await WorkArchive.list("vertical")).length)).toBe(2);
+
+  const versions=await page.evaluate(async()=>{
+    const items=await WorkArchive.list("vertical");
+    return items.map(x=>({id:x.archiveId,scale:x.projectState.posterScale,assetCount:x.assets?.length||0}));
+  });
+  expect(versions.map(x=>x.scale).sort((a,b)=>a-b)).toEqual([125,175]);
+  expect(versions.every(x=>x.assetCount>=1)).toBe(true);
+
+  const firstId=versions.find(x=>x.scale===125).id;
+  await page.evaluate(async id=>{
+    const entry=await SkoomaStore.getArchiveEntry(id);
+    await WorkArchive.restoreEntry(entry);
+  },firstId);
+  await expect.poll(()=>page.evaluate(()=>PosterApp.getState().vertical.posterScale)).toBe(125);
+  expect(await page.evaluate(()=>!!PosterApp.getState().vertical.poster)).toBe(true);
+});
+
 test("workspace reset is confirmed and does not delete archive versions", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");

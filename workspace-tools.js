@@ -59,6 +59,60 @@
     } finally { bitmap.close?.(); }
   }
 
+  function archiveAssetIds(workspace, projectState) {
+    const ids=new Set();
+    if (workspace==="vertical" || workspace==="horizontal") {
+      if(projectState?.posterAssetId) ids.add(projectState.posterAssetId);
+      if(projectState?.logoAssetId) ids.add(projectState.logoAssetId);
+    } else if (workspace==="top10") {
+      if(projectState?.backgroundAssetId) ids.add(projectState.backgroundAssetId);
+      if(projectState?.logoAssetId) ids.add(projectState.logoAssetId);
+    }
+    return [...ids];
+  }
+
+  async function portableAsset(assetId) {
+    if(!assetId || !window.AssetManager?.get) return null;
+    const asset=await AssetManager.get(assetId);
+    if(!asset) return null;
+    let originalDataUrl=null,editedDataUrl=null;
+    try { if(asset.originalAsset) originalDataUrl=await AssetManager.blobToDataUrl(asset.originalAsset); } catch {}
+    try { if(asset.editedAsset) editedDataUrl=await AssetManager.blobToDataUrl(asset.editedAsset); } catch {}
+    return {
+      id:asset.id,source:asset.source,sourceId:asset.sourceId,sourceUrl:asset.sourceUrl,originalUrl:asset.originalUrl,
+      proxyUrl:asset.proxyUrl,thumbnailUrl:asset.thumbnailUrl,title:asset.title,year:asset.year,mediaType:asset.mediaType,
+      imageType:asset.imageType,width:asset.width,height:asset.height,aspectRatio:asset.aspectRatio,language:asset.language,
+      isTextless:asset.isTextless,mimeType:asset.mimeType,filters:asset.filters,license:asset.license,attribution:asset.attribution,
+      createdAt:asset.createdAt,updatedAt:asset.updatedAt,originalDataUrl,editedDataUrl
+    };
+  }
+
+  async function bundleAssets(workspace, projectState) {
+    const assets=[];
+    for(const id of archiveAssetIds(workspace,projectState)) {
+      try { const item=await portableAsset(id); if(item) assets.push(item); }
+      catch(error) { console.warn("Archive asset bundle failed",id,error); }
+    }
+    return assets;
+  }
+
+  async function restoreBundledAssets(items=[]) {
+    if(!window.AssetManager?.save) return;
+    for(const item of items||[]) {
+      if(!item?.id) continue;
+      try {
+        const originalAsset=item.originalDataUrl ? await AssetManager.dataUrlToBlob(item.originalDataUrl) : null;
+        const editedAsset=item.editedDataUrl ? await AssetManager.dataUrlToBlob(item.editedDataUrl) : null;
+        await AssetManager.save({
+          ...item,
+          originalDataUrl:undefined,editedDataUrl:undefined,
+          originalAsset,editedAsset,
+          id:item.id
+        });
+      } catch(error) { console.warn("Archive asset restore failed",item.id,error); }
+    }
+  }
+
   async function workspaceSnapshot(workspace) {
     if (workspace === "vertical" || workspace === "horizontal") {
       return {
@@ -94,6 +148,7 @@
       masterWidth:snap.masterWidth, masterHeight:snap.masterHeight,
       preview:await thumbnailFromBlob(snap.previewBlob),
       projectState:snap.projectState,
+      assets:await bundleAssets(workspace,snap.projectState),
       photopeaMasterId:window.PhotopeaBridge?.getLayeredMasterId?.(workspace) || null
     };
     await SkoomaStore.saveArchiveEntry(entry);
@@ -110,6 +165,7 @@
   }
 
   async function restoreEntry(entry) {
+    await restoreBundledAssets(entry.assets || []);
     if (entry.workspace === "vertical" || entry.workspace === "horizontal") {
       await PosterApp.restoreWorkspace(entry.workspace,clone(entry.projectState));
       PosterApp.switchWorkspace(entry.workspace);
