@@ -585,8 +585,10 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().darkeningColor)).toBe("#112233");
 
   await page.locator(".top10-layer-row").filter({hasText:"TOP_NUMBER"}).click();
-  await page.locator("#top10NumberStrokeStart").fill("#ff00aa");
-  await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().numberStrokeStart)).toBe("#ff00aa");
+  await page.locator("#top10PositionSelect").selectOption("7");
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/7.svg");
+  await page.locator("#top10PositionSelect").selectOption("10");
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/10.svg");
 
   await page.locator(".top10-layer-row").filter({hasText:"BACKGROUND_IMAGE"}).click();
   const unaffectedBefore = await page.evaluate(() => {
@@ -697,4 +699,22 @@ test("Train and TOP10 reset buttons restore default state after confirmation", a
   await page.locator("#resetConfirmOkBtn").click();
   await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().ranking)).toBe("2");
   expect((await page.evaluate(() => window.Top10Editor.getState().darkeningIntensity))).toBe(94);
+});
+
+
+test("TOP10 positions 1 through 10 use separate traced vector assets", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  await page.locator('[data-workspace="top10"]').click();
+  await page.waitForFunction(() => !!window.Top10Editor);
+  for (let value=1; value<=10; value++) {
+    await page.locator("#top10PositionSelect").selectOption(String(value));
+    await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("/"+value+".svg");
+    const number=await page.evaluate(() => window.Top10Editor.inspect().number);
+    expect(number.locked).toBe(true);
+    expect(number.value).toBe(String(value));
+    expect(number.bounds.left).toBeGreaterThanOrEqual(0);
+    expect(number.bounds.left+number.bounds.width).toBeLessThanOrEqual(800);
+    expect(number.bounds.bottom).toBeLessThanOrEqual(1400);
+  }
 });

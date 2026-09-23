@@ -8,6 +8,16 @@
     highlights:0, shadows:0, whites:0, blacks:0, hue:0, blur:0,
     sharpen:0, grain:0, vignette:0
   };
+  const TOP10_NUMBER_ASSETS = Object.freeze({
+    "1":"assets/top10/numbers/1.svg","2":"assets/top10/numbers/2.svg","3":"assets/top10/numbers/3.svg",
+    "4":"assets/top10/numbers/4.svg","5":"assets/top10/numbers/5.svg","6":"assets/top10/numbers/6.svg",
+    "7":"assets/top10/numbers/7.svg","8":"assets/top10/numbers/8.svg","9":"assets/top10/numbers/9.svg",
+    "10":"assets/top10/numbers/10.svg"
+  });
+  const NUMBER_X = 400;
+  const NUMBER_Y = 1150;
+  const NUMBER_SIZE = 500;
+  let numberLoadToken = 0;
 
   if (!F) {
     console.error("Fabric.js failed to load for TOP10.");
@@ -30,9 +40,8 @@
     backgroundX:400, backgroundY:700, backgroundScale:100, backgroundRotation:0, backgroundFilters:DEFAULTS(),
     logo:null, logoName:"", logoAssetId:null,
     logoX:400, logoY:895, logoScale:100, logoRotation:0, logoAboveDarkening:true,
-    ranking:"2",
-    darkeningColor:"#000000", darkeningIntensity:94, darkeningStart:58,
-    numberFill:"#050505", numberStrokeStart:"#00ff33", numberStrokeEnd:"#0070ff", numberStrokeWidth:18
+    ranking:"2", numberAsset:TOP10_NUMBER_ASSETS["2"],
+    darkeningColor:"#000000", darkeningIntensity:94, darkeningStart:58
   });
 
   let data=freshState();
@@ -143,49 +152,36 @@
     applyStacking();
   }
 
-  function numberFontSize(value,ctx){
-    let size=value==="10"?370:445;
-    while(size>260){
-      ctx.font=`900 ${size}px "Arial Black","Arial",sans-serif`;
-      if(ctx.measureText(value).width+Number(data.numberStrokeWidth||0)*2<=630) break;
-      size-=6;
-    }
-    return size;
+  function currentNumberAsset() {
+    return TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"];
   }
 
-  function drawNumber(ctx){
-    const value=String(data.ranking||"2");
-    const fontSize=numberFontSize(value,ctx);
-    const x=MASTER_W/2,baseline=1330;
-    ctx.save();
-    ctx.textAlign="center";ctx.textBaseline="alphabetic";
-    ctx.font=`900 ${fontSize}px "Arial Black","Arial",sans-serif`;
-    ctx.lineJoin="round";ctx.lineCap="round";ctx.miterLimit=2;
-    const stroke=Math.max(1,Math.min(60,Number(data.numberStrokeWidth||18)));
-    const gradient=ctx.createLinearGradient(160,1010,650,1370);
-    gradient.addColorStop(0,data.numberStrokeStart||"#00ff33");
-    gradient.addColorStop(.52,"#00d96f");
-    gradient.addColorStop(1,data.numberStrokeEnd||"#0070ff");
-    ctx.strokeStyle=gradient;ctx.lineWidth=stroke;ctx.fillStyle=data.numberFill||"#050505";
-    ctx.strokeText(value,x,baseline);ctx.fillText(value,x,baseline);
-    const metrics=ctx.measureText(value);
-    const ascent=metrics.actualBoundingBoxAscent||fontSize*.77;
-    const descent=metrics.actualBoundingBoxDescent||fontSize*.08;
-    runtime.numberMetrics={
-      left:x-metrics.width/2-stroke/2,top:baseline-ascent-stroke/2,
-      width:metrics.width+stroke,height:ascent+descent+stroke,bottom:baseline+descent+stroke/2
-    };
-    ctx.restore();
-  }
-
-  function refreshNumber(){
+  async function refreshNumber(){
+    const token=++numberLoadToken;
+    const asset=currentNumberAsset();
+    data.numberAsset=asset;
+    const url=new URL(asset,document.baseURI).href;
+    const image=await F.FabricImage.fromURL(url);
+    if(token!==numberLoadToken) return;
     if(objects.number) canvas.remove(objects.number);
-    const layer=document.createElement("canvas");
-    layer.width=MASTER_W;layer.height=MASTER_H;
-    drawNumber(layer.getContext("2d"));
-    objects.number=lockedObject(new F.FabricImage(layer,{left:0,top:0,originX:"left",originY:"top",objectCaching:false}),"number");
+    objects.number=lockedObject(image,"number");
+    objects.number.set({
+      left:NUMBER_X,top:NUMBER_Y,originX:"center",originY:"center",
+      scaleX:NUMBER_SIZE/(image.width||500),scaleY:NUMBER_SIZE/(image.height||500),
+      objectCaching:false
+    });
+    objects.number.numberAsset=asset;
+    objects.number.numberValue=String(data.ranking);
+    runtime.numberMetrics={left:NUMBER_X-NUMBER_SIZE/2,top:NUMBER_Y-NUMBER_SIZE/2,width:NUMBER_SIZE,height:NUMBER_SIZE,bottom:NUMBER_Y+NUMBER_SIZE/2,asset};
     canvas.add(objects.number);
     applyStacking();
+  }
+
+  async function drawNumberAsset(ctx){
+    const asset=currentNumberAsset();
+    data.numberAsset=asset;
+    const image=await imageFromSource(new URL(asset,document.baseURI).href);
+    ctx.drawImage(image,NUMBER_X-NUMBER_SIZE/2,NUMBER_Y-NUMBER_SIZE/2,NUMBER_SIZE,NUMBER_SIZE);
   }
 
   function applyStacking(){
@@ -318,10 +314,6 @@
     $("top10DarkColor").value=data.darkeningColor;
     $("top10DarkIntensity").value=String(data.darkeningIntensity);
     $("top10DarkStart").value=String(data.darkeningStart);
-    $("top10NumberFill").value=data.numberFill;
-    $("top10NumberStrokeStart").value=data.numberStrokeStart;
-    $("top10NumberStrokeEnd").value=data.numberStrokeEnd;
-    $("top10NumberStrokeWidth").value=String(data.numberStrokeWidth);
     const hasBg=!!data.background,hasLogo=!!data.logo;
     ["top10BgScale","top10BgRotation","top10BgCenter","top10BgReset","top10FilterBtn"].forEach(id=>{$(id).disabled=!hasBg;});
     ["top10LogoScale","top10LogoRotation","top10LogoCenter","top10LogoReset","top10LogoUp","top10LogoDown"].forEach(id=>{$(id).disabled=!hasLogo;});
@@ -461,7 +453,7 @@
     if(!data.logoAboveDarkening&&logo) drawTransformed(ctx,logo,"logo",false);
     drawDarkening(ctx);
     if(data.logoAboveDarkening&&logo) drawTransformed(ctx,logo,"logo",false);
-    drawNumber(ctx);
+    await drawNumberAsset(ctx);
     return out;
   }
 
@@ -503,7 +495,7 @@
     data.backgroundFilters={...DEFAULTS(),...(saved?.backgroundFilters||{})};
     if(objects.background){canvas.remove(objects.background);objects.background=null;}
     if(objects.logo){canvas.remove(objects.logo);objects.logo=null;}
-    refreshDarkening();refreshNumber();
+    refreshDarkening();await refreshNumber();
     if(data.background) await renderBackgroundVisual(data.background);
     if(data.logo) await renderLogoVisual(data.logo);
     selectLayer("background");syncControls();applyStacking();
@@ -522,6 +514,8 @@
       number:{
         locked:true,left:objects.number?.left??0,top:objects.number?.top??0,
         selectable:objects.number?.selectable??false,evented:objects.number?.evented??false,
+        asset:data.numberAsset||currentNumberAsset(),
+        value:String(data.ranking),
         bounds:runtime.numberMetrics?{...runtime.numberMetrics}:null
       },
       layers:data.logoAboveDarkening
@@ -596,8 +590,12 @@
   $("top10LogoUp").addEventListener("click",()=>{data.logoAboveDarkening=true;applyStacking();scheduleAutosave();});
   $("top10LogoDown").addEventListener("click",()=>{data.logoAboveDarkening=false;applyStacking();scheduleAutosave();});
 
-  $("top10PositionSelect").addEventListener("change",e=>{
-    data.ranking=String(e.target.value);refreshNumber();syncControls();scheduleAutosave();
+  $("top10PositionSelect").addEventListener("change",async e=>{
+    data.ranking=String(e.target.value);
+    data.numberAsset=currentNumberAsset();
+    await refreshNumber();
+    syncControls();
+    scheduleAutosave();
   });
 
   $("top10DarkColor").addEventListener("input",e=>{data.darkeningColor=e.target.value;refreshDarkening();scheduleAutosave();});
@@ -608,17 +606,6 @@
     data.darkeningStart=Math.max(0,Math.min(96,Number(e.target.value)||0));refreshDarkening();scheduleAutosave();
   });
 
-  function refreshNumberStyle(){
-    data.numberFill=$("top10NumberFill").value;
-    data.numberStrokeStart=$("top10NumberStrokeStart").value;
-    data.numberStrokeEnd=$("top10NumberStrokeEnd").value;
-    data.numberStrokeWidth=Math.max(1,Math.min(60,Number($("top10NumberStrokeWidth").value)||18));
-    refreshNumber();scheduleAutosave();
-  }
-  $("top10NumberFill").addEventListener("input",refreshNumberStyle);
-  $("top10NumberStrokeStart").addEventListener("input",refreshNumberStyle);
-  $("top10NumberStrokeEnd").addEventListener("input",refreshNumberStyle);
-  $("top10NumberStrokeWidth").addEventListener("input",refreshNumberStyle);
 
   $("top10EditPhotopeaBtn").addEventListener("click",()=>{
     window.PhotopeaBridge?.editTop10?.().catch(error=>setStatus(error.message||"Photopea недоступен.","error"));
@@ -626,12 +613,13 @@
   $("top10DownloadBtn").addEventListener("click",download);
   window.addEventListener("resize",()=>{if(!$("top10Workspace").hidden) resizeDisplay();});
 
-  refreshDarkening();refreshNumber();resizeDisplay();renderLayers();syncControls();
+  refreshDarkening();void refreshNumber();resizeDisplay();renderLayers();syncControls();
 
   window.Top10Editor={
     activate,serialize,restore,resetClassic,renderCanvas,renderBlob,download,
     setBackgroundFromDataUrl,setLogoFromDataUrl,openFilters,inspect,
     getState:()=>clone(data),getSelectedLayer:()=>runtime.selectedLayer,
+    numberAssets:TOP10_NUMBER_ASSETS,
     constants:{MASTER_W,MASTER_H}
   };
 

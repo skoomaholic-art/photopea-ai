@@ -198,7 +198,8 @@ requireAll("TOP10 editor", top10, [
   "renderBlob",
   "openFilters",
   "darkeningIntensity",
-  "numberStrokeWidth",
+  "TOP10_NUMBER_ASSETS",
+  "numberAsset",
   "logoAboveDarkening"
 ]);
 requireAll("logo close controls", html, [
@@ -217,4 +218,12 @@ requireAll("TOP10 Photopea routing", read("photopea-bridge.js"), [
 
 if (/data-workspace="photopea"/.test(read("index.html"))) {
   throw new Error("Top Photopea tab must stay removed while embedded Photopea dock/workspace is available");
+}
+
+
+for (let i=1;i<=10;i++) {
+  if (!fs.existsSync("assets/top10/numbers/"+i+".svg")) throw new Error("TOP10 number asset missing: "+i);
+}
+if (/Arial Black|strokeText|fillText/.test(read("top10-editor.js"))) {
+  throw new Error("TOP10 number must use provided vector assets, not font/canvas text rendering");
 }
