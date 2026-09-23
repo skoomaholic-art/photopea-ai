@@ -1,10 +1,10 @@
 import { test, expect } from "@playwright/test";
 
 test("poster editor exposes AI adaptation controls", async ({ page }) => {
-  await page.route("**/api/status", route => route.fulfill({
+  await page.route("**/api/health", route => route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify({ ok: true, apiVersion: "2026-09-23-assets-v3", providers: { xai: true, openai: true }, background: { carve: false, removal: false } })
+    body: JSON.stringify({ ok: true, apiVersion: "2026-09-23-runtime-v4", providers: { cloudflare: true, xai: true, openai: true }, background: { local: true, carve: false, removal: false } })
   }));
   await page.goto("/");
   await expect(page.locator("#aiProvider")).toHaveValue("cloudflare");
