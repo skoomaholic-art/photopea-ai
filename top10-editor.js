@@ -392,9 +392,12 @@
       onApply:async(dataUrl,updated,settings)=>{
         runtime.filterPreviewToken++;data.background=dataUrl;data.backgroundAssetId=updated.id;
         data.backgroundFilters={...DEFAULTS(),...settings};
-        try{data.backgroundOriginal=await AssetManager.dataUrl(updated,false);}catch{}
-        await renderBackgroundVisual(dataUrl);scheduleAutosave();
+        if(!data.backgroundOriginal){
+          try{data.backgroundOriginal=await AssetManager.dataUrl(updated,false);}catch{}
+        }
+        scheduleAutosave();
         setStatus("Цветокор применён только к BACKGROUND_IMAGE.","ok");
+        renderBackgroundVisual(dataUrl).catch(error=>setStatus(error.message||"Не удалось обновить preview.","error"));
       }
     });
   }
