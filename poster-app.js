@@ -26,12 +26,14 @@
     workerVersion: null,
     selectedAiResult: null,
     drag: null,
+    handleTransform: null,
     autosaveTimer: null
   };
 
   const stage = $("stage");
   const posterImage = $("posterImage");
   const logoImage = $("logoImage");
+  const transformOverlay = $("posterTransformOverlay");
 
   const current = () => state.posters[state.activeFormat];
 
@@ -180,6 +182,74 @@
 
     $("posterEmpty").hidden = !!s.poster;
     selectLayer(state.selectedLayer);
+    requestAnimationFrame(updateTransformOverlay);
+  }
+
+  function selectedDomLayer() {
+    const s=current();
+    if(state.selectedLayer==="logo"&&s.logo) return {el:logoImage,layer:"logo",locked:!!s.logoLocked};
+    if(state.selectedLayer==="poster"&&s.poster) return {el:posterImage,layer:"poster",locked:!!s.posterLocked};
+    return null;
+  }
+
+  function updateTransformOverlay() {
+    const selected=selectedDomLayer();
+    if(!selected||!transformOverlay||selected.el.hidden){
+      if(transformOverlay) transformOverlay.hidden=true;
+      return;
+    }
+    const stageRect=stage.getBoundingClientRect();
+    const rect=selected.el.getBoundingClientRect();
+    transformOverlay.hidden=false;
+    transformOverlay.classList.toggle("locked",selected.locked);
+    transformOverlay.style.left=(rect.left-stageRect.left)+"px";
+    transformOverlay.style.top=(rect.top-stageRect.top)+"px";
+    transformOverlay.style.width=rect.width+"px";
+    transformOverlay.style.height=rect.height+"px";
+  }
+
+  function startHandleTransform(event) {
+    const action=event.currentTarget.dataset.transformAction;
+    const selected=selectedDomLayer();
+    if(!selected||selected.locked)return;
+    const rect=selected.el.getBoundingClientRect();
+    const cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
+    const dx=event.clientX-cx,dy=event.clientY-cy;
+    const s=current(),layer=selected.layer;
+    state.handleTransform={
+      action,layer,pointerId:event.pointerId,cx,cy,
+      startDistance:Math.max(1,Math.hypot(dx,dy)),
+      startAngle:Math.atan2(dy,dx),
+      originScale:Number(s[layer+"Scale"]||100),
+      originRotation:Number(s[layer+"Rotation"]||0)
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function moveHandleTransform(event) {
+    const t=state.handleTransform;
+    if(!t||t.pointerId!==event.pointerId)return false;
+    const dx=event.clientX-t.cx,dy=event.clientY-t.cy,s=current();
+    if(t.action==="scale"){
+      const ratio=Math.hypot(dx,dy)/t.startDistance;
+      const min=t.layer==="poster"?100:10;
+      s[t.layer+"Scale"]=Math.max(min,Math.min(300,t.originScale*ratio));
+    } else if(t.action==="rotate"){
+      const angle=Math.atan2(dy,dx);
+      s[t.layer+"Rotation"]=Math.max(-360,Math.min(360,t.originRotation+(angle-t.startAngle)*180/Math.PI));
+    }
+    renderPoster();
+    return true;
+  }
+
+  function endHandleTransform(event) {
+    if(!state.handleTransform||(event.pointerId!=null&&state.handleTransform.pointerId!==event.pointerId))return false;
+    state.handleTransform=null;
+    scheduleAutosave();
+    updateTransformOverlay();
+    return true;
   }
 
   function setFormat(format) {
@@ -762,6 +832,7 @@
   }
 
   function moveDrag(event) {
+    if (moveHandleTransform(event)) return;
     if (!state.drag || state.drag.pointerId !== event.pointerId) return;
     const d = state.drag;
     const s = current();
@@ -771,6 +842,7 @@
   }
 
   function endDrag(event) {
+    if (endHandleTransform(event)) return;
     if (!state.drag || (event.pointerId != null && state.drag.pointerId !== event.pointerId)) return;
     posterImage.classList.remove("dragging");
     logoImage.classList.remove("dragging");
@@ -885,7 +957,8 @@
   $("saveProjectBtn").addEventListener("click", saveProject);
   $("projectFileInput").addEventListener("change", e => openProjectFile(e.target.files?.[0]));
 
-  posterImage.addEventListener("pointerdown", e => beginDrag("poster", e));
+  transformOverlay.querySelectorAll("[data-transform-action]").forEach(handle=>handle.addEventListener("pointerdown",startHandleTransform));
+    posterImage.addEventListener("pointerdown", e => beginDrag("poster", e));
   logoImage.addEventListener("pointerdown", e => beginDrag("logo", e));
   stage.addEventListener("pointermove", moveDrag);
   stage.addEventListener("pointerup", endDrag);
@@ -914,6 +987,8 @@
     downloadBlob,
     formats
   };
+
+  window.addEventListener("resize",()=>requestAnimationFrame(updateTransformOverlay));
 
   switchWorkspace("vertical");
   renderPoster();

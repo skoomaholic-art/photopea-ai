@@ -235,3 +235,6 @@ requireAll("Photopea master persistence", storage, ['createObjectStore("photopea
 if (photopea.includes("PosterApp.renderPosterBlob(format)") || photopea.includes("TrainEditor.renderMasterBlob()") || photopea.includes("Top10Editor.renderBlob()")) {
   throw new Error("Main Photopea edit must not use flattened PNG renderers");
 }
+
+requireAll("poster transform handles", html, ["posterTransformOverlay","data-transform-action=\"scale\"","data-transform-action=\"rotate\""]);
+requireAll("poster handle logic", app, ["startHandleTransform","moveHandleTransform","updateTransformOverlay","handleTransform"]);

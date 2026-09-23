@@ -788,3 +788,24 @@ test("Photopea return saves a layered master reference", async ({ page }) => {
   const id=await page.evaluate(()=>window.PhotopeaBridge.getLayeredMasterId("vertical"));
   expect(await page.evaluate(async id=>!!(await window.SkoomaStore.getPhotopeaMaster(id)),id)).toBe(true);
 });
+
+
+test("Vertical and Horizontal expose Fabric-style transform handles and persist drag transforms", async ({ page }) => {
+  await mockStatus(page); await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({name:"poster.png",mimeType:"image/png",buffer:PNG});
+  await expect(page.locator("#posterTransformOverlay")).toBeVisible();
+  await expect(page.locator("#posterTransformOverlay")).toHaveClass(/locked/);
+  await page.locator("#posterLockInput").uncheck();
+  await expect(page.locator("#posterTransformOverlay .br")).toBeVisible();
+
+  const before=await page.evaluate(()=>window.PosterApp.getState().vertical.posterX);
+  const box=await page.locator("#posterImage").boundingBox();
+  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
+  await page.mouse.down(); await page.mouse.move(box.x+box.width/2+30,box.y+box.height/2+20); await page.mouse.up();
+  await expect.poll(()=>page.evaluate(()=>window.PosterApp.getState().vertical.posterX)).not.toBe(before);
+
+  await page.locator('[data-workspace="horizontal"]').click();
+  await page.locator("#logoFileInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#posterLayerSelect").selectOption("logo");
+  await expect(page.locator("#posterTransformOverlay .br")).toBeVisible();
+});

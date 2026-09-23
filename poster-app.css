@@ -170,3 +170,16 @@ button.danger:hover{border-color:#d85349!important;background:#3a1916!important;
 .archive-actions{display:flex;flex-wrap:wrap;gap:5px;margin-top:auto}
 .archive-actions button{font-size:9px;padding:6px 7px}
 @media(max-width:620px){.archive-item{grid-template-columns:80px 1fr}.archive-item>img{width:80px;height:80px}.workspace-maintenance{grid-template-columns:1fr}}
+
+
+/* Poster transform handles: parity with Fabric-style movement in Parovozik */
+.poster-transform-overlay{position:absolute;z-index:30;border:2px solid var(--green);box-shadow:0 0 0 1px #06100699;pointer-events:none;border-radius:2px}
+.poster-transform-overlay.locked{border-style:dashed;border-color:#f3c641}
+.poster-transform-overlay .poster-handle{position:absolute;width:14px;height:14px;min-width:0;padding:0;border:2px solid #fff;border-radius:50%;background:var(--green);pointer-events:auto;box-shadow:0 2px 8px #000b}
+.poster-transform-overlay.locked .poster-handle{display:none}
+.poster-transform-overlay .tl{left:-8px;top:-8px;cursor:nwse-resize}.poster-transform-overlay .tr{right:-8px;top:-8px;cursor:nesw-resize}
+.poster-transform-overlay .bl{left:-8px;bottom:-8px;cursor:nesw-resize}.poster-transform-overlay .br{right:-8px;bottom:-8px;cursor:nwse-resize}
+.poster-transform-overlay .rotate-handle{left:50%;top:-32px;transform:translateX(-50%);width:20px;height:20px;font-size:11px;line-height:14px;cursor:grab;color:#061006}
+.poster-transform-overlay .rotate-handle:active{cursor:grabbing}
+.transform-lock-badge{display:none;position:absolute;right:4px;top:4px;padding:2px 4px;border-radius:5px;background:#0b120ddd;font-size:12px}
+.poster-transform-overlay.locked .transform-lock-badge{display:block}

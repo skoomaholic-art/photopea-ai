@@ -7,14 +7,14 @@
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
   <link rel="icon" type="image/svg+xml" href="app-icon.svg?v=20260922c">
-  <link rel="stylesheet" href="poster-app.css?v=20260923-remaining-a">
+  <link rel="stylesheet" href="poster-app.css?v=20260923-transform-handles">
   <script defer src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
   <script defer src="storage.js?v=20260923-layered-model"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
   <script defer src="asset-manager.js?v=20260923b"></script>
   <script defer src="local-background-removal.js?v=20260923a"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
-  <script defer src="poster-app.js?v=20260923-layered-model"></script>
+  <script defer src="poster-app.js?v=20260923-transform-handles"></script>
   <script defer src="train-editor.js?v=20260923-layered-model"></script>
   <script defer src="top10-editor.js?v=20260923-layered-model"></script>
   <script defer src="filter-studio.js?v=20260923top10a"></script>
@@ -121,6 +121,14 @@
           <div id="posterEmpty" class="empty-state">Загрузите или найдите постер</div>
           <img id="posterImage" class="poster-image" alt="Постер" hidden>
           <img id="logoImage" class="logo-image" alt="Логотип" hidden>
+          <div id="posterTransformOverlay" class="poster-transform-overlay" hidden aria-hidden="true">
+            <span class="transform-lock-badge">🔒</span>
+            <button type="button" class="poster-handle scale-handle tl" data-transform-action="scale" aria-label="Масштаб"></button>
+            <button type="button" class="poster-handle scale-handle tr" data-transform-action="scale" aria-label="Масштаб"></button>
+            <button type="button" class="poster-handle scale-handle bl" data-transform-action="scale" aria-label="Масштаб"></button>
+            <button type="button" class="poster-handle scale-handle br" data-transform-action="scale" aria-label="Масштаб"></button>
+            <button type="button" class="poster-handle rotate-handle" data-transform-action="rotate" aria-label="Поворот">↻</button>
+          </div>
         </div>
         <div id="posterStatus" class="status-line">Готов к работе</div>
         <button id="editPosterPhotopeaBtn" class="wide">Редактировать текущий постер в Photopea</button>
