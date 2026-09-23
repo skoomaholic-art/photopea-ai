@@ -205,7 +205,8 @@ test("TEST 3 Fanart textless artwork to Horizontal", async ({ page }) => {
   await expect(page.locator(".source-card")).toHaveCount(1);
   await expect(page.locator(".source-card")).toContainText("Fanart.tv");
   await page.locator(".source-card").getByRole("button", { name: "Использовать" }).click();
-  expect((await page.evaluate(() => window.PosterApp.getState().horizontal)).posterAssetId).toBeTruthy();
+  await expect(page.locator("#sourceBrowserModal")).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.PosterApp.getState().horizontal.posterAssetId)).toBeTruthy();
 });
 
 test("TEST 4 filters Cinematic plus manual Contrast survive export", async ({ page }) => {
@@ -381,8 +382,9 @@ test("TEST 10 remote CORS image is imported through backend proxy", async ({ pag
   await page.goto("/");
   await openSearch(page, "CORS Test", "2026");
   await page.locator(".source-card").getByRole("button", { name: "Использовать" }).click();
-  expect(importedOriginal).toBe(true);
+  await expect(page.locator("#sourceBrowserModal")).toBeHidden();
   await expect(page.locator("#posterImage")).toBeVisible();
+  expect(importedOriginal).toBe(true);
 });
 
 test("TEST 11 repeated Poster Photopea Poster cycle remains PNG and usable", async ({ page }) => {
