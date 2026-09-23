@@ -87,18 +87,10 @@ function tmdbConfigured(env) {
   return !!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY);
 }
 
-function tmdbApproved(env) {
-  return env.TMDB_COMMERCIAL_APPROVED === "true";
-}
-
 async function tmdbJson(env, path, params = {}, ttlSeconds = 600) {
   if (!tmdbConfigured(env)) {
     throw new ImageSourceError("TMDB API key не настроен.", 503, "not_configured");
   }
-  if (!tmdbApproved(env)) {
-    throw new ImageSourceError("TMDB настроен, но коммерческое использование не подтверждено переменной TMDB_COMMERCIAL_APPROVED.", 503, "license_required");
-  }
-
   const url = new URL("https://api.themoviedb.org/3" + path);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
@@ -213,7 +205,6 @@ export class ImageSourceAdapter {
 export class TMDBSource extends ImageSourceAdapter {
   status() {
     if (!tmdbConfigured(this.env)) return { enabled: false, reason: "TMDB API key не настроен" };
-    if (!tmdbApproved(this.env)) return { enabled: false, reason: "TMDB commercial approval не подтверждён" };
     return { enabled: true };
   }
 
@@ -488,7 +479,7 @@ export function referenceSources(query, year) {
     },
     {
       id: "imdb",
-      name: "IMDb Media",
+      name: "IMDb",
       mode: "external",
       url: "https://www.imdb.com/find/?q=" + q,
       reason: "Официальный IMDb API является отдельным лицензируемым продуктом; публичные datasets не дают media gallery."
@@ -511,17 +502,12 @@ export function referenceSources(query, year) {
 }
 
 export function imageProviderStatus(env) {
-  const tmdb = tmdbConfigured(env) && tmdbApproved(env);
+  const tmdb = tmdbConfigured(env);
   return {
     tmdb: {
       enabled: tmdb,
-      configured: tmdbConfigured(env),
-      commercialApproved: tmdbApproved(env),
-      reason: !tmdbConfigured(env)
-        ? "TMDB API key не настроен"
-        : !tmdbApproved(env)
-          ? "TMDB_COMMERCIAL_APPROVED не установлен в true"
-          : null
+      configured: tmdb,
+      reason: tmdb ? null : "TMDB API key не настроен"
     },
     fanart: {
       enabled: !!(env.FANART_API_KEY || env.FANART_CLIENT_KEY),
