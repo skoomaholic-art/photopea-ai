@@ -78,11 +78,18 @@
     return openBlob(blob,{target:"train",layer:"background",name:"parovozik.png",composite:true});
   }
 
+  async function editTop10() {
+    if(!window.Top10Editor?.renderBlob) throw new Error("ТОП10 ещё не готов.");
+    const blob=await Top10Editor.renderBlob();
+    return openBlob(blob,{target:"top10",layer:"background",name:"top10.png",composite:true});
+  }
+
   function classifyDimensions(width,height) {
     const presets=[
       {id:"vertical",w:PosterApp.formats.vertical.w,h:PosterApp.formats.vertical.h},
       {id:"horizontal",w:PosterApp.formats.horizontal.w,h:PosterApp.formats.horizontal.h},
-      {id:"train",w:TrainEditor.constants.MASTER_W,h:TrainEditor.constants.MASTER_H}
+      {id:"train",w:TrainEditor.constants.MASTER_W,h:TrainEditor.constants.MASTER_H},
+      {id:"top10",w:Top10Editor.constants.MASTER_W,h:Top10Editor.constants.MASTER_H}
     ];
     const exact=presets.find(p=>p.w===width&&p.h===height);
     if(exact) return {target:exact.id,reason:"exact-dimensions",difference:0};
@@ -143,15 +150,19 @@
     if(target==="train") {
       PosterApp.switchWorkspace("train");
       await TrainEditor.setBackgroundFromDataUrl(dataUrl,context?.name||"Photopea");
+    } else if(target==="top10") {
+      PosterApp.switchWorkspace("top10");
+      await Top10Editor.setBackgroundFromDataUrl(dataUrl,context?.name||"Photopea",{assetId:asset.id});
     } else {
       PosterApp.switchWorkspace(target);
       await PosterApp.setImageLayer("poster",dataUrl,context?.name||"Photopea",{assetId:asset.id});
     }
-    setStatus("Возвращено в "+(target==="train"?"Паровозик":target==="vertical"?"Вертикальный":"Горизонтальный")+" ("+dimensions.width+"×"+dimensions.height+").","ok");
+    const label=target==="train"?"Паровозик":target==="top10"?"ТОП10":target==="vertical"?"Вертикальный":"Горизонтальный";
+    setStatus("Возвращено в "+label+" ("+dimensions.width+"×"+dimensions.height+").","ok");
     return target;
   }
 
-  const sendButtons=["sendPhotopeaVerticalBtn","sendPhotopeaHorizontalBtn","sendPhotopeaTrainBtn","sendPhotopeaAutoBtn"];
+  const sendButtons=["sendPhotopeaVerticalBtn","sendPhotopeaHorizontalBtn","sendPhotopeaTrainBtn","sendPhotopeaTop10Btn","sendPhotopeaAutoBtn"];
 
   function setSendButtonsDisabled(disabled) {
     for(const id of sendButtons) {
@@ -162,7 +173,7 @@
 
   async function sendBack(forcedTarget=null) {
     setSendButtonsDisabled(true);
-    const targetLabel=forcedTarget==="vertical"?"вертикальный":forcedTarget==="horizontal"?"горизонтальный":forcedTarget==="train"?"паровозик":"авто";
+    const targetLabel=forcedTarget==="vertical"?"вертикальный":forcedTarget==="horizontal"?"горизонтальный":forcedTarget==="train"?"паровозик":forcedTarget==="top10"?"ТОП10":"авто";
     setStatus("Получаю PNG из Photopea → "+targetLabel+"...");
     try {
       await ensureLoaded();
@@ -202,6 +213,7 @@
   $("sendPhotopeaVerticalBtn").addEventListener("click",()=>sendBack("vertical"));
   $("sendPhotopeaHorizontalBtn").addEventListener("click",()=>sendBack("horizontal"));
   $("sendPhotopeaTrainBtn").addEventListener("click",()=>sendBack("train"));
+  $("sendPhotopeaTop10Btn").addEventListener("click",()=>sendBack("top10"));
   $("sendPhotopeaAutoBtn").addEventListener("click",()=>sendBack(null));
   $("openPhotopeaBtn").addEventListener("click",()=>window.open("https://www.photopea.com/","_blank","noopener"));
 
@@ -211,6 +223,7 @@
     editSelected,
     editCurrentPoster,
     editTrain,
+    editTop10,
     sendBack,
     classifyDimensions,
     routeBlob,

@@ -33,11 +33,13 @@
     const token=++renderToken;
     status("Обновляю preview...");
     try {
-      const canvas=await ImageFilters.renderToCanvas(session.originalDataUrl,valuesFromUi(),900);
+      const settings=valuesFromUi();
+      const canvas=await ImageFilters.renderToCanvas(session.originalDataUrl,settings,900);
       if (!session || token!==renderToken) return;
       const target=$("filterPreview");
       target.width=canvas.width; target.height=canvas.height;
       target.getContext("2d").drawImage(canvas,0,0);
+      if (session?.onPreview) await session.onPreview(canvas,settings);
       status(canvas.width + " × " + canvas.height + " preview","ok");
     } catch(error) {
       status(error.message || "Не удалось обработать preview.","error");
@@ -100,6 +102,9 @@
       originalDataUrl,
       layer: options.layer || (asset.imageType==="logo"?"logo":"poster"),
       onApply: options.onApply || null,
+      onPreview: options.onPreview || null,
+      onCancel: options.onCancel || null,
+      applied: false,
       name: options.name || asset.title || "Filtered asset"
     };
     $("filterModal").hidden=false;
@@ -128,6 +133,7 @@
       const dataUrl=await AssetManager.dataUrl(updated,true);
       if (session.onApply) await session.onApply(dataUrl,updated,settings);
       else await PosterApp.setImageLayer(session.layer,dataUrl,session.name,{assetId:updated.id});
+      session.applied=true;
       status("Фильтры применены и сохранятся в экспорте.","ok");
       setTimeout(close,350);
     } catch(error) {
@@ -143,9 +149,13 @@
   }
 
   function close() {
+    const closing=session;
     $("filterModal").hidden=true;
     document.body.classList.remove("modal-open");
     session=null;
+    if (closing && !closing.applied && closing.onCancel) {
+      Promise.resolve(closing.onCancel()).catch(error=>console.warn("Filter cancel restore failed",error));
+    }
   }
 
   buildControls();

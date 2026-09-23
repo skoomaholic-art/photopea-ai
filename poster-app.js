@@ -200,11 +200,14 @@
     $("posterWorkspace").classList.toggle("active", posterMode);
     $("trainWorkspace").hidden = name !== "train";
     $("trainWorkspace").classList.toggle("active", name === "train");
+    $("top10Workspace").hidden = name !== "top10";
+    $("top10Workspace").classList.toggle("active", name === "top10");
     $("photopeaWorkspace").hidden = name !== "photopea";
     $("photopeaWorkspace").classList.toggle("active", name === "photopea");
 
     if (posterMode) setFormat(name);
     if (name === "train") window.TrainEditor?.activate();
+    if (name === "top10") window.Top10Editor?.activate();
     if (name === "photopea" && $("photopeaFrame").src === "about:blank") $("photopeaFrame").src = $("photopeaFrame").dataset.src;
   }
 
@@ -571,11 +574,12 @@
 
   function plainProject() {
     return {
-      version: 2,
+      version: 3,
       type: "poster-editor-project",
       updatedAt: Date.now(),
       posters: JSON.parse(JSON.stringify(state.posters)),
-      train: window.TrainEditor?.serialize?.() || null
+      train: window.TrainEditor?.serialize?.() || null,
+      top10: window.Top10Editor?.serialize?.() || null
     };
   }
 
@@ -608,6 +612,8 @@
       if (window.TrainEditor?.restore) await window.TrainEditor.restore(project.train);
       else window.__pendingTrainProject = project.train;
     }
+    if (window.Top10Editor?.restore) await window.Top10Editor.restore(project.top10 || null);
+    else window.__pendingTop10Project = project.top10 || null;
     showToast("Проект восстановлен.", "ok");
   }
 

@@ -7,18 +7,19 @@
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
   <link rel="icon" type="image/svg+xml" href="app-icon.svg?v=20260922c">
-  <link rel="stylesheet" href="poster-app.css?v=20260923c">
+  <link rel="stylesheet" href="poster-app.css?v=20260923top10a">
   <script defer src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
   <script defer src="storage.js?v=20260923b"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
   <script defer src="asset-manager.js?v=20260923b"></script>
   <script defer src="local-background-removal.js?v=20260923a"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
-  <script defer src="poster-app.js?v=20260923c"></script>
+  <script defer src="poster-app.js?v=20260923top10a"></script>
   <script defer src="train-editor.js?v=20260923c"></script>
-  <script defer src="filter-studio.js?v=20260923b"></script>
+  <script defer src="top10-editor.js?v=20260923top10a"></script>
+  <script defer src="filter-studio.js?v=20260923top10a"></script>
   <script defer src="source-browser.js?v=20260923b"></script>
-  <script defer src="photopea-bridge.js?v=20260923c"></script>
+  <script defer src="photopea-bridge.js?v=20260923top10a"></script>
 </head>
 <body>
   <header class="topbar">
@@ -31,6 +32,7 @@
       <button class="workspace-tab active" data-workspace="vertical" aria-selected="true">Вертикальный</button>
       <button class="workspace-tab" data-workspace="horizontal" aria-selected="false">Горизонтальный</button>
       <button class="workspace-tab" data-workspace="train" aria-selected="false">Паровозик</button>
+      <button class="workspace-tab" data-workspace="top10" aria-selected="false">ТОП10</button>
       <button class="workspace-tab" data-workspace="photopea" aria-selected="false">Photopea</button>
     </nav>
 
@@ -267,6 +269,79 @@
     </div>
   </main>
 
+
+  <main id="top10Workspace" class="workspace" data-workspace-panel="top10" hidden>
+    <div class="top10-layout">
+      <aside class="panel sidebar top10-tools">
+        <section>
+          <div class="section-head"><h2>ТОП10</h2><span>800 × 1400</span></div>
+          <h3>Изображение</h3>
+          <label class="upload-card">Загрузить изображение<input id="top10BackgroundInput" type="file" accept="image/jpeg,image/png,image/webp"></label>
+          <h3>Логотип</h3>
+          <label class="upload-card">Загрузить логотип<input id="top10LogoInput" type="file" accept="image/png,image/webp,image/svg+xml"></label>
+        </section>
+        <section data-top10-controls="background">
+          <h3>BACKGROUND_IMAGE</h3>
+          <div class="control-grid">
+            <label>Масштаб <input id="top10BgScale" type="range" min="25" max="500" value="100"></label>
+            <label>Поворот <input id="top10BgRotation" type="range" min="-180" max="180" value="0"></label>
+          </div>
+          <div class="button-row"><button id="top10BgCenter">Центрировать</button><button id="top10BgReset">Сбросить</button></div>
+          <button id="top10FilterBtn" class="wide">Фильтры / Цветокор</button>
+          <p class="muted">Недеструктивный цветокор применяется только к основному изображению.</p>
+        </section>
+        <section data-top10-controls="logo" hidden>
+          <h3>LOGO</h3>
+          <div class="control-grid">
+            <label>Масштаб <input id="top10LogoScale" type="range" min="10" max="500" value="100"></label>
+            <label>Поворот <input id="top10LogoRotation" type="range" min="-180" max="180" value="0"></label>
+          </div>
+          <div class="button-row"><button id="top10LogoCenter">Центрировать</button><button id="top10LogoReset">Сбросить</button></div>
+          <div class="button-row"><button id="top10LogoUp">Слой выше</button><button id="top10LogoDown">Слой ниже</button></div>
+        </section>
+        <section data-top10-controls="darkening" hidden>
+          <h3>BOTTOM_DARKENING 🔒</h3>
+          <label class="field">Цвет <input id="top10DarkColor" type="color" value="#000000"></label>
+          <label class="field">Интенсивность <input id="top10DarkIntensity" type="range" min="0" max="100" value="94"></label>
+          <label class="field">Начало градиента <input id="top10DarkStart" type="range" min="0" max="96" value="58"></label>
+          <p class="muted">LOCK POSITION · LOCK SIZE · EDIT APPEARANCE</p>
+        </section>
+        <section data-top10-controls="number" hidden>
+          <h3>TOP_NUMBER 🔒</h3>
+          <label class="field">Позиция в ТОП10
+            <select id="top10PositionSelect">
+              <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
+              <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+            </select>
+          </label>
+          <label class="field">Fill <input id="top10NumberFill" type="color" value="#050505"></label>
+          <div class="control-grid">
+            <label>Stroke A <input id="top10NumberStrokeStart" type="color" value="#00ff33"></label>
+            <label>Stroke B <input id="top10NumberStrokeEnd" type="color" value="#0070ff"></label>
+          </div>
+          <label class="field">Толщина обводки <input id="top10NumberStrokeWidth" type="range" min="1" max="60" value="18"></label>
+          <p class="muted">Позиция и размер цифры зафиксированы шаблоном.</p>
+        </section>
+      </aside>
+      <section class="panel top10-center">
+        <div class="stage-head"><strong>Рабочее окно</strong><span>ТОП10 · master 800 × 1400</span></div>
+        <div id="top10CanvasView" class="top10-canvas-view">
+          <div id="top10CanvasShell" class="top10-canvas-shell"><canvas id="top10Canvas" width="800" height="1400"></canvas></div>
+        </div>
+        <div id="top10Status" class="status-line">Шаблон ТОП10 готов</div>
+      </section>
+      <aside class="panel sidebar">
+        <section><h3>Слои</h3><div id="top10Layers" class="top10-layers"></div></section>
+        <section>
+          <h3>Экспорт</h3>
+          <button id="top10EditPhotopeaBtn" class="wide">Редактировать ТОП10 в Photopea</button>
+          <button id="top10DownloadBtn" class="primary wide">Скачать ТОП10</button>
+          <p class="muted">Экспорт: PNG 800 × 1400. UI, рамки и selection не попадают в файл.</p>
+        </section>
+      </aside>
+    </div>
+  </main>
+
   <main id="photopeaWorkspace" class="workspace photopea-workspace" data-workspace-panel="photopea" hidden>
     <div class="photopea-toolbar">
       <strong>Photopea</strong>
@@ -275,6 +350,7 @@
         <button id="sendPhotopeaVerticalBtn" class="primary">В вертикальный</button>
         <button id="sendPhotopeaHorizontalBtn">В горизонтальный</button>
         <button id="sendPhotopeaTrainBtn">В паровозик</button>
+        <button id="sendPhotopeaTop10Btn">В ТОП10</button>
         <button id="sendPhotopeaAutoBtn">Авто</button>
         <button id="openPhotopeaBtn">Открыть отдельно ↗</button>
       </div>
@@ -340,6 +416,7 @@
         <button data-route-target="vertical">Вертикальный<br><small>800 × 1200</small></button>
         <button data-route-target="horizontal">Горизонтальный<br><small>1920 × 1080</small></button>
         <button data-route-target="train">Паровозик<br><small>2952 × 366</small></button>
+        <button data-route-target="top10">ТОП10<br><small>800 × 1400</small></button>
       </div>
     </section>
   </div>

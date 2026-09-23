@@ -26,6 +26,7 @@ requireAll("workspace UI", html, [
   'data-workspace="vertical"',
   'data-workspace="horizontal"',
   'data-workspace="train"',
+  'data-workspace="top10"',
   'data-workspace="photopea"',
   "Найти исходник",
   "ПОСТЕРЫ",
@@ -177,3 +178,24 @@ for (const forbidden of [
 
 console.log("Feature contract passed.");
 console.log("Unified image sources, filters, Asset Manager and Photopea round trip are present.");
+
+
+const top10 = read("top10-editor.js");
+requireAll("TOP10 editor", top10, [
+  "const MASTER_W = 800",
+  "const MASTER_H = 1400",
+  "BACKGROUND_IMAGE",
+  "BOTTOM_DARKENING",
+  "TOP_NUMBER",
+  "renderBlob",
+  "openFilters",
+  "darkeningIntensity",
+  "numberStrokeWidth",
+  "logoAboveDarkening"
+]);
+requireAll("TOP10 Photopea routing", read("photopea-bridge.js"), [
+  "editTop10",
+  'id:"top10"',
+  "sendPhotopeaTop10Btn",
+  "routeBlob"
+]);

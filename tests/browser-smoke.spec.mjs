@@ -127,7 +127,7 @@ test("boots existing four-workspace Poster Editor with unified tools", async ({ 
   await mockStatus(page);
   await page.goto("/");
   await expect(page.locator(".brand strong")).toHaveText("Poster Editor");
-  await expect(page.locator(".workspace-tab")).toHaveCount(4);
+  await expect(page.locator(".workspace-tab")).toHaveCount(5);
   await expect(page.locator("#posterWorkspace")).toBeVisible();
   await expect(page.locator("#posterSearchBtn")).toHaveText("Найти исходник");
   await expect(page.locator("#filterSelectedBtn")).toHaveText("Фильтры");
@@ -494,4 +494,102 @@ test("autosave survives reload with asset-backed poster and sticker", async ({ p
   expect(posterState.vertical.posterAssetId).toBeTruthy();
   await page.locator('[data-workspace="train"]').click();
   expect((await page.evaluate(() => window.TrainEditor.inspect())).sticker?.text).toBe("Жаңа маусым");
+});
+
+
+test("TOP10 master canvas, locked template, filters, export, Photopea routing and persistence work", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  await page.locator('[data-workspace="top10"]').click();
+  await page.waitForFunction(() => !!window.Top10Editor);
+
+  const initial = await page.evaluate(() => window.Top10Editor.inspect());
+  expect(initial.masterSize).toEqual({ width: 800, height: 1400 });
+  expect(initial.backingSize).toEqual({ width: 800, height: 1400 });
+  expect(initial.layers).toEqual(["TOP_NUMBER","LOGO","BOTTOM_DARKENING","BACKGROUND_IMAGE"]);
+  expect(initial.darkening.locked).toBe(true);
+  expect(initial.darkening.selectable).toBe(false);
+  expect(initial.number.locked).toBe(true);
+  expect(initial.number.selectable).toBe(false);
+
+  const jpgBase64 = await page.evaluate(() => {
+    const c=document.createElement("canvas"); c.width=80; c.height=140;
+    const ctx=c.getContext("2d"); ctx.fillStyle="#456789"; ctx.fillRect(0,0,c.width,c.height);
+    return c.toDataURL("image/jpeg",0.9).split(",")[1];
+  });
+  await page.locator("#top10BackgroundInput").setInputFiles({
+    name:"top10.jpg", mimeType:"image/jpeg", buffer:Buffer.from(jpgBase64,"base64")
+  });
+  await expect.poll(() => page.evaluate(() => !!window.Top10Editor.getState().background)).toBe(true);
+
+  await page.locator("#top10LogoInput").setInputFiles({ name:"logo.png", mimeType:"image/png", buffer:PNG });
+  await expect.poll(() => page.evaluate(() => !!window.Top10Editor.getState().logo)).toBe(true);
+
+  await page.locator(".top10-layer-row").filter({hasText:"TOP_NUMBER"}).click();
+  await page.locator("#top10PositionSelect").selectOption("2");
+  let inspect = await page.evaluate(() => window.Top10Editor.inspect());
+  expect(inspect.state.ranking).toBe("2");
+  expect(inspect.number.bounds.top).toBeGreaterThan(900);
+  expect(inspect.number.bounds.bottom).toBeLessThanOrEqual(1400);
+
+  await page.locator("#top10PositionSelect").selectOption("10");
+  inspect = await page.evaluate(() => window.Top10Editor.inspect());
+  expect(inspect.state.ranking).toBe("10");
+  expect(inspect.number.bounds.left).toBeGreaterThanOrEqual(0);
+  expect(inspect.number.bounds.left + inspect.number.bounds.width).toBeLessThanOrEqual(800);
+
+  await page.locator(".top10-layer-row").filter({hasText:"BOTTOM_DARKENING"}).click();
+  const darkBefore = await page.evaluate(() => window.Top10Editor.inspect().darkening);
+  await page.mouse.move(400,700); await page.mouse.down(); await page.mouse.move(500,800); await page.mouse.up();
+  const darkAfter = await page.evaluate(() => window.Top10Editor.inspect().darkening);
+  expect({left:darkAfter.left,top:darkAfter.top}).toEqual({left:darkBefore.left,top:darkBefore.top});
+  await page.locator("#top10DarkColor").fill("#112233");
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().darkeningColor)).toBe("#112233");
+
+  await page.locator(".top10-layer-row").filter({hasText:"TOP_NUMBER"}).click();
+  await page.locator("#top10NumberStrokeStart").fill("#ff00aa");
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().numberStrokeStart)).toBe("#ff00aa");
+
+  await page.locator(".top10-layer-row").filter({hasText:"BACKGROUND_IMAGE"}).click();
+  const unaffectedBefore = await page.evaluate(() => {
+    const s=window.Top10Editor.getState();
+    return {logo:s.logo,ranking:s.ranking,darkeningColor:s.darkeningColor};
+  });
+  await page.locator("#top10FilterBtn").click();
+  await expect(page.locator("#filterModal")).toBeVisible();
+  await page.locator('[data-filter-number="contrast"]').fill("25");
+  await page.locator('[data-filter-number="temperature"]').fill("-20");
+  await page.locator("#filterApplyBtn").click();
+  await expect(page.locator("#filterModal")).toBeHidden();
+  const afterFilter = await page.evaluate(() => window.Top10Editor.getState());
+  expect(afterFilter.backgroundFilters.contrast).toBe(25);
+  expect(afterFilter.backgroundFilters.temperature).toBe(-20);
+  expect({logo:afterFilter.logo,ranking:afterFilter.ranking,darkeningColor:afterFilter.darkeningColor}).toEqual(unaffectedBefore);
+
+  const dlPromise = page.waitForEvent("download");
+  await page.locator("#top10DownloadBtn").click();
+  const dl = await dlPromise;
+  expect(dl.suggestedFilename()).toBe("top10.png");
+  expect(pngSize(await readFile(await dl.path()))).toEqual({ width:800, height:1400 });
+
+  expect((await page.evaluate(() => window.PhotopeaBridge.classifyDimensions(800,1400))).target).toBe("top10");
+  await page.evaluate(async () => {
+    const c=document.createElement("canvas"); c.width=800; c.height=1400;
+    c.getContext("2d").fillRect(0,0,800,1400);
+    const blob=await new Promise(resolve=>c.toBlob(resolve,"image/png"));
+    await window.PhotopeaBridge.routeBlob(blob,{width:800,height:1400},"top10");
+  });
+  await expect(page.locator("#top10Workspace")).toBeVisible();
+
+  await page.locator(".top10-layer-row").filter({hasText:"TOP_NUMBER"}).click();
+  await page.locator("#top10PositionSelect").selectOption("7");
+  await page.locator(".top10-layer-row").filter({hasText:"BOTTOM_DARKENING"}).click();
+  await page.locator("#top10DarkIntensity").fill("81");
+  await page.waitForTimeout(900);
+  await page.reload();
+  await page.waitForFunction(() => !!window.Top10Editor && !!window.PosterApp);
+  await page.locator('[data-workspace="top10"]').click();
+  const restored = await page.evaluate(() => window.Top10Editor.getState());
+  expect(restored.ranking).toBe("7");
+  expect(restored.darkeningIntensity).toBe(81);
 });
