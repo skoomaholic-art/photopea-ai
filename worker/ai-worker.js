@@ -142,6 +142,128 @@ async function callXAI(env, prompt, imageDataUrl, count) {
   return Promise.all(jobs);
 }
 
+function cloudflareImageModel(env) {
+  return env.CLOUDFLARE_IMAGE_MODEL || "@cf/black-forest-labs/flux-2-klein-4b";
+}
+
+async function callCloudflareAI(env, prompt, imageDataUrl, count) {
+  if (!env.AI?.run) throw new ApiError("Workers AI binding не настроен.", 503, "not_configured");
+  const { type, bytes } = parseDataUrl(imageDataUrl);
+  const model = cloudflareImageModel(env);
+  const results = [];
+  for (let index = 0; index < count; index++) {
+    const form = new FormData();
+    form.append("prompt", prompt);
+    form.append("input_image_0", new Blob([bytes], { type }), "reference.png");
+    form.append("width", "1024");
+    form.append("height", "1024");
+    const encoded = new Response(form);
+    let result;
+    try {
+      result = await env.AI.run(model, {
+        multipart: {
+          body: encoded.body,
+          contentType: encoded.headers.get("content-type")
+        }
+      });
+    } catch (error) {
+      const message = String(error?.message || error || "");
+      if (/rate|quota|capacity|3040/i.test(message)) throw new ApiError("Workers AI: лимит или временно нет мощности.", 429, "rate_limit");
+      throw new ApiError("Workers AI: " + (message || "ошибка генерации."), 502, "provider_error");
+    }
+    const base64 = typeof result?.image === "string" ? result.image : null;
+    if (!base64) throw new ApiError("Workers AI не вернул изображение.", 502, "empty_result");
+    results.push("data:image/jpeg;base64," + base64);
+  }
+  return { images: results, model };
+}
+
+async function probeOpenRouterModel(env, provider) {
+  if (!env.OPENROUTER_API_KEY) return { status: "not_configured", configured: false, available: false };
+  const model = openRouterImageModel(env, provider);
+  const baseUrl = String(env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/$/, "");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch(baseUrl + "/model/" + model, {
+      headers: openRouterHeaders(env),
+      signal: controller.signal
+    });
+    if (response.status === 429) return { status: "rate_limited", configured: true, available: false, model };
+    if (response.status === 401 || response.status === 403) return { status: "auth_error", configured: true, available: false, model };
+    if (!response.ok) return { status: "offline", configured: true, available: false, model, httpStatus: response.status };
+    const data = await response.json().catch(() => ({}));
+    const architecture = data?.data?.architecture || {};
+    const inputs = architecture.input_modalities || [];
+    const outputs = architecture.output_modalities || [];
+    const compatible = inputs.includes("image") && outputs.includes("image");
+    return { status: compatible ? "online" : "incompatible", configured: true, available: compatible, model };
+  } catch (error) {
+    return { status: error?.name === "AbortError" ? "timeout" : "offline", configured: true, available: false, model };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function serviceHealth(env) {
+  const imageSources = imageProviderStatus(env);
+  const [xai, openai] = await Promise.all([
+    probeOpenRouterModel(env, "xai"),
+    probeOpenRouterModel(env, "openai")
+  ]);
+  const cloudflare = env.AI?.run
+    ? { status: "online", configured: true, available: true, model: cloudflareImageModel(env), freeTier: "10000 neurons/day shared Workers AI allocation" }
+    : { status: "not_configured", configured: false, available: false, model: cloudflareImageModel(env) };
+  return {
+    ok: true,
+    apiVersion: "2026-09-23-runtime-v4",
+    services: {
+      tmdb: {
+        status: imageSources.tmdb?.enabled ? "online" : "not_configured",
+        configured: !!imageSources.tmdb?.configured,
+        available: !!imageSources.tmdb?.enabled,
+        reason: imageSources.tmdb?.reason || null
+      },
+      fanart: {
+        status: imageSources.fanart?.enabled ? "online" : "not_configured",
+        configured: !!imageSources.fanart?.configured,
+        available: !!imageSources.fanart?.enabled,
+        reason: imageSources.fanart?.reason || null
+      },
+      ai: {
+        status: cloudflare.available || xai.available || openai.available ? "online" : (xai.status === "rate_limited" || openai.status === "rate_limited" ? "rate_limited" : "not_configured"),
+        configured: cloudflare.configured || xai.configured || openai.configured,
+        available: cloudflare.available || xai.available || openai.available,
+        providers: { cloudflare, xai, openai }
+      },
+      backgroundRemoval: {
+        status: env.CARVE_API_KEY || env.REMOVAL_AI_KEY ? "online" : "browser_local_available",
+        configured: !!(env.CARVE_API_KEY || env.REMOVAL_AI_KEY),
+        available: true,
+        providers: { carve: !!env.CARVE_API_KEY, removal: !!env.REMOVAL_AI_KEY, local: true }
+      },
+      photopea: { status: "client_check", configured: true, available: null }
+    },
+    providers: {
+      cloudflare: cloudflare.available,
+      xai: xai.available,
+      openai: openai.available
+    },
+    providerDetails: { cloudflare, xai, openai },
+    aiModels: {
+      cloudflare: cloudflareImageModel(env),
+      xai: openRouterImageModel(env, "xai"),
+      openai: openRouterImageModel(env, "openai")
+    },
+    background: { local: true, carve: !!env.CARVE_API_KEY, removal: !!env.REMOVAL_AI_KEY },
+    posters: {
+      tvmaze: true,
+      tmdb: !!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY)
+    },
+    images: imageSources
+  };
+}
+
 function makeProxyUrl(request, originalUrl) {
   const base = new URL(request.url);
   base.pathname = "/api/image";
@@ -172,10 +294,10 @@ async function searchTVmaze(query, request) {
 }
 
 async function searchTMDB(query, request, env) {
-  if (!env.TMDB_BEARER_TOKEN || env.TMDB_COMMERCIAL_APPROVED !== "true") return [];
+  if (!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY)) return [];
   const response = await fetch("https://api.themoviedb.org/3/search/multi?include_adult=false&language=ru-RU&query=" + encodeURIComponent(query), {
     headers: {
-      Authorization: `Bearer ${env.TMDB_BEARER_TOKEN}`,
+      Authorization: `Bearer ${env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN}`,
       Accept: "application/json"
     }
   });
@@ -321,23 +443,8 @@ export default {
     try {
       const url = new URL(request.url);
 
-      if (request.method === "GET" && url.pathname === "/api/status") {
-        return json({
-          ok: true,
-          apiVersion: "2026-09-23-assets-v3",
-          providers: { xai: !!env.OPENROUTER_API_KEY, openai: !!env.OPENROUTER_API_KEY },
-          aiProvider: "openrouter",
-          aiModels: {
-            xai: openRouterImageModel(env, "xai"),
-            openai: openRouterImageModel(env, "openai")
-          },
-          background: { carve: !!env.CARVE_API_KEY, removal: !!env.REMOVAL_AI_KEY },
-          posters: {
-            tvmaze: true,
-            tmdb: !!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY) && env.TMDB_COMMERCIAL_APPROVED === "true"
-          },
-          images: imageProviderStatus(env)
-        }, 200, origin);
+      if (request.method === "GET" && (url.pathname === "/api/status" || url.pathname === "/api/health")) {
+        return json(await serviceHealth(env), 200, origin);
       }
 
       if (request.method === "GET" && url.pathname === "/api/images/search") {
@@ -380,6 +487,10 @@ export default {
         if (!image.startsWith("data:image/")) throw new ApiError("Некорректный файл изображения.", 400, "bad_image");
         if (image.length > 12_000_000) throw new ApiError("Изображение слишком большое. Максимум примерно 8 МБ.", 413, "image_too_large");
 
+        if (provider === "cloudflare") {
+          const result = await callCloudflareAI(env, prompt, image, count);
+          return json({ images: result.images, provider: "cloudflare-workers-ai", model: result.model }, 200, origin);
+        }
         let images;
         if (provider === "openai") images = await callOpenAI(env, prompt, image, count);
         else if (provider === "xai") images = await callXAI(env, prompt, image, count);
