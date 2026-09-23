@@ -6,6 +6,7 @@
   let readyWaiters=[];
   let commandWaiters=[];
   let exportWaiter=null;
+  let inspectWaiter=null;
   let context=null;
   const layeredMasterIds={};
 
@@ -175,6 +176,21 @@
       frame.contentWindow.postMessage(script,PP_ORIGIN);
     });
     return Promise.race([donePromise,timeoutPromise(30000,"Photopea не завершил создание слоёв.")]);
+  }
+
+  async function inspectActiveDocument() {
+    await ensureLoaded();
+    const payloadPromise=new Promise((resolve,reject)=>{inspectWaiter={resolve,reject};});
+    const script=[
+      'if(!app.activeDocument){app.echoToOE("POSTER_INSPECT:"+encodeURIComponent(JSON.stringify({error:"no-document"})));}',
+      'else{var __d=app.activeDocument;var __names=[];var __walk=function(__layers,__prefix){for(var __i=0;__i<__layers.length;__i++){var __ly=__layers[__i];var __name=(__prefix?__prefix+"/":"")+__ly.name;__names.push(__name);try{if(__ly.layers)__walk(__ly.layers,__name);}catch(e){}}};__walk(__d.layers,"");app.echoToOE("POSTER_INSPECT:"+encodeURIComponent(JSON.stringify({name:__d.name,width:Number(__d.width),height:Number(__d.height),layers:__names})));}'
+    ].join("\n");
+    frame.contentWindow.postMessage(script,PP_ORIGIN);
+    try {
+      return await Promise.race([payloadPromise,timeoutPromise(20000,"Photopea не вернул структуру документа.")]);
+    } finally {
+      inspectWaiter=null;
+    }
   }
 
   async function openLayeredDocument(model) {
@@ -354,6 +370,13 @@
       if(context) context.layeredReady=event.data;
       return;
     }
+    if(typeof event.data==="string" && event.data.startsWith("POSTER_INSPECT:")) {
+      if(inspectWaiter) {
+        try { inspectWaiter.resolve(JSON.parse(decodeURIComponent(event.data.slice("POSTER_INSPECT:".length)))); }
+        catch(error) { inspectWaiter.reject(error); }
+      }
+      return;
+    }
     if(event.data instanceof ArrayBuffer && exportWaiter) exportWaiter.resolve(event.data);
   });
 
@@ -377,6 +400,7 @@
     classifyDimensions,
     routeBlob,
     buildLayeredScript,
+    inspectActiveDocument,
     getLayeredMasterId:workspace=>layeredMasterIds[workspace]||null,
     getContext:()=>context
   };

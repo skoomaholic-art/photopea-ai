@@ -55,6 +55,11 @@ jobs:
       - name: Run browser smoke
         run: npm run test:e2e
 
+      - name: Run real Photopea layered integration
+        env:
+          REAL_PHOTOPEA: "1"
+        run: npx playwright test tests/photopea-real.spec.mjs --workers=1 --retries=1
+
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
