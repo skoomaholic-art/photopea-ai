@@ -451,9 +451,12 @@ export default {
         const q = (url.searchParams.get("q") || "").trim();
         const year = (url.searchParams.get("year") || "").trim();
         const source = (url.searchParams.get("source") || "all").trim().toLowerCase();
+        const tmdbId = (url.searchParams.get("tmdbId") || "").trim();
+        const mediaType = (url.searchParams.get("mediaType") || "").trim().toLowerCase();
         const allowedSources = new Set(["all", "tmdb", "fanart", "wikimedia", "tvmaze"]);
         if (!allowedSources.has(source)) throw new ApiError("Неизвестный источник изображений.", 400, "bad_source");
-        const data = await searchUnifiedImages(request, env, { query: q, year, source });
+        if (mediaType && !["movie","tv"].includes(mediaType)) throw new ApiError("Некорректный mediaType.", 400, "bad_media_type");
+        const data = await searchUnifiedImages(request, env, { query: q, year, source, tmdbId, mediaType });
         return json(data, 200, origin);
       }
 
