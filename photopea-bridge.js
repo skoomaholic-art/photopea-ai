@@ -151,26 +151,36 @@
     return target;
   }
 
-  async function sendBack() {
-    $("sendPhotopeaBtn").disabled=true;
-    setStatus("Получаю PNG из Photopea...");
+  const sendButtons=["sendPhotopeaVerticalBtn","sendPhotopeaHorizontalBtn","sendPhotopeaTrainBtn","sendPhotopeaAutoBtn"];
+
+  function setSendButtonsDisabled(disabled) {
+    for(const id of sendButtons) {
+      const button=$(id);
+      if(button) button.disabled=disabled;
+    }
+  }
+
+  async function sendBack(forcedTarget=null) {
+    setSendButtonsDisabled(true);
+    const targetLabel=forcedTarget==="vertical"?"вертикальный":forcedTarget==="horizontal"?"горизонтальный":forcedTarget==="train"?"паровозик":"авто";
+    setStatus("Получаю PNG из Photopea → "+targetLabel+"...");
     try {
       await ensureLoaded();
       const bufferPromise=Promise.race([
         new Promise((resolve,reject)=>{exportWaiter={resolve,reject};}),
         timeoutPromise(30000,"Photopea не ответил при экспорте.")
       ]);
-      frame.contentWindow.postMessage('app.activeDocument.saveToOE("png");',PP_ORIGIN);
+      frame.contentWindow.postMessage('if(!app.activeDocument){throw new Error("Нет активного документа");} app.activeDocument.saveToOE("png");',PP_ORIGIN);
       const buffer=await bufferPromise;
       exportWaiter=null;
       const blob=new Blob([buffer],{type:"image/png"});
       const dims=await imageDimensions(blob);
-      await routeBlob(blob,dims);
+      await routeBlob(blob,dims,forcedTarget);
     } catch(error) {
       setStatus(error.message||"Не удалось получить документ из Photopea.","error");
     } finally {
       exportWaiter=null;
-      $("sendPhotopeaBtn").disabled=false;
+      setSendButtonsDisabled(false);
     }
   }
 
@@ -189,7 +199,10 @@
   });
 
   frame.addEventListener("load",()=>setStatus("Photopea загружается..."));
-  $("sendPhotopeaBtn").addEventListener("click",sendBack);
+  $("sendPhotopeaVerticalBtn").addEventListener("click",()=>sendBack("vertical"));
+  $("sendPhotopeaHorizontalBtn").addEventListener("click",()=>sendBack("horizontal"));
+  $("sendPhotopeaTrainBtn").addEventListener("click",()=>sendBack("train"));
+  $("sendPhotopeaAutoBtn").addEventListener("click",()=>sendBack(null));
   $("openPhotopeaBtn").addEventListener("click",()=>window.open("https://www.photopea.com/","_blank","noopener"));
 
   window.PhotopeaBridge={
