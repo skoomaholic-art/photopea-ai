@@ -139,11 +139,8 @@
     const src=layer.sourceDataUrl||layer.sourceUrl;
     if(!src) return "";
     return [
-      "var __sourceDoc=app.open("+jsString(src)+",null,true);",
-      "var __sourceLayer=__sourceDoc.activeLayer;",
-      "try{__sourceLayer.duplicate(doc,ElementPlacement.PLACEATBEGINNING);}catch(e){__sourceLayer.duplicate(doc);}",
-      "try{__sourceDoc.close(SaveOptions.DONOTSAVECHANGES);}catch(e){try{__sourceDoc.close();}catch(e2){}}",
       "app.activeDocument=doc;",
+      "app.open("+jsString(src)+",null,true);",
       "var ly=doc.activeLayer;",
       commonLayerScript(layer,"ly")
     ].join("\n");
