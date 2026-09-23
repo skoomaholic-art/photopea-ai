@@ -210,117 +210,6 @@
     scheduleAutosave();
   }
 
-  async function searchTVmazeDirect(q) {
-    const response = await fetch("https://api.tvmaze.com/search/shows?q=" + encodeURIComponent(q), { cache: "no-store" });
-    if (response.status === 429) throw new Error("TVmaze: превышен лимит запросов. Повторите позже.");
-    if (!response.ok) throw new Error("TVmaze временно недоступен.");
-    const rows = await response.json();
-    return (rows || []).slice(0, 12).map(({ show }) => {
-      const image = show?.image?.original || show?.image?.medium || null;
-      return {
-        id: "tvmaze-" + show.id,
-        title: show.name,
-        year: (show.premiered || "").slice(0, 4),
-        type: "TV",
-        source: "TVmaze",
-        quality: show?.image?.original ? "original" : "medium",
-        image
-      };
-    }).filter(item => item.image);
-  }
-
-  async function fetchPosterResults(q) {
-    if (apiBase) {
-      try {
-        let response = await fetch(apiBase + "/api/posters?q=" + encodeURIComponent(q), { cache: "no-store" });
-        let data = await response.json().catch(() => ({}));
-        if (response.ok && Array.isArray(data.results)) return { items: data.results, direct: false };
-
-        if (response.status === 405 || /use\s+post/i.test(String(data.error || data.message || ""))) {
-          response = await fetch(apiBase + "/api/posters", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ q, query: q })
-          });
-          data = await response.json().catch(() => ({}));
-          if (response.ok && Array.isArray(data.results)) return { items: data.results, direct: false };
-        }
-
-        if (response.status === 429) throw new Error(data.error || "Превышен лимит поиска. Повторите позже.");
-        if (response.status >= 500) throw new Error(data.error || "Сервис поиска временно недоступен.");
-      } catch (error) {
-        if (/лимит|temporarily|временно/i.test(String(error?.message || ""))) throw error;
-        // Network/legacy-Worker failures fall through to the public TVmaze API.
-      }
-    }
-    return { items: await searchTVmazeDirect(q), direct: true };
-  }
-
-  async function searchPosters() {
-    const q = $("posterSearchInput").value.trim();
-    if (!q) return setPosterSearchStatus("Введите название.", "error");
-
-    $("posterSearchBtn").disabled = true;
-    setPosterSearchStatus("Ищу постеры...");
-    $("posterSearchResults").innerHTML = "";
-    try {
-      const { items, direct } = await fetchPosterResults(q);
-      if (!items.length) {
-        setPosterSearchStatus("Ничего не найдено.", "error");
-        return;
-      }
-      renderPosterResults(items);
-      const providers = [...new Set(items.map(item => item.source).filter(Boolean))].join(", ") || "TVmaze";
-      setPosterSearchStatus(
-        `Найдено: ${items.length}. Источник: ${providers}.${direct ? " Worker недоступен, используется прямой TVmaze." : ""}`,
-        "ok"
-      );
-    } catch (error) {
-      setPosterSearchStatus(error.message || "Ошибка сети.", "error");
-    } finally {
-      $("posterSearchBtn").disabled = false;
-    }
-  }
-
-  function setPosterSearchStatus(message, kind = "") {
-    $("posterSearchStatus").textContent = message;
-    $("posterSearchStatus").className = "mini-status " + kind;
-  }
-
-  function renderPosterResults(items) {
-    const root = $("posterSearchResults");
-    root.innerHTML = "";
-    for (const item of items) {
-      if (!item.image) continue;
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "poster-card";
-      const img = document.createElement("img");
-      img.src = item.image;
-      img.alt = item.title || "Постер";
-      img.loading = "lazy";
-      const title = document.createElement("strong");
-      title.textContent = item.title || "Без названия";
-      const meta = document.createElement("small");
-      meta.textContent = [item.year, item.source, item.quality].filter(Boolean).join(" · ");
-      card.append(img, title, meta);
-      card.addEventListener("click", async () => {
-        card.disabled = true;
-        setPosterSearchStatus("Загружаю выбранный постер...");
-        try {
-          let src = item.image;
-          try { src = await sourceToDataUrl(item.image); } catch {}
-          await setImageLayer("poster", src, item.title || "poster");
-          setPosterSearchStatus("Постер добавлен в " + formats[state.activeFormat].label.toLowerCase() + " редактор.", "ok");
-        } finally {
-          card.disabled = false;
-        }
-      });
-      root.appendChild(card);
-    }
-    if (!root.children.length) setPosterSearchStatus("Результаты есть, но у них нет изображений.", "error");
-  }
-
   async function checkServer() {
     if (!apiBase) {
       $("aiServerBadge").textContent = "не настроен";
@@ -476,6 +365,27 @@
       if (!response.ok) throw new Error(data.error || "Не удалось удалить фон.");
       if (!data.image) throw new Error("API не вернул прозрачное изображение.");
       s[layer] = data.image;
+      if (window.AssetManager) {
+        const key = layer + "AssetId";
+        try {
+          let asset = s[key] ? await AssetManager.get(s[key]) : null;
+          if (asset) {
+            asset = await AssetManager.updateEdited(asset.id, data.image, asset.filters || null, {
+              source: asset.source || "background-removal"
+            });
+          } else {
+            asset = await AssetManager.fromDataUrl(data.image, {
+              source: "background-removal",
+              sourceId: (s[layer + "Name"] || layer) + "-no-bg",
+              title: s[layer + "Name"] || "Background removed",
+              imageType: layer === "logo" ? "logo" : "poster"
+            });
+          }
+          s[key] = asset.id;
+        } catch (assetError) {
+          console.warn("Asset Manager background removal update failed", assetError);
+        }
+      }
       renderPoster();
       scheduleAutosave();
       setBgStatus("Фон удалён через " + (data.provider || "API") + ". Положение и трансформация сохранены.", "ok");
@@ -765,7 +675,23 @@
   $("posterBgInput").addEventListener("input", e => { current().background = e.target.value; renderPoster(); scheduleAutosave(); });
   $("aiProvider").addEventListener("change", updateAiAvailability);
   $("generateBtn").addEventListener("click", generateAi);
-  $("moveResultBtn").addEventListener("click", () => { if (state.selectedAiResult) setImageLayer("logo", state.selectedAiResult, "AI logo"); });
+  $("moveResultBtn").addEventListener("click", async () => {
+    if (!state.selectedAiResult) return;
+    try {
+      let asset = null;
+      if (window.AssetManager) {
+        asset = await AssetManager.fromDataUrl(state.selectedAiResult, {
+          source: "ai",
+          sourceId: "ai-logo-" + Date.now(),
+          title: "AI logo",
+          imageType: "logo"
+        });
+      }
+      await setImageLayer("logo", state.selectedAiResult, "AI logo", { assetId: asset?.id || null });
+    } catch (error) {
+      showToast(error.message || "Не удалось добавить AI-результат.", "error");
+    }
+  });
   $("downloadResultBtn").addEventListener("click", async () => {
     if (!state.selectedAiResult) return;
     try { downloadBlob(await (await fetch(state.selectedAiResult)).blob(), "adapted-logo.png"); } catch { window.open(state.selectedAiResult, "_blank", "noopener"); }
