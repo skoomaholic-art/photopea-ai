@@ -176,8 +176,8 @@ test("TEST 2 TMDB backdrop to Horizontal", async ({ page }) => {
   await page.getByRole("button", { name: "ГОРИЗОНТАЛЬНЫЕ" }).click();
   await expect(page.locator(".source-card")).toHaveCount(1);
   await page.locator(".source-card").getByRole("button", { name: "Использовать" }).click();
-  const state = await page.evaluate(() => window.PosterApp.getState().horizontal);
-  expect(state.posterAssetId).toBeTruthy();
+  await expect(page.locator("#sourceBrowserModal")).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.PosterApp.getState().horizontal.posterAssetId)).toBeTruthy();
   await expect(page.locator("#stageMeta")).toContainText("1920 × 1080");
 });
 
