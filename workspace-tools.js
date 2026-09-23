@@ -149,7 +149,7 @@
       preview:await thumbnailFromBlob(snap.previewBlob),
       projectState:snap.projectState,
       assets:await bundleAssets(workspace,snap.projectState),
-      photopeaMasterId:window.PhotopeaBridge?.getLayeredMasterId?.(workspace) || null
+      photopeaMasterId:window.PhotopeaBridge?.getLayeredMasterId?.(workspace) || snap.projectState?.photopeaMasterId || null
     };
     await SkoomaStore.saveArchiveEntry(entry);
     return entry;
