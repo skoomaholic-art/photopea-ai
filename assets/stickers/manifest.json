@@ -1,0 +1,104 @@
+{
+  "version": "20260923a",
+  "format": "svg",
+  "stickers": [
+    {
+      "label": "Премьера",
+      "file": "premiere.svg",
+      "targetWidth": 232,
+      "targetHeight": 76,
+      "style": "gradient"
+    },
+    {
+      "label": "Новые серии",
+      "file": "new-series-ru.svg",
+      "targetWidth": 260,
+      "targetHeight": 76,
+      "style": "gradient"
+    },
+    {
+      "label": "Жаңа сериялар",
+      "file": "new-series-kz.svg",
+      "targetWidth": 302,
+      "targetHeight": 76,
+      "style": "gradient"
+    },
+    {
+      "label": "Новый сезон",
+      "file": "new-season-ru.svg",
+      "targetWidth": 286,
+      "targetHeight": 76,
+      "style": "gradient"
+    },
+    {
+      "label": "Жаңа маусым",
+      "file": "new-season-kz.svg",
+      "targetWidth": 286,
+      "targetHeight": 76,
+      "style": "gradient"
+    },
+    {
+      "label": "Все серии",
+      "file": "all-series-ru.svg",
+      "targetWidth": 236,
+      "targetHeight": 76,
+      "style": "gradient"
+    },
+    {
+      "label": "Барлық сериалдар",
+      "file": "all-series-kz.svg",
+      "targetWidth": 354,
+      "targetHeight": 76,
+      "style": "gradient"
+    },
+    {
+      "label": "Новинка",
+      "file": "new-ru.svg",
+      "targetWidth": 216,
+      "targetHeight": 76,
+      "style": "gradient"
+    },
+    {
+      "label": "Жаңа",
+      "file": "new-kz.svg",
+      "targetWidth": 166,
+      "targetHeight": 76,
+      "style": "gradient"
+    },
+    {
+      "label": "Эксклюзив",
+      "file": "exclusive.svg",
+      "targetWidth": 258,
+      "targetHeight": 76,
+      "style": "exclusive"
+    },
+    {
+      "label": "Скоро...",
+      "file": "soon-ru.svg",
+      "targetWidth": 214,
+      "targetHeight": 76,
+      "style": "muted"
+    },
+    {
+      "label": "Жуырда...",
+      "file": "soon-kz.svg",
+      "targetWidth": 222,
+      "targetHeight": 76,
+      "style": "muted"
+    },
+    {
+      "label": "Скоро уйдёт",
+      "file": "leaving-soon-ru.svg",
+      "targetWidth": 288,
+      "targetHeight": 76,
+      "style": "yellow"
+    },
+    {
+      "label": "Көріп үлгер",
+      "file": "leaving-soon-kz.svg",
+      "targetWidth": 288,
+      "targetHeight": 76,
+      "style": "yellow"
+    }
+  ]
+}

@@ -56,16 +56,39 @@ requireAll("train master canvas", train, [
   "object:scaling",
   "applyCrop",
   "buildPromoBadge",
+  "STICKER_ASSETS",
+  "buildStickerAsset",
+  "stickerAsset",
   "cssOnly: true",
   'canvas.on("mouse:wheel"'
 ]);
 
 for (const sticker of [
   "Без стикера","Премьера","Новые серии","Жаңа сериялар","Новый сезон","Жаңа маусым",
-  "Все серии","Барлық сериялар","Новинка","Жаңа","Эксклюзив","Скоро…","Жуырда…",
+  "Все серии","Барлық сериалдар","Новинка","Жаңа","Эксклюзив","Скоро...","Жуырда...",
   "Скоро уйдёт","Көріп үлгер"
 ]) {
   if (!html.includes(sticker)) throw new Error("Sticker missing: " + sticker);
+}
+
+const stickerAssets = [
+  "assets/stickers/premiere.svg",
+  "assets/stickers/new-series-ru.svg",
+  "assets/stickers/new-series-kz.svg",
+  "assets/stickers/new-season-ru.svg",
+  "assets/stickers/new-season-kz.svg",
+  "assets/stickers/all-series-ru.svg",
+  "assets/stickers/all-series-kz.svg",
+  "assets/stickers/new-ru.svg",
+  "assets/stickers/new-kz.svg",
+  "assets/stickers/exclusive.svg",
+  "assets/stickers/soon-ru.svg",
+  "assets/stickers/soon-kz.svg",
+  "assets/stickers/leaving-soon-ru.svg",
+  "assets/stickers/leaving-soon-kz.svg",
+];
+for (const asset of stickerAssets) {
+  if (!fs.existsSync(asset)) throw new Error("Sticker asset missing: " + asset);
 }
 
 for (const folder of ["1 - 164x122","2 - 246x183","3 - 328x244","4 - 492x366"]) {

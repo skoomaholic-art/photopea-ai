@@ -201,8 +201,12 @@ test("train editor constrains sticker and exports exact 4 folders / 24 PNG", asy
   expect(badgeInspect.badges).toContain("Эксклюзив");
   expect(badgeInspect.masterSize).toEqual({ width: 2952, height: 366 });
 
+  await expect(page.locator("#stickerSelect option")).toHaveCount(15);
+  await expect(page.locator("#stickerSelect")).toContainText("Барлық сериалдар");
   await page.locator("#stickerSelect").selectOption({ label: "Премьера" });
+  await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().sticker?.text)).toBe("Премьера");
   const inspect = await page.evaluate(() => window.TrainEditor.inspect());
+  expect(inspect.sticker.asset).toContain("assets/stickers/premiere.svg");
   expect(inspect.objectCount).toBeGreaterThanOrEqual(2);
   expect(inspect.sticker.text).toBe("Премьера");
   expect(inspect.sticker.left).toBeGreaterThanOrEqual(0);

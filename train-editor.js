@@ -11,6 +11,28 @@
     { key: "328x244", segW: 328, segH: 244, folder: "3 - 328x244" },
     { key: "492x366", segW: 492, segH: 366, folder: "4 - 492x366" }
   ];
+  const STICKER_ASSETS = {
+    "Премьера": { src: "assets/stickers/premiere.svg?v=20260923a", width: 232 },
+    "Новые серии": { src: "assets/stickers/new-series-ru.svg?v=20260923a", width: 260 },
+    "Жаңа сериялар": { src: "assets/stickers/new-series-kz.svg?v=20260923a", width: 302 },
+    "Новый сезон": { src: "assets/stickers/new-season-ru.svg?v=20260923a", width: 286 },
+    "Жаңа маусым": { src: "assets/stickers/new-season-kz.svg?v=20260923a", width: 286 },
+    "Все серии": { src: "assets/stickers/all-series-ru.svg?v=20260923a", width: 236 },
+    "Барлық сериалдар": { src: "assets/stickers/all-series-kz.svg?v=20260923a", width: 354 },
+    "Новинка": { src: "assets/stickers/new-ru.svg?v=20260923a", width: 216 },
+    "Жаңа": { src: "assets/stickers/new-kz.svg?v=20260923a", width: 166 },
+    "Эксклюзив": { src: "assets/stickers/exclusive.svg?v=20260923a", width: 258 },
+    "Скоро...": { src: "assets/stickers/soon-ru.svg?v=20260923a", width: 214 },
+    "Жуырда...": { src: "assets/stickers/soon-kz.svg?v=20260923a", width: 222 },
+    "Скоро уйдёт": { src: "assets/stickers/leaving-soon-ru.svg?v=20260923a", width: 288 },
+    "Көріп үлгер": { src: "assets/stickers/leaving-soon-kz.svg?v=20260923a", width: 288 },
+  };
+  const STICKER_ALIASES = {
+    "Барлық сериялар": "Барлық сериалдар",
+    "Скоро…": "Скоро...",
+    "Жуырда…": "Жуырда..."
+  };
+  let stickerLoadRequest = 0;
 
   if (!F) {
     console.error("Fabric.js failed to load.");
@@ -20,7 +42,7 @@
   }
 
   const existingProps = F.FabricObject.customProperties || [];
-  F.FabricObject.customProperties = [...new Set([...existingProps, "name", "kind", "sticker", "stickerText", "badgeText", "source", "rawWidth", "rawHeight"])] ;
+  F.FabricObject.customProperties = [...new Set([...existingProps, "name", "kind", "sticker", "stickerText", "badgeText", "source", "rawWidth", "rawHeight", "stickerAsset"])] ;
 
   const canvas = new F.Canvas("trainCanvas", {
     preserveObjectStacking: true,
@@ -300,12 +322,12 @@
     $("trainRotationInput").value = obj?.sticker ? 0 : (obj ? Math.round(obj.angle || 0) : 0);
     $("trainRotationInput").disabled = !!obj?.sticker;
     $("trainOpacityInput").value = obj ? (obj.opacity ?? 1) : 1;
-    $("applyCropBtn").disabled = !(obj instanceof F.FabricImage);
+    $("applyCropBtn").disabled = !(obj instanceof F.FabricImage) || !!obj?.sticker;
   }
 
   function applyCrop() {
     const obj = activeObject();
-    if (!(obj instanceof F.FabricImage)) return setStatus("Обрезка доступна только для изображения.", "error");
+    if (!(obj instanceof F.FabricImage) || obj.sticker) return setStatus("Обрезка доступна только для обычного изображения.", "error");
     const element = obj.getElement();
     const rawW = element?.naturalWidth || obj.rawWidth || obj.width;
     const rawH = element?.naturalHeight || obj.rawHeight || obj.height;
@@ -333,7 +355,7 @@
   }
 
   function stickerStyle(text) {
-    if (text === "Скоро…" || text === "Жуырда…") {
+    if (["Скоро...", "Жуырда...", "Скоро…", "Жуырда…"].includes(text)) {
       return { fill: "#111714", text: "#edf5ef", stroke: "#34493c", strokeWidth: 1 };
     }
     if (text === "Скоро уйдёт" || text === "Көріп үлгер") {
@@ -411,21 +433,100 @@
     obj.setCoords();
   }
 
-  function setSticker(text) {
+  function normalizeStickerLabel(text) {
+    return STICKER_ALIASES[text] || text || "Без стикера";
+  }
+
+  async function buildStickerAsset(text) {
+    const normalized = normalizeStickerLabel(text);
+    const asset = STICKER_ASSETS[normalized];
+    if (!asset) throw new Error("Неизвестный стикер: " + normalized);
+
+    const url = new URL(asset.src, document.baseURI).href;
+    const image = await F.FabricImage.fromURL(url);
+    const rawW = image.width || image.getElement()?.naturalWidth || 1;
+    const rawH = image.height || image.getElement()?.naturalHeight || 1;
+    const scale = asset.width / rawW;
+
+    image.rawWidth = rawW;
+    image.rawHeight = rawH;
+    image.source = "sticker-asset";
+    image.stickerAsset = asset.src;
+    image.set({
+      left: 24,
+      top: 22,
+      originX: "left",
+      originY: "top",
+      scaleX: scale,
+      scaleY: scale,
+      angle: 0,
+      lockRotation: true,
+      lockScalingFlip: true,
+      objectCaching: false,
+      sticker: true,
+      stickerText: normalized,
+      badgeText: normalized
+    });
+    metadata(image, "Стикер: " + normalized, "sticker");
+    image.sticker = true;
+    image.stickerText = normalized;
+    image.badgeText = normalized;
+    image.stickerAsset = asset.src;
+    image.source = "sticker-asset";
+    image.setControlsVisibility({ mt: false, mb: false, ml: false, mr: false, mtr: false });
+    constrainSticker(image);
+    return image;
+  }
+
+  function syncStickerSelect() {
+    const select = $("stickerSelect");
+    if (!select) return;
+    const sticker = canvas.getObjects().find(obj => obj.sticker);
+    const label = sticker ? normalizeStickerLabel(sticker.stickerText) : "Без стикера";
+    select.value = [...select.options].some(option => option.value === label || option.textContent === label)
+      ? label
+      : "Без стикера";
+  }
+
+  async function setSticker(text) {
+    const normalized = normalizeStickerLabel(text);
+    const requestId = ++stickerLoadRequest;
     const old = canvas.getObjects().find(obj => obj.sticker);
-    state.muted = true;
-    if (old) canvas.remove(old);
-    if (text !== "Без стикера") {
-      const sticker = buildPromoBadge(text, true);
+    const previousLabel = old ? normalizeStickerLabel(old.stickerText) : "Без стикера";
+
+    if (normalized === "Без стикера") {
+      state.muted = true;
+      if (old) canvas.remove(old);
+      canvas.discardActiveObject();
+      state.muted = false;
+      canvas.requestRenderAll();
+      snapshot("Стикер удалён");
+      syncStickerSelect();
+      renderLayers();
+      scheduleDevicePreview();
+      return;
+    }
+
+    try {
+      const sticker = await buildStickerAsset(normalized);
+      if (requestId !== stickerLoadRequest) return;
+      state.muted = true;
+      const current = canvas.getObjects().find(obj => obj.sticker);
+      if (current) canvas.remove(current);
       canvas.add(sticker);
       canvas.setActiveObject(sticker);
-    } else {
-      canvas.discardActiveObject();
+      state.muted = false;
+      canvas.requestRenderAll();
+      snapshot("Стикер: " + normalized);
+      syncStickerSelect();
+      renderLayers();
+      scheduleDevicePreview();
+      setStatus("Стикер «" + normalized + "» добавлен.", "ok");
+    } catch (error) {
+      if (requestId !== stickerLoadRequest) return;
+      $("stickerSelect").value = previousLabel;
+      setStatus("Не удалось загрузить стикер «" + normalized + "»: " + (error.message || "ошибка ассета"), "error");
     }
-    state.muted = false;
-    canvas.requestRenderAll();
-    snapshot(text === "Без стикера" ? "Стикер удалён" : "Стикер: " + text);
-    renderLayers();
   }
 
   function scheduleAutosave() {
@@ -465,6 +566,7 @@
     state.historyIndex = -1;
     snapshot("Проект восстановлен");
     renderLayers();
+    syncStickerSelect();
     scheduleDevicePreview();
   }
 
@@ -650,7 +752,7 @@
   $("applyCropBtn").addEventListener("click", applyCrop);
   $("trainBgColor").addEventListener("input", e => { canvas.backgroundColor = e.target.value; canvas.requestRenderAll(); scheduleDevicePreview(); });
   $("trainBgColor").addEventListener("change", () => snapshot("Фон холста"));
-  $("stickerSelect").addEventListener("change", e => setSticker(e.target.value));
+  $("stickerSelect").addEventListener("change", e => { void setSticker(e.target.value); });
   $("trainCanvasModeBtn").addEventListener("click", () => setPreviewMode("canvas"));
   $("trainDeviceModeBtn").addEventListener("click", () => setPreviewMode("device"));
   $("trainSizeSelect").addEventListener("change", scheduleDevicePreview);
@@ -671,6 +773,7 @@
         objectCount: canvas.getObjects().length,
         sticker: sticker ? {
           text: sticker.stickerText,
+          asset: sticker.stickerAsset || null,
           left: sticker.left || 0,
           top: sticker.top || 0,
           width: sticker.getScaledWidth(),
