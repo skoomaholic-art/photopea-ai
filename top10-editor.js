@@ -41,7 +41,8 @@
     logo:null, logoName:"", logoAssetId:null,
     logoX:400, logoY:895, logoScale:100, logoRotation:0, logoAboveDarkening:true,
     ranking:"2", numberAsset:TOP10_NUMBER_ASSETS["2"],
-    darkeningColor:"#000000", darkeningIntensity:94, darkeningStart:58
+    darkeningColor:"#000000", darkeningIntensity:94, darkeningStart:58,
+    photopeaMasterId:null, photopeaComposite:false
   });
 
   let data=freshState();
@@ -130,7 +131,8 @@
   }
 
   function refreshDarkening(){
-    if(objects.darkening) canvas.remove(objects.darkening);
+    if(objects.darkening){ canvas.remove(objects.darkening); objects.darkening=null; }
+    if(data.photopeaComposite){ applyStacking(); return; }
     const start=Math.max(0,Math.min(.96,Number(data.darkeningStart||0)/100));
     const intensity=Math.max(0,Math.min(1,Number(data.darkeningIntensity||0)/100));
     const middle=start+(1-start)*.54;
@@ -158,12 +160,13 @@
 
   async function refreshNumber(){
     const token=++numberLoadToken;
+    if(objects.number){ canvas.remove(objects.number); objects.number=null; }
+    if(data.photopeaComposite){ runtime.numberMetrics=null; applyStacking(); return; }
     const asset=currentNumberAsset();
     data.numberAsset=asset;
     const url=new URL(asset,document.baseURI).href;
     const image=await F.FabricImage.fromURL(url);
     if(token!==numberLoadToken) return;
-    if(objects.number) canvas.remove(objects.number);
     objects.number=lockedObject(image,"number");
     objects.number.set({
       left:NUMBER_X,top:NUMBER_Y,originX:"center",originY:"center",
@@ -287,10 +290,10 @@
     const root=$("top10Layers");
     if(!root) return;
     root.innerHTML="";
-    const order=data.logoAboveDarkening
+    const order=data.photopeaComposite?["background"]:(data.logoAboveDarkening
       ?["number","logo","darkening","background"]
-      :["number","darkening","logo","background"];
-    const labels={number:"TOP_NUMBER",logo:"LOGO",darkening:"BOTTOM_DARKENING",background:"BACKGROUND_IMAGE"};
+      :["number","darkening","logo","background"]);
+    const labels={number:"TOP_NUMBER",logo:"LOGO",darkening:"BOTTOM_DARKENING",background:data.photopeaComposite?"PHOTOPEA_RESULT":"BACKGROUND_IMAGE"};
     for(const layer of order){
       const row=document.createElement("button");
       row.type="button";
@@ -355,7 +358,39 @@
     updateObjectTransform(layer);syncControls();scheduleAutosave();
   }
 
+  async function applyPhotopeaComposite(src,name="Photopea result",options={}){
+    data={...freshState(),
+      background:src,backgroundOriginal:src,backgroundName:name,
+      backgroundAssetId:options.assetId||null,
+      backgroundX:400,backgroundY:700,backgroundScale:100,backgroundRotation:0,
+      photopeaMasterId:options.masterId||null,photopeaComposite:true
+    };
+    if(objects.logo){canvas.remove(objects.logo);objects.logo=null;}
+    if(objects.darkening){canvas.remove(objects.darkening);objects.darkening=null;}
+    if(objects.number){canvas.remove(objects.number);objects.number=null;}
+    await renderBackgroundVisual(src);
+    runtime.selectedLayer="background";
+    canvas.discardActiveObject();
+    applyStacking();
+    syncControls();
+    scheduleAutosave();
+    setStatus("Результат Photopea возвращён без дублирования слоёв.","ok");
+  }
+
+  function getPhotopeaMasterId(){return data.photopeaMasterId||null;}
+
+  async function leavePhotopeaComposite(){
+    if(!data.photopeaComposite) return;
+    data.photopeaComposite=false;
+    data.photopeaMasterId=null;
+    refreshDarkening();
+    await refreshNumber();
+    applyStacking();
+  }
+
   async function setBackgroundFromDataUrl(src,name="TOP10 image",options={}){
+    data.photopeaComposite=false;
+    data.photopeaMasterId=null;
     data.background=src;data.backgroundOriginal=options.original||src;data.backgroundName=name;
     data.backgroundAssetId=options.assetId||null;data.backgroundFilters={...DEFAULTS(),...(options.filters||{})};
     data.backgroundX=400;data.backgroundY=700;data.backgroundScale=100;data.backgroundRotation=0;
@@ -385,6 +420,12 @@
   }
 
   async function setLogoFromDataUrl(src,name="TOP10 logo",options={}){
+    if(data.photopeaComposite){
+      data.photopeaComposite=false;
+      data.photopeaMasterId=null;
+      refreshDarkening();
+      await refreshNumber();
+    }
     data.logo=src;data.logoName=name;data.logoAssetId=options.assetId||null;
     data.logoX=400;data.logoY=895;data.logoScale=100;data.logoRotation=0;
     await renderLogoVisual(src);selectLayer("logo");scheduleAutosave();setStatus("Логотип добавлен отдельным слоем.","ok");
@@ -495,6 +536,7 @@
     const ctx=out.getContext("2d");ctx.fillStyle="#050505";ctx.fillRect(0,0,MASTER_W,MASTER_H);
     const background=await processedBackgroundForExport();
     if(background) drawTransformed(ctx,background,"background",true);
+    if(data.photopeaComposite) return out;
     const logo=data.logo?await imageFromSource(data.logo):null;
     if(!data.logoAboveDarkening&&logo) drawTransformed(ctx,logo,"logo",false);
     drawDarkening(ctx);
@@ -564,9 +606,9 @@
         value:String(data.ranking),
         bounds:runtime.numberMetrics?{...runtime.numberMetrics}:null
       },
-      layers:data.logoAboveDarkening
+      layers:data.photopeaComposite?["PHOTOPEA_RESULT"]:(data.logoAboveDarkening
         ?["TOP_NUMBER","LOGO","BOTTOM_DARKENING","BACKGROUND_IMAGE"]
-        :["TOP_NUMBER","BOTTOM_DARKENING","LOGO","BACKGROUND_IMAGE"]
+        :["TOP_NUMBER","BOTTOM_DARKENING","LOGO","BACKGROUND_IMAGE"])
     };
   }
 
@@ -637,6 +679,7 @@
   $("top10LogoDown").addEventListener("click",()=>{data.logoAboveDarkening=false;applyStacking();scheduleAutosave();});
 
   $("top10PositionSelect").addEventListener("change",async e=>{
+    await leavePhotopeaComposite();
     data.ranking=String(e.target.value);
     data.numberAsset=currentNumberAsset();
     await refreshNumber();
@@ -644,11 +687,11 @@
     scheduleAutosave();
   });
 
-  $("top10DarkColor").addEventListener("input",e=>{data.darkeningColor=e.target.value;refreshDarkening();scheduleAutosave();});
-  $("top10DarkIntensity").addEventListener("input",e=>{
+  $("top10DarkColor").addEventListener("input",async e=>{await leavePhotopeaComposite();data.darkeningColor=e.target.value;refreshDarkening();scheduleAutosave();});
+  $("top10DarkIntensity").addEventListener("input",async e=>{await leavePhotopeaComposite();
     data.darkeningIntensity=Math.max(0,Math.min(100,Number(e.target.value)||0));refreshDarkening();scheduleAutosave();
   });
-  $("top10DarkStart").addEventListener("input",e=>{
+  $("top10DarkStart").addEventListener("input",async e=>{await leavePhotopeaComposite();
     data.darkeningStart=Math.max(0,Math.min(96,Number(e.target.value)||0));refreshDarkening();scheduleAutosave();
   });
 
