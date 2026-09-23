@@ -12,7 +12,7 @@
     posterX: 50, posterY: 50, posterScale: 100, posterRotation: 0,
     logoX: 50, logoY: 50, logoScale: 100, logoRotation: 0,
     posterLocked: true, logoLocked: false, background: "#000000", order: ["poster", "logo"],
-    posterAssetId: null, logoAssetId: null
+    posterAssetId: null, logoAssetId: null, posterMode: "cover", photopeaMasterId: null
   });
 
   const state = {
@@ -171,8 +171,9 @@
 
     posterImage.style.left = s.posterX + "%";
     posterImage.style.top = s.posterY + "%";
-    posterImage.style.width = (100 * (1 + POSTER_BLEED * 2)) + "%";
-    posterImage.style.height = (100 * (1 + POSTER_BLEED * 2)) + "%";
+    const exactPoster = s.posterMode === "exact";
+    posterImage.style.width = exactPoster ? "100%" : (100 * (1 + POSTER_BLEED * 2)) + "%";
+    posterImage.style.height = exactPoster ? "100%" : (100 * (1 + POSTER_BLEED * 2)) + "%";
     posterImage.style.transform = `translate(-50%,-50%) rotate(${s.posterRotation}deg) scale(${Math.max(100, s.posterScale) / 100})`;
 
     logoImage.style.left = s.logoX + "%";
@@ -302,16 +303,38 @@
 
   async function setImageLayer(layer, src, name = "", options = {}) {
     const s = current();
+    s.photopeaMasterId = null;
     if (layer === "logo") {
       s.logo = src; s.logoName = name; s.logoAssetId = options.assetId || null;
       s.logoX = 50; s.logoY = 50; s.logoScale = 100; s.logoRotation = 0;
     } else {
       s.poster = src; s.posterName = name; s.posterAssetId = options.assetId || null;
-      s.posterX = 50; s.posterY = 50; s.posterScale = 100; s.posterRotation = 0;
+      s.posterX = 50; s.posterY = 50; s.posterScale = 100; s.posterRotation = 0; s.posterMode = "cover";
     }
     state.selectedLayer = layer;
     renderPoster();
     scheduleAutosave();
+  }
+
+  async function applyPhotopeaComposite(format, src, name = "Photopea result", assetId = null, masterId = null) {
+    if (!formats[format]) throw new Error("Неизвестный формат постера.");
+    const next = makePosterState();
+    next.poster = src;
+    next.posterName = name;
+    next.posterAssetId = assetId;
+    next.posterMode = "exact";
+    next.posterLocked = false;
+    next.photopeaMasterId = masterId;
+    state.posters[format] = next;
+    if (state.activeFormat === format) {
+      state.selectedLayer = "poster";
+      renderPoster();
+    }
+    await saveAutosave();
+  }
+
+  function getPhotopeaMasterId(format = state.activeFormat) {
+    return state.posters[format]?.photopeaMasterId || null;
   }
 
   function changePosterLayerOrder(delta) {
@@ -613,17 +636,19 @@
     if(s.poster){
       const source=await photopeaAssetSource(s.posterAssetId,s.poster);
       const image=await loadImage(source.dataUrl);
-      const bleedW=Math.ceil(f.w*(1+POSTER_BLEED*2)),bleedH=Math.ceil(f.h*(1+POSTER_BLEED*2));
+      const exact=s.posterMode==="exact";
+      const bleedW=exact?f.w:Math.ceil(f.w*(1+POSTER_BLEED*2)),bleedH=exact?f.h:Math.ceil(f.h*(1+POSTER_BLEED*2));
       const sr=image.naturalWidth/image.naturalHeight,br=bleedW/bleedH;
       let baseW,baseH;
-      if(sr>br){baseH=bleedH;baseW=baseH*sr;}else{baseW=bleedW;baseH=baseW/sr;}
+      if(exact){baseW=f.w;baseH=f.h;}
+      else if(sr>br){baseH=bleedH;baseW=baseH*sr;}else{baseW=bleedW;baseH=baseW/sr;}
       defs.push({
         id:"poster",name:source.filtered?"Poster Filtered":"Poster",type:"image",role:"poster",
         assetId:s.posterAssetId||null,sourceDataUrl:source.dataUrl,originalDataUrl:source.originalDataUrl||source.dataUrl,
         filters:source.filters||null,sourceWidth:image.naturalWidth,sourceHeight:image.naturalHeight,
         x:f.w*s.posterX/100,y:f.h*s.posterY/100,width:baseW*Math.max(100,s.posterScale)/100,height:baseH*Math.max(100,s.posterScale)/100,
         scaleX:1,scaleY:1,rotation:s.posterRotation||0,opacity:1,visible:true,locked:!!s.posterLocked,
-        crop:{mode:"cover",boxWidth:bleedW,boxHeight:bleedH},zIndex:0
+        crop:{mode:exact?"exact":"cover",boxWidth:bleedW,boxHeight:bleedH},zIndex:0
       });
     }
     if(s.logo){
@@ -656,12 +681,16 @@
     async function drawPosterLayer() {
       if (!s.poster) return;
       const image = await loadImage(s.poster);
-      const bleedW = Math.ceil(f.w * (1 + POSTER_BLEED * 2));
-      const bleedH = Math.ceil(f.h * (1 + POSTER_BLEED * 2));
-      const crop = coverCrop(image, bleedW, bleedH);
+      const exact = s.posterMode === "exact";
+      const bleedW = exact ? f.w : Math.ceil(f.w * (1 + POSTER_BLEED * 2));
+      const bleedH = exact ? f.h : Math.ceil(f.h * (1 + POSTER_BLEED * 2));
       const layerCanvas = document.createElement("canvas");
       layerCanvas.width = bleedW; layerCanvas.height = bleedH;
-      layerCanvas.getContext("2d").drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, bleedW, bleedH);
+      if (exact) layerCanvas.getContext("2d").drawImage(image, 0, 0, bleedW, bleedH);
+      else {
+        const crop = coverCrop(image, bleedW, bleedH);
+        layerCanvas.getContext("2d").drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, bleedW, bleedH);
+      }
       ctx.save();
       ctx.translate(f.w * s.posterX / 100, f.h * s.posterY / 100);
       ctx.rotate(s.posterRotation * Math.PI / 180);
@@ -745,7 +774,7 @@
 
   function plainProject() {
     return {
-      version: 3,
+      version: 4,
       type: "poster-editor-project",
       updatedAt: Date.now(),
       posters: JSON.parse(JSON.stringify(state.posters)),
@@ -980,6 +1009,8 @@
     restore: restoreProject,
     renderPosterBlob,
     buildPhotopeaModel,
+    applyPhotopeaComposite,
+    getPhotopeaMasterId,
     renderCurrentPosterBlob: () => renderPosterBlob(state.activeFormat),
     getState: () => JSON.parse(JSON.stringify(state.posters)),
     resetWorkspace,
