@@ -741,6 +741,7 @@ test("Photopea main edit uses layered Vertical and Horizontal models", async ({ 
   await page.locator('[data-workspace="horizontal"]').click();
   await page.locator("#posterFileInput").setInputFiles({name:"h.png",mimeType:"image/png",buffer:PNG});
   await page.locator("#editPosterPhotopeaBtn").click();
+  await expect.poll(() => page.evaluate(() => window.PhotopeaBridge.getContext()?.layeredModel?.document?.width)).toBe(1920);
   ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
   expect(ctx.layeredModel.document).toMatchObject({width:1920,height:1080});
 });

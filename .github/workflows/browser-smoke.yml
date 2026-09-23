@@ -39,6 +39,8 @@ jobs:
           node --check poster-app.js
           node --check train-editor.js
           node --check top10-editor.js
+          node --check workspace-tools.js
+          node --check range-number-sync.js
           node --check zip-store.js
 
       - name: Static smoke
