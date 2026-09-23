@@ -27,7 +27,6 @@ requireAll("workspace UI", html, [
   'data-workspace="horizontal"',
   'data-workspace="train"',
   'data-workspace="top10"',
-  'data-workspace="photopea"',
   "Найти исходник",
   "ПОСТЕРЫ",
   "ГОРИЗОНТАЛЬНЫЕ",
