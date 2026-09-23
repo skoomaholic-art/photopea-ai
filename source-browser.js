@@ -1,7 +1,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const apiBase=(document.querySelector('meta[name="poster-api"]')?.content||"").replace(/\/$/,"");
-  const state={items:[],references:[],identity:null,candidates:[],shown:48,tab:"all"};
+  const state={items:[],references:[],identity:null,candidates:[],providers:{},shown:48,tab:"all"};
 
   function status(message,kind="") {
     $("sourceSearchStatus").textContent=message;
@@ -111,6 +111,21 @@
     } catch(error) { status(error.message||"Оригинал изображения недоступен.","error"); }
   }
 
+  function renderProviderStatus() {
+    const root=$("sourceProviderStatus");
+    root.innerHTML="";
+    const labels={tmdb:"TMDB",fanart:"Fanart.tv",wikimedia:"Wikimedia",tvmaze:"TVmaze"};
+    for(const [key,label] of Object.entries(labels)) {
+      const info=state.providers?.[key]||null;
+      const pill=document.createElement("span");
+      pill.className="service-pill "+(info?.enabled?"ok":info?.configured?"error":"muted");
+      const stateText=info?.enabled?"ONLINE":info?.configured?"OFFLINE":"NOT CONFIGURED";
+      pill.textContent=label+" · "+stateText;
+      if(info?.reason) pill.title=info.reason;
+      root.appendChild(pill);
+    }
+  }
+
   function renderCandidates() {
     const root=$("sourceCandidates");
     root.innerHTML="";
@@ -216,6 +231,7 @@
       root.appendChild(empty);
     }
     renderCandidates();
+    renderProviderStatus();
     renderReferences();
   }
 
@@ -244,13 +260,14 @@
       state.references=Array.isArray(data.references)?data.references:[];
       state.identity=data.identity||null;
       state.candidates=Array.isArray(data.candidates)?data.candidates:[];
+      state.providers=data.providers||{};
       state.shown=48;
       render();
       const problems=(data.errors||[]).map(x=>x.message).filter(Boolean);
       const identity=data.identity?[data.identity.title,data.identity.year].filter(Boolean).join(" · "):q;
       status(identity+": "+state.items.length+" изображений."+(problems.length?" "+problems.join(" "):""),state.items.length?"ok":(problems.length?"error":""));
     } catch(error) {
-      state.items=[]; state.references=[]; state.identity=null; state.candidates=[]; render();
+      state.items=[]; state.references=[]; state.identity=null; state.candidates=[]; state.providers={}; render();
       status(error.message||"Источник временно недоступен.","error");
     } finally {
       $("sourceSearchRun").disabled=false;
