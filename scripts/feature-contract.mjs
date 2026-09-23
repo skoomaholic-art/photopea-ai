@@ -136,7 +136,7 @@ requireAll("Photopea round trip", photopea, [
 requireAll("train", train, [
   "const MASTER_W = 2952","const MASTER_H = 366","const SEG_W = 492","const SEG_H = 366",
   "createSegmentBlob","exportAllSizes","canvas.toJSON","canvas.loadFromJSON","object:moving","object:scaling",
-  "applyCrop","STICKER_ASSETS","buildStickerAsset","stickerAsset",
+  "applyCrop","STICKER_ASSETS","buildStickerAsset","stickerAsset","trainScaleInput","uiBaseScaleX",
   "renderMasterBlob","setBackgroundFromDataUrl","cssOnly: true"
 ]);
 

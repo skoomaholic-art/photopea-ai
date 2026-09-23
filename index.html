@@ -15,7 +15,7 @@
   <script defer src="local-background-removal.js?v=20260923a"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
   <script defer src="poster-app.js?v=20260923-transform-fix"></script>
-  <script defer src="train-editor.js?v=20260923-layered-model"></script>
+  <script defer src="train-editor.js?v=20260923-train-scale"></script>
   <script defer src="top10-editor.js?v=20260923-top10-visible-controls"></script>
   <script defer src="filter-studio.js?v=20260923top10a"></script>
   <script defer src="source-browser.js?v=20260923b"></script>
@@ -199,7 +199,8 @@
         <section>
           <h3>Выбранный объект</h3>
           <div class="control-grid">
-            <label>Поворот <input id="trainRotationInput" type="number" min="-360" max="360" value="0"></label>
+            <label>Масштаб <input id="trainScaleInput" type="range" min="5" max="500" step="1" value="100"></label>
+            <label>Поворот <input id="trainRotationInput" type="range" min="-360" max="360" step="1" value="0"></label>
             <label>Прозрачность <input id="trainOpacityInput" type="range" min="0" max="1" step="0.05" value="1"></label>
           </div>
           <div class="crop-grid">

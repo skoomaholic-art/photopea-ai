@@ -42,7 +42,7 @@
   }
 
   const existingProps = F.FabricObject.customProperties || [];
-  F.FabricObject.customProperties = [...new Set([...existingProps, "name", "kind", "sticker", "stickerText", "badgeText", "source", "rawWidth", "rawHeight", "stickerAsset"])] ;
+  F.FabricObject.customProperties = [...new Set([...existingProps, "name", "kind", "sticker", "stickerText", "badgeText", "source", "rawWidth", "rawHeight", "stickerAsset", "uiBaseScaleX", "uiBaseScaleY"])] ;
 
   const canvas = new F.Canvas("trainCanvas", {
     preserveObjectStacking: true,
@@ -430,9 +430,23 @@
 
   function syncObjectControls() {
     const obj = activeObject();
+    if (obj && !obj.sticker) {
+      if (!Number.isFinite(Number(obj.uiBaseScaleX)) || !Number.isFinite(Number(obj.uiBaseScaleY))) {
+        obj.uiBaseScaleX = Number(obj.scaleX) || 1;
+        obj.uiBaseScaleY = Number(obj.scaleY) || 1;
+      }
+      const sx = Number(obj.scaleX) || 1;
+      const base = Number(obj.uiBaseScaleX) || 1;
+      $("trainScaleInput").value = String(Math.max(5, Math.min(500, Math.round(sx / base * 100))));
+    } else {
+      $("trainScaleInput").value = "100";
+    }
+    const transformLocked = !!obj && (!!obj.lockScalingX || !!obj.lockScalingY);
+    $("trainScaleInput").disabled = !obj || !!obj?.sticker || transformLocked;
     $("trainRotationInput").value = obj?.sticker ? 0 : (obj ? Math.round(obj.angle || 0) : 0);
-    $("trainRotationInput").disabled = !!obj?.sticker;
+    $("trainRotationInput").disabled = !obj || !!obj?.sticker || !!obj?.lockRotation;
     $("trainOpacityInput").value = obj ? (obj.opacity ?? 1) : 1;
+    $("trainOpacityInput").disabled = !obj;
     $("applyCropBtn").disabled = !(obj instanceof F.FabricImage) || !!obj?.sticker;
   }
 
@@ -459,6 +473,8 @@
       scaleX: renderedW / width,
       scaleY: renderedH / height
     });
+    obj.uiBaseScaleX = obj.scaleX;
+    obj.uiBaseScaleY = obj.scaleY;
     obj.setCoords();
     canvas.requestRenderAll();
     snapshot("Обрезано изображение");
@@ -661,6 +677,7 @@
     canvas.backgroundColor = "#101010";
     $("trainBgColor").value = "#101010";
     $("stickerSelect").value = "Без стикера";
+    $("trainScaleInput").value = "100";
     $("trainRotationInput").value = "0";
     $("trainOpacityInput").value = "1";
     for (const id of ["cropLeftInput","cropTopInput","cropRightInput","cropBottomInput"]) $(id).value = "0";
@@ -874,11 +891,28 @@
   $("trainLayerDownBtn").addEventListener("click", () => moveLayer(-1));
   $("trainUndoBtn").addEventListener("click", undo);
   $("trainRedoBtn").addEventListener("click", redo);
-  $("trainRotationInput").addEventListener("change", e => {
-    const obj = activeObject(); if (!obj) return;
-    if (obj.sticker) { obj.rotate(0); e.target.value = "0"; return; }
-    obj.rotate(+e.target.value || 0); obj.setCoords(); canvas.requestRenderAll(); snapshot("Поворот объекта");
+  $("trainScaleInput").addEventListener("input", e => {
+    const obj = activeObject(); if (!obj || obj.sticker || obj.lockScalingX || obj.lockScalingY) return;
+    if (!Number.isFinite(Number(obj.uiBaseScaleX)) || !Number.isFinite(Number(obj.uiBaseScaleY))) {
+      obj.uiBaseScaleX = Number(obj.scaleX) || 1;
+      obj.uiBaseScaleY = Number(obj.scaleY) || 1;
+    }
+    const factor=Math.max(5,Math.min(500,Number(e.target.value)||100))/100;
+    obj.set({
+      scaleX:(Number(obj.uiBaseScaleX)||1)*factor,
+      scaleY:(Number(obj.uiBaseScaleY)||1)*factor
+    });
+    obj.setCoords();
+    canvas.requestRenderAll();
+    scheduleDevicePreview();
   });
+  $("trainScaleInput").addEventListener("change", () => snapshot("Масштаб объекта"));
+  $("trainRotationInput").addEventListener("input", e => {
+    const obj = activeObject(); if (!obj) return;
+    if (obj.sticker || obj.lockRotation) { if (obj.sticker) e.target.value = "0"; return; }
+    obj.rotate(+e.target.value || 0); obj.setCoords(); canvas.requestRenderAll(); scheduleDevicePreview();
+  });
+  $("trainRotationInput").addEventListener("change", () => snapshot("Поворот объекта"));
   $("trainOpacityInput").addEventListener("input", e => {
     const obj = activeObject(); if (!obj) return;
     obj.set("opacity", +e.target.value); canvas.requestRenderAll();

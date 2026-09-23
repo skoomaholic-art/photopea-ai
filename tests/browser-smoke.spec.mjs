@@ -687,6 +687,22 @@ test("workspace reset is confirmed and does not delete archive versions", async 
   await expect(page.locator(".archive-item")).toHaveCount(1);
 });
 
+test("Parovozik selected object exposes Scale and Rotation sliders with numeric precision", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  await page.locator('[data-workspace="train"]').click();
+  await page.locator("#trainImageInput").setInputFiles({ name:"scale.png", mimeType:"image/png", buffer:PNG });
+  await expect(page.locator("#trainScaleInput")).toBeEnabled();
+  const scaleNumber=page.locator('[data-range-number-for="trainScaleInput"]');
+  const rotationNumber=page.locator('[data-range-number-for="trainRotationInput"]');
+  await expect(scaleNumber).toBeVisible();
+  await expect(rotationNumber).toBeVisible();
+  await scaleNumber.fill("150");
+  await expect(page.locator("#trainScaleInput")).toHaveValue("150");
+  await rotationNumber.fill("22");
+  await expect(page.locator("#trainRotationInput")).toHaveValue("22");
+});
+
 test("Train and TOP10 reset buttons restore default state after confirmation", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
