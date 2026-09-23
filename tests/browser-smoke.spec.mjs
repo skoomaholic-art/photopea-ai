@@ -209,6 +209,43 @@ test("TEST 3 Fanart textless artwork to Horizontal", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.PosterApp.getState().horizontal.posterAssetId)).toBeTruthy();
 });
 
+test("multiple TMDB matches are selectable before choosing artwork", async ({ page }) => {
+  await mockStatus(page);
+  const candidates = [
+    { tmdbId: 238, mediaType: "movie", title: "Крёстный отец", originalTitle: "The Godfather", year: "1972" },
+    { tmdbId: 999, mediaType: "tv", title: "Крёстный отец: сериал", originalTitle: "The Godfather Series", year: "1972" }
+  ];
+  let selectedRequest = false;
+  await page.route("**/api/images/search?*", route => {
+    const url = new URL(route.request().url());
+    const selected = url.searchParams.get("tmdbId") === "999";
+    if (selected) selectedRequest = true;
+    const identity = selected ? candidates[1] : candidates[0];
+    const item = remoteItem({
+      id: selected ? "tmdb-tv-999-poster" : "tmdb-movie-238-poster",
+      sourceId: selected ? "tv-999-poster" : "movie-238-poster",
+      title: identity.title,
+      mediaType: identity.mediaType,
+      tmdbId: identity.tmdbId
+    });
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ identity, candidates, results: [item], references: [], providers: {}, errors: [] })
+    });
+  });
+  await page.route("**/api/images/proxy?*", route => route.fulfill({ status: 200, contentType: "image/png", body: PNG }));
+
+  await page.goto("/");
+  await openSearch(page, "Крестный отец", "1972");
+  await expect(page.locator("#sourceCandidates")).toBeVisible();
+  await expect(page.locator(".source-candidate")).toHaveCount(2);
+  await page.locator(".source-candidate").filter({ hasText: "сериал" }).click();
+  await expect.poll(() => selectedRequest).toBe(true);
+  await expect(page.locator("#sourceSearchStatus")).toContainText("Крёстный отец: сериал");
+  await expect(page.locator(".source-candidate.active")).toContainText("сериал");
+});
+
 test("TEST 4 filters Cinematic plus manual Contrast survive export", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
