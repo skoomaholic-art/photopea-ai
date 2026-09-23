@@ -128,7 +128,7 @@ requireAll("worker routes", worker, [
 
 requireAll("Photopea round trip", photopea, [
   'PP_ORIGIN="https://www.photopea.com"',
-  "ArrayBuffer","openLayeredDocument","buildLayeredScript","POSTER_LAYERED_MODEL","psd:true",
+  "ArrayBuffer","openLayeredDocument","buildLayeredScript","POSTER_LAYERED_MODEL","psd:true","__sourceLayer.duplicate(doc","app.activeDocument=doc",
   "classifyDimensions","routeBlob","sendPhotopeaVerticalBtn","sendPhotopeaHorizontalBtn","sendPhotopeaTrainBtn","sendPhotopeaAutoBtn","Photopea не ответил",
   "setBackgroundFromDataUrl","setImageLayer","difference<=0.03"
 ]);

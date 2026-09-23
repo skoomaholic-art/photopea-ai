@@ -797,6 +797,24 @@ test("Photopea main edit uses layered Vertical and Horizontal models", async ({ 
   expect(ctx.layeredModel.document).toMatchObject({width:1920,height:1080});
 });
 
+test("Photopea layered script duplicates raster assets into the master document", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  const script=await page.evaluate(() => window.PhotopeaBridge.buildLayeredScript({
+    workspace:"vertical",
+    document:{name:"TEST",width:800,height:1200},
+    layers:[
+      {id:"bg",name:"Background",type:"background",color:"#000000",x:400,y:600,width:800,height:1200,zIndex:0},
+      {id:"poster",name:"Poster",type:"image",sourceDataUrl:"data:image/png;base64,AAAA",x:400,y:600,width:800,height:1200,zIndex:1}
+    ]
+  }));
+  expect(script).toContain("var __sourceDoc=app.open(");
+  expect(script).toContain("__sourceLayer.duplicate(doc");
+  expect(script).toContain("__sourceDoc.close(");
+  expect(script).toContain("app.activeDocument=doc");
+  expect(script).toContain("var ly=doc.activeLayer");
+});
+
 test("Photopea layered Train keeps images logos and stickers independent", async ({ page }) => {
   await mockStatus(page); await mockPhotopea(page); await page.goto("/");
   await page.locator('[data-workspace="train"]').click();

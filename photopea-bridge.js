@@ -128,7 +128,7 @@
       "try{ti.leading="+(fontSize*safeNumber(layer.lineHeight,1.16))+";}catch(e){}",
       "try{ti.tracking="+safeNumber(layer.letterSpacing,0)+";}catch(e){}",
       "var tc=new SolidColor();tc.rgb.red="+color.r+";tc.rgb.green="+color.g+";tc.rgb.blue="+color.b+";ti.color=tc;",
-      "try{ti.justification=Justification.CENTER;}catch(e){}",
+      "try{ti.justification="+(layer.textAlign==="right"?"Justification.RIGHT":layer.textAlign==="center"?"Justification.CENTER":"Justification.LEFT")+";}catch(e){}",
       "ti.position=[0,"+fontSize+"];",
       commonLayerScript(layer,"ly")
     ];
@@ -139,8 +139,12 @@
     const src=layer.sourceDataUrl||layer.sourceUrl;
     if(!src) return "";
     return [
-      "app.open("+jsString(src)+",null,true);",
-      "var ly=app.activeDocument.activeLayer;",
+      "var __sourceDoc=app.open("+jsString(src)+",null,true);",
+      "var __sourceLayer=__sourceDoc.activeLayer;",
+      "try{__sourceLayer.duplicate(doc,ElementPlacement.PLACEATBEGINNING);}catch(e){__sourceLayer.duplicate(doc);}",
+      "try{__sourceDoc.close(SaveOptions.DONOTSAVECHANGES);}catch(e){try{__sourceDoc.close();}catch(e2){}}",
+      "app.activeDocument=doc;",
+      "var ly=doc.activeLayer;",
       commonLayerScript(layer,"ly")
     ].join("\n");
   }
