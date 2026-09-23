@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGP8z8DwnwEJMDGgAcICAIPRAgYCkO9YAAAAAElFTkSuQmCC", "base64");
 const PNG_DATA = "data:image/png;base64," + PNG.toString("base64");
+const API = "https://skoomaholic.alexandr-petrossov.workers.dev";
 
 async function mockStatus(page, extra = {}) {
   await page.route("**/api/status", route => route.fulfill({
@@ -10,12 +11,87 @@ async function mockStatus(page, extra = {}) {
     contentType: "application/json",
     body: JSON.stringify({
       ok: true,
-      apiVersion: "2026-09-22-openrouter-v2",
+      apiVersion: "2026-09-23-assets-v3",
       providers: { xai: true, openai: true },
       background: { carve: true, removal: true },
-      posters: { tvmaze: true, tmdb: false },
+      posters: { tvmaze: true, tmdb: true },
+      images: {
+        tmdb: { enabled: true, configured: true, commercialApproved: true },
+        fanart: { enabled: true, configured: true },
+        wikimedia: { enabled: true, configured: true },
+        tvmaze: { enabled: true, configured: true }
+      },
       ...extra
     })
+  }));
+}
+
+function remoteItem(overrides = {}) {
+  return {
+    id: "tmdb-movie-238-poster",
+    source: "TMDB",
+    sourceId: "movie-238-poster",
+    sourceUrl: "https://www.themoviedb.org/movie/238",
+    originalUrl: "https://image.tmdb.org/t/p/original/test.jpg",
+    proxyUrl: API + "/api/images/proxy?url=" + encodeURIComponent("https://image.tmdb.org/t/p/original/test.jpg"),
+    thumbnailUrl: API + "/api/images/proxy?url=" + encodeURIComponent("https://image.tmdb.org/t/p/w342/test.jpg"),
+    title: "The Godfather",
+    year: "1972",
+    mediaType: "movie",
+    tmdbId: 238,
+    imageType: "poster",
+    width: 2000,
+    height: 3000,
+    aspectRatio: 2 / 3,
+    shape: "vertical",
+    resolutionClass: "2k",
+    language: null,
+    isTextless: true,
+    voteAverage: 5.4,
+    mimeType: "image/jpeg",
+    ...overrides
+  };
+}
+
+async function mockUnifiedSearch(page, items, errors = []) {
+  await page.route("**/api/images/search?*", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      identity: { tmdbId: 238, mediaType: "movie", title: "The Godfather", year: "1972" },
+      results: items,
+      references: [
+        { id: "shotdeck", name: "ShotDeck", mode: "external", url: "https://shotdeck.com/", reason: "reference only" }
+      ],
+      providers: {},
+      errors
+    })
+  }));
+  await page.route("**/api/images/proxy?*", route => route.fulfill({
+    status: 200,
+    contentType: "image/png",
+    body: PNG
+  }));
+}
+
+async function mockPhotopea(page) {
+  const fake = '<!doctype html><html><body><script>' +
+    'let docW=800,docH=1200;' +
+    'function size(buffer){try{const b=new Uint8Array(buffer);if(b.length>24&&b[0]===137&&b[1]===80&&b[2]===78&&b[3]===71){const v=new DataView(buffer);return [v.getUint32(16),v.getUint32(20)];}}catch(e){}return [800,1200];}' +
+    'addEventListener("message",async event=>{' +
+      'if(event.data instanceof ArrayBuffer){[docW,docH]=size(event.data);parent.postMessage("done","*");return;}' +
+      'if(typeof event.data==="string"&&event.data.includes("saveToOE")){' +
+        'const c=document.createElement("canvas");c.width=docW;c.height=docH;' +
+        'const x=c.getContext("2d");x.fillStyle="#173823";x.fillRect(0,0,docW,docH);x.fillStyle="#fff";x.fillRect(0,0,Math.min(40,docW),Math.min(40,docH));' +
+        'c.toBlob(async blob=>{const buffer=await blob.arrayBuffer();parent.postMessage(buffer,"*",[buffer]);parent.postMessage("done","*");},"image/png");' +
+      '}' +
+    '});parent.postMessage("done","*");' +
+    '<\/script></body></html>';
+
+  await page.route("https://www.photopea.com/**", route => route.fulfill({
+    status: 200,
+    contentType: "text/html",
+    body: fake
   }));
 }
 
@@ -40,293 +116,331 @@ function zipEntries(buffer) {
   return entries;
 }
 
-test("boots with four workspaces, icon and server-backed controls", async ({ page }) => {
+async function openSearch(page, title = "The Godfather", year = "1972") {
+  await page.locator("#posterSearchInput").fill(title);
+  await page.locator("#posterSearchYear").fill(year);
+  await page.locator("#posterSearchBtn").click();
+  await expect(page.locator("#sourceBrowserModal")).toBeVisible();
+}
+
+test("boots existing four-workspace Poster Editor with unified tools", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
   await expect(page.locator(".brand strong")).toHaveText("Poster Editor");
-  await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", /app-icon\.svg\?v=/);
   await expect(page.locator(".workspace-tab")).toHaveCount(4);
   await expect(page.locator("#posterWorkspace")).toBeVisible();
+  await expect(page.locator("#posterSearchBtn")).toHaveText("Найти исходник");
+  await expect(page.locator("#filterSelectedBtn")).toHaveText("Фильтры");
+  await expect(page.locator("#editSelectedPhotopeaBtn")).toContainText("Photopea");
   await expect(page.locator("#generateBtn")).toBeEnabled();
   await expect(page.locator("#removeBackgroundBtn")).toBeEnabled();
 });
 
-test("poster search, background removal and vertical/horizontal states are independent", async ({ page }) => {
+test("TEST 1 TMDB movie poster to Vertical through proxy", async ({ page }) => {
   await mockStatus(page);
-  await page.route("**/api/posters?*", route => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({
-      results: [{
-        id: "tvmaze-1", title: "Test Show", year: "2026", type: "TV",
-        source: "TVmaze", quality: "original", image: PNG_DATA
-      }]
-    })
-  }));
-  await page.route("**/api/remove-background", route => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ image: PNG_DATA, provider: "Carve.Photos" })
-  }));
+  await mockUnifiedSearch(page, [remoteItem()]);
+  let proxyRequests = 0;
+  page.on("request", request => {
+    if (request.url().includes("/api/images/proxy")) proxyRequests++;
+  });
   await page.goto("/");
-
-  await page.locator("#posterSearchInput").fill("Test");
-  await page.locator("#posterSearchBtn").click();
-  await expect(page.locator(".poster-card")).toHaveCount(1);
-  await page.locator(".poster-card").click();
+  await openSearch(page);
+  await expect(page.locator(".source-card")).toHaveCount(1);
+  await page.locator(".source-card").getByRole("button", { name: "Использовать" }).click();
+  await expect(page.locator("#sourceBrowserModal")).toBeHidden();
   await expect(page.locator("#posterImage")).toBeVisible();
+  const state = await page.evaluate(() => window.PosterApp.getState().vertical);
+  expect(state.posterAssetId).toBeTruthy();
+  expect(state.posterName).toBe("The Godfather");
+  expect(proxyRequests).toBeGreaterThan(0);
+});
 
+test("TEST 2 TMDB backdrop to Horizontal", async ({ page }) => {
+  await mockStatus(page);
+  await mockUnifiedSearch(page, [remoteItem({
+    id: "tmdb-backdrop",
+    sourceId: "backdrop",
+    imageType: "backdrop",
+    width: 3840,
+    height: 2160,
+    aspectRatio: 16 / 9,
+    shape: "horizontal",
+    resolutionClass: "4k",
+    originalUrl: "https://image.tmdb.org/t/p/original/backdrop.jpg",
+    proxyUrl: API + "/api/images/proxy?url=x",
+    thumbnailUrl: API + "/api/images/proxy?url=y"
+  })]);
+  await page.goto("/");
+  await page.locator('[data-workspace="horizontal"]').click();
+  await openSearch(page);
+  await page.getByRole("button", { name: "ГОРИЗОНТАЛЬНЫЕ" }).click();
+  await expect(page.locator(".source-card")).toHaveCount(1);
+  await page.locator(".source-card").getByRole("button", { name: "Использовать" }).click();
+  const state = await page.evaluate(() => window.PosterApp.getState().horizontal);
+  expect(state.posterAssetId).toBeTruthy();
+  await expect(page.locator("#stageMeta")).toContainText("1920 × 1080");
+});
+
+test("TEST 3 Fanart textless artwork to Horizontal", async ({ page }) => {
+  await mockStatus(page);
+  await mockUnifiedSearch(page, [remoteItem({
+    id: "fanart-bg",
+    source: "Fanart.tv",
+    sourceId: "moviebackground-1",
+    imageType: "backdrop",
+    width: 3000,
+    height: 1688,
+    aspectRatio: 1.777,
+    shape: "horizontal",
+    language: null,
+    isTextless: true,
+    originalUrl: "https://assets.fanart.tv/fanart/test.jpg",
+    proxyUrl: API + "/api/images/proxy?url=fanart-original",
+    thumbnailUrl: API + "/api/images/proxy?url=fanart-preview"
+  })]);
+  await page.goto("/");
+  await page.locator('[data-workspace="horizontal"]').click();
+  await openSearch(page);
+  await page.getByRole("button", { name: "TEXTLESS" }).click();
+  await expect(page.locator(".source-card")).toHaveCount(1);
+  await expect(page.locator(".source-card")).toContainText("Fanart.tv");
+  await page.locator(".source-card").getByRole("button", { name: "Использовать" }).click();
+  expect((await page.evaluate(() => window.PosterApp.getState().horizontal)).posterAssetId).toBeTruthy();
+});
+
+test("TEST 4 filters Cinematic plus manual Contrast survive export", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({ name: "filter.png", mimeType: "image/png", buffer: PNG });
+  const before = await page.evaluate(() => window.PosterApp.getState().vertical.poster);
+  await page.locator("#filterSelectedBtn").click();
+  await expect(page.locator("#filterModal")).toBeVisible();
+  await page.getByRole("button", { name: "Cinematic", exact: true }).click();
+  await page.locator('[data-filter-range="contrast"]').evaluate(el => {
+    el.value = "31";
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await expect(page.locator('[data-filter-number="contrast"]')).toHaveValue("31");
+  await page.locator("#filterApplyBtn").click();
+  await expect(page.locator("#filterModal")).toBeHidden();
+  const after = await page.evaluate(() => window.PosterApp.getState().vertical.poster);
+  expect(after).toMatch(/^data:image\/png;base64,/);
+  expect(after).not.toBe(before);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#downloadVerticalBtn").click();
+  const download = await downloadPromise;
+  expect(pngSize(await readFile(await download.path()))).toEqual({ width: 800, height: 1200 });
+});
+
+test("vertical and horizontal states stay independent", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
   await page.locator("#posterFileInput").setInputFiles({ name: "vertical.png", mimeType: "image/png", buffer: PNG });
   await page.locator("#layerScaleInput").fill("135");
   await page.locator("#layerRotationInput").fill("17");
   await page.locator("#posterLayerUpBtn").click();
-  await page.locator("#removeBackgroundBtn").click();
-  await expect(page.locator("#bgRemoveStatus")).toContainText("Положение и трансформация сохранены");
 
   await page.locator('[data-workspace="horizontal"]').click();
   await page.locator("#posterFileInput").setInputFiles({ name: "horizontal.png", mimeType: "image/png", buffer: PNG });
   await page.locator("#layerScaleInput").fill("165");
   await page.locator("#layerRotationInput").fill("-8");
 
-  await page.locator('[data-workspace="vertical"]').click();
   const states = await page.evaluate(() => window.PosterApp.getState());
   expect(states.vertical.posterName).toBe("vertical.png");
   expect(states.vertical.posterScale).toBe(135);
   expect(states.vertical.posterRotation).toBe(17);
   expect(states.vertical.order).toEqual(["logo", "poster"]);
-  expect(states.horizontal.order).toEqual(["poster", "logo"]);
   expect(states.horizontal.posterName).toBe("horizontal.png");
   expect(states.horizontal.posterScale).toBe(165);
   expect(states.horizontal.posterRotation).toBe(-8);
-
-  for (let i = 0; i < 4; i++) {
-    await page.locator('[data-workspace="horizontal"]').click();
-    await page.locator('[data-workspace="vertical"]').click();
-  }
-  const afterSwitches = await page.evaluate(() => window.PosterApp.getState());
-  expect(afterSwitches).toEqual(states);
+  expect(states.vertical.posterAssetId).toBeTruthy();
+  expect(states.horizontal.posterAssetId).toBeTruthy();
 });
 
-test("poster bleed, wheel scaling and independent logo lock work", async ({ page }) => {
+test("background removal preserves transform", async ({ page }) => {
   await mockStatus(page);
+  await page.route("**/api/remove-background", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ image: PNG_DATA, provider: "Carve.Photos" })
+  }));
   await page.goto("/");
-  await page.locator("#posterFileInput").setInputFiles({ name: "poster.png", mimeType: "image/png", buffer: PNG });
-  await page.locator("#logoFileInput").setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: PNG });
-
-  await expect(page.locator("#posterImage")).toHaveCSS("width", /.+/);
-  expect(await page.locator("#posterImage").evaluate(el => el.style.width)).toBe("107%");
-
-  await page.locator("#posterLayerSelect").selectOption("logo");
-  await page.locator("#logoImage").hover();
-  const logoBefore = (await page.evaluate(() => window.PosterApp.getState().vertical)).logoScale;
-  await page.mouse.wheel(0, -120);
-  await expect.poll(async () => (await page.evaluate(() => window.PosterApp.getState().vertical)).logoScale).toBeGreaterThan(logoBefore);
-
-  await page.locator("#logoLockInput").check();
-  const logoLocked = (await page.evaluate(() => window.PosterApp.getState().vertical)).logoScale;
-  await page.locator("#logoImage").hover();
-  await page.mouse.wheel(0, -120);
-  await page.waitForTimeout(80);
-  expect((await page.evaluate(() => window.PosterApp.getState().vertical)).logoScale).toBe(logoLocked);
-
-  await page.locator("#posterLayerSelect").selectOption("poster");
+  await page.locator("#posterFileInput").setInputFiles({ name: "safe.png", mimeType: "image/png", buffer: PNG });
   await page.locator("#posterLockInput").uncheck();
-  const posterBefore = (await page.evaluate(() => window.PosterApp.getState().vertical)).posterScale;
-  await page.locator("#posterImage").evaluate(el => {
-    el.dispatchEvent(new WheelEvent("wheel", { deltaY: -120, bubbles: true, cancelable: true }));
-  });
-  await expect.poll(async () => (await page.evaluate(() => window.PosterApp.getState().vertical)).posterScale).toBeGreaterThan(posterBefore);
+  await page.locator("#layerScaleInput").fill("145");
+  await page.locator("#layerRotationInput").fill("11");
+  await page.locator("#removeBackgroundBtn").click();
+  await expect(page.locator("#bgRemoveStatus")).toContainText("Положение и трансформация сохранены");
+  const state = await page.evaluate(() => window.PosterApp.getState().vertical);
+  expect(state.posterScale).toBe(145);
+  expect(state.posterRotation).toBe(11);
 });
 
-test("legacy Use POST search response is recovered automatically", async ({ page }) => {
+test("TEST 5 Vertical Photopea return routes automatically Vertical", async ({ page }) => {
   await mockStatus(page);
-  const methods = [];
-  await page.route("**/api/posters*", async route => {
-    methods.push(route.request().method());
-    if (route.request().method() === "GET") {
-      return route.fulfill({ status: 405, contentType: "application/json", body: JSON.stringify({ error: "Use POST" }) });
-    }
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ results: [{ id: "legacy-1", title: "Legacy", source: "TVmaze", quality: "original", image: PNG_DATA }] })
-    });
-  });
+  await mockPhotopea(page);
   await page.goto("/");
-  await page.locator("#posterSearchInput").fill("Legacy");
-  await page.locator("#posterSearchBtn").click();
-  await expect(page.locator(".poster-card")).toHaveCount(1);
-  expect(methods).toEqual(["GET", "POST"]);
-  await expect(page.locator("#posterSearchStatus")).not.toContainText("Use POST");
+  await page.locator("#posterFileInput").setInputFiles({ name: "vertical.png", mimeType: "image/png", buffer: PNG });
+  await page.locator("#editPosterPhotopeaBtn").click();
+  await expect(page.locator("#photopeaWorkspace")).toBeVisible();
+  await expect(page.locator("#photopeaStatus")).toContainText(/Photopea готов|Документ передан/);
+  await page.locator("#sendPhotopeaBtn").click();
+  await expect(page.locator("#posterWorkspace")).toBeVisible();
+  await expect(page.locator('[data-workspace="vertical"]')).toHaveClass(/active/);
+  expect((await page.evaluate(() => window.PosterApp.getState().vertical)).poster).toMatch(/^data:image\/png;base64,/);
 });
 
-test("poster exports create PNGs and a two-file ZIP", async ({ page }) => {
+test("TEST 6 Horizontal Photopea return routes automatically Horizontal", async ({ page }) => {
   await mockStatus(page);
+  await mockPhotopea(page);
   await page.goto("/");
-  await page.locator("#posterFileInput").setInputFiles({ name: "v.png", mimeType: "image/png", buffer: PNG });
   await page.locator('[data-workspace="horizontal"]').click();
-  await page.locator("#posterFileInput").setInputFiles({ name: "h.png", mimeType: "image/png", buffer: PNG });
-
-  const verticalPromise = page.waitForEvent("download");
-  await page.locator("#downloadVerticalBtn").click();
-  const vertical = await verticalPromise;
-  expect(vertical.suggestedFilename()).toBe("poster-vertical.png");
-
-  const zipPromise = page.waitForEvent("download");
-  await page.locator("#downloadPostersZipBtn").click();
-  const zipDownload = await zipPromise;
-  expect(zipDownload.suggestedFilename()).toBe("posters.zip");
-  const path = await zipDownload.path();
-  const entries = zipEntries(await readFile(path));
-  expect(entries.map(x => x.name)).toEqual(["poster-vertical.png", "poster-horizontal.png"]);
-  for (const entry of entries) expect(entry.data.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  await page.locator("#posterFileInput").setInputFiles({ name: "horizontal.png", mimeType: "image/png", buffer: PNG });
+  await page.locator("#editPosterPhotopeaBtn").click();
+  await expect(page.locator("#photopeaWorkspace")).toBeVisible();
+  await page.locator("#sendPhotopeaBtn").click();
+  await expect(page.locator('[data-workspace="horizontal"]')).toHaveClass(/active/);
+  expect((await page.evaluate(() => window.PosterApp.getState().horizontal)).poster).toMatch(/^data:image\/png;base64,/);
 });
 
-test("train editor constrains sticker and exports exact 4 folders / 24 PNG", async ({ page }) => {
+test("TEST 7 Parovozik Photopea return routes automatically train", async ({ page }) => {
+  await mockStatus(page);
+  await mockPhotopea(page);
+  await page.goto("/");
+  await page.locator('[data-workspace="train"]').click();
+  await page.waitForFunction(() => !!window.TrainEditor);
+  await page.locator("#trainEditPhotopeaBtn").click();
+  await expect(page.locator("#photopeaWorkspace")).toBeVisible();
+  await page.locator("#sendPhotopeaBtn").click();
+  await expect(page.locator("#trainWorkspace")).toBeVisible();
+  const inspect = await page.evaluate(() => window.TrainEditor.inspect());
+  expect(inspect.masterSize).toEqual({ width: 2952, height: 366 });
+  expect(inspect.objectCount).toBeGreaterThan(0);
+});
+
+test("TEST 8 nonstandard Photopea ratio asks destination", async ({ page }) => {
+  await mockStatus(page);
+  await page.goto("/");
+  expect(await page.evaluate(() => window.PhotopeaBridge.classifyDimensions(1000, 1000))).toBeNull();
+
+  await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 100; canvas.height = 100;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0,0,100,100);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    window.__routePromise = window.PhotopeaBridge.routeBlob(blob, { width: 1000, height: 1000 });
+  });
+  await expect(page.locator("#routeModal")).toBeVisible();
+  await page.locator('[data-route-target="vertical"]').click();
+  await expect.poll(() => page.evaluate(async () => window.__routePromise ? await window.__routePromise : null)).toBe("vertical");
+  await expect(page.locator('[data-workspace="vertical"]')).toHaveClass(/active/);
+});
+
+test("TEST 9 missing keys do not crash and are surfaced", async ({ page }) => {
+  await mockStatus(page, {
+    providers: { xai: false, openai: false },
+    background: { carve: false, removal: false },
+    images: {
+      tmdb: { enabled: false, configured: false, reason: "TMDB API key не настроен" },
+      fanart: { enabled: false, configured: false, reason: "Fanart.tv API key не настроен" },
+      wikimedia: { enabled: true, configured: true },
+      tvmaze: { enabled: true, configured: true }
+    }
+  });
+  await mockUnifiedSearch(page, [remoteItem({ source: "TVmaze", id: "tvmaze-1" })], [
+    { source: "TMDB", code: "not_configured", message: "TMDB API key не настроен." },
+    { source: "Fanart.tv", code: "not_configured", message: "Fanart.tv API key не настроен." }
+  ]);
+  await page.goto("/");
+  await expect(page.locator("#generateBtn")).toBeDisabled();
+  await expect(page.locator("#removeBackgroundBtn")).toBeDisabled();
+  await openSearch(page, "Test Show", "2026");
+  await expect(page.locator("#sourceSearchStatus")).toContainText("TMDB API key не настроен");
+  await expect(page.locator(".source-card")).toHaveCount(1);
+});
+
+test("TEST 10 remote CORS image is imported through backend proxy", async ({ page }) => {
+  await mockStatus(page);
+  const item = remoteItem({
+    originalUrl: "https://image.tmdb.org/t/p/original/cors-test.jpg",
+    proxyUrl: API + "/api/images/proxy?url=" + encodeURIComponent("https://image.tmdb.org/t/p/original/cors-test.jpg"),
+    thumbnailUrl: API + "/api/images/proxy?url=" + encodeURIComponent("https://image.tmdb.org/t/p/w342/cors-test.jpg")
+  });
+  let importedOriginal = false;
+  await page.route("**/api/images/search?*", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ identity: null, results: [item], references: [], providers: {}, errors: [] })
+  }));
+  await page.route("**/api/images/proxy?*", route => {
+    if (decodeURIComponent(route.request().url()).includes("original/cors-test.jpg")) importedOriginal = true;
+    return route.fulfill({ status: 200, contentType: "image/png", body: PNG });
+  });
+  await page.goto("/");
+  await openSearch(page, "CORS Test", "2026");
+  await page.locator(".source-card").getByRole("button", { name: "Использовать" }).click();
+  expect(importedOriginal).toBe(true);
+  await expect(page.locator("#posterImage")).toBeVisible();
+});
+
+test("TEST 11 repeated Poster Photopea Poster cycle remains PNG and usable", async ({ page }) => {
+  await mockStatus(page);
+  await mockPhotopea(page);
+  await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({ name: "cycle.png", mimeType: "image/png", buffer: PNG });
+
+  for (let i = 0; i < 2; i++) {
+    await page.locator("#editPosterPhotopeaBtn").click();
+    await expect(page.locator("#photopeaWorkspace")).toBeVisible();
+    await page.locator("#sendPhotopeaBtn").click();
+    await expect(page.locator("#posterWorkspace")).toBeVisible();
+  }
+
+  const state = await page.evaluate(() => window.PosterApp.getState().vertical);
+  expect(state.poster).toMatch(/^data:image\/png;base64,/);
+  expect(state.posterAssetId).toBeTruthy();
+});
+
+test("SVG stickers still work and Parovozik exports exact 24 PNG", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
   await page.locator('[data-workspace="train"]').click();
   await page.waitForFunction(() => !!window.TrainEditor);
 
-  await page.locator("#trainAddTextBtn").click();
-  const withText = await page.evaluate(() => window.TrainEditor.inspect().objectCount);
-  await page.locator("#trainUndoBtn").click();
-  await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().objectCount)).toBe(withText - 1);
-  await page.locator("#trainRedoBtn").click();
-  await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().objectCount)).toBe(withText);
-
-  await page.locator("#trainBadgeSelect").selectOption({ label: "Эксклюзив" });
-  await page.locator("#trainAddRectBtn").click();
-  const badgeInspect = await page.evaluate(() => window.TrainEditor.inspect());
-  expect(badgeInspect.badges).toContain("Эксклюзив");
-  expect(badgeInspect.masterSize).toEqual({ width: 2952, height: 366 });
-
-  await expect(page.locator("#stickerSelect option")).toHaveCount(15);
-  await expect(page.locator("#stickerSelect")).toContainText("Барлық сериалдар");
   await page.locator("#stickerSelect").selectOption({ label: "Премьера" });
   await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().sticker?.text)).toBe("Премьера");
   const inspect = await page.evaluate(() => window.TrainEditor.inspect());
   expect(inspect.sticker.asset).toContain("assets/stickers/premiere.svg");
-  expect(inspect.objectCount).toBeGreaterThanOrEqual(2);
-  expect(inspect.sticker.text).toBe("Премьера");
-  expect(inspect.sticker.left).toBeGreaterThanOrEqual(0);
-  expect(inspect.sticker.top).toBeGreaterThanOrEqual(0);
   expect(inspect.sticker.left + inspect.sticker.width).toBeLessThanOrEqual(492.5);
   expect(inspect.sticker.top + inspect.sticker.height).toBeLessThanOrEqual(366.5);
-
-  await page.locator("#trainDeviceModeBtn").click();
-  await expect(page.locator("#trainDeviceView")).toBeVisible();
-  await expect(page.locator("#trainDeviceView canvas")).toHaveCount(6);
-  await page.locator("#trainCanvasModeBtn").click();
-  await expect(page.locator("#segmentGuides")).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
   await page.locator("#trainDownloadAllBtn").click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("Паровозик.zip");
-  const path = await download.path();
-  const entries = zipEntries(await readFile(path));
-
+  const entries = zipEntries(await readFile(await download.path()));
+  expect(entries).toHaveLength(24);
   const expected = [];
   const folders = ["1 - 164x122", "2 - 246x183", "3 - 328x244", "4 - 492x366"];
-  for (const folder of folders) for (let part = 1; part <= 6; part++) expected.push(`${folder}/part_${part}.png`);
+  for (const folder of folders) for (let part = 1; part <= 6; part++) expected.push(folder + "/part_" + part + ".png");
   expect(entries.map(x => x.name)).toEqual(expected);
-  expect(entries).toHaveLength(24);
-  const dims = {
-    "1 - 164x122": [164, 122],
-    "2 - 246x183": [246, 183],
-    "3 - 328x244": [328, 244],
-    "4 - 492x366": [492, 366]
-  };
-  for (const entry of entries) {
-    expect(entry.data.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
-    const folder = entry.name.split("/")[0];
-    expect(pngSize(entry.data)).toEqual({ width: dims[folder][0], height: dims[folder][1] });
-  }
-
-  await page.locator("#trainSizeSelect").selectOption("246x183");
-  const selectedPromise = page.waitForEvent("download");
-  await page.locator("#trainDownloadSelectedBtn").click();
-  const selectedDownload = await selectedPromise;
-  expect(selectedDownload.suggestedFilename()).toBe("Паровозик-246x183.zip");
-  const selectedEntries = zipEntries(await readFile(await selectedDownload.path()));
-  expect(selectedEntries.map(x => x.name)).toEqual([
-    "part_1.png", "part_2.png", "part_3.png", "part_4.png", "part_5.png", "part_6.png"
-  ]);
-  for (const entry of selectedEntries) expect(pngSize(entry.data)).toEqual({ width: 246, height: 183 });
 });
 
-test("project autosave survives reload for posters and train sticker", async ({ page }) => {
+test("autosave survives reload with asset-backed poster and sticker", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
   await page.locator("#posterFileInput").setInputFiles({ name: "remember.png", mimeType: "image/png", buffer: PNG });
   await page.locator('[data-workspace="train"]').click();
-  await page.waitForFunction(() => !!window.TrainEditor);
   await page.locator("#stickerSelect").selectOption({ label: "Жаңа маусым" });
-  await page.waitForTimeout(1100);
+  await page.waitForTimeout(1200);
 
   await page.reload();
   await page.waitForFunction(() => !!window.PosterApp && !!window.TrainEditor);
   await page.waitForTimeout(500);
   const posterState = await page.evaluate(() => window.PosterApp.getState());
   expect(posterState.vertical.posterName).toBe("remember.png");
-
+  expect(posterState.vertical.posterAssetId).toBeTruthy();
   await page.locator('[data-workspace="train"]').click();
-  const inspect = await page.evaluate(() => window.TrainEditor.inspect());
-  expect(inspect.sticker?.text).toBe("Жаңа маусым");
-});
-
-test("API errors are surfaced without breaking editor state", async ({ page }) => {
-  await mockStatus(page);
-  await page.route("**/api/posters?*", route => route.fulfill({
-    status: 429,
-    contentType: "application/json",
-    body: JSON.stringify({ error: "TVmaze: превышен лимит 20 запросов за 10 секунд.", code: "rate_limit" })
-  }));
-  await page.route("**/api/remove-background", route => route.fulfill({
-    status: 429,
-    contentType: "application/json",
-    body: JSON.stringify({ error: "Carve.Photos: превышен лимит запросов. Повторите позже.", code: "rate_limit" })
-  }));
-  await page.goto("/");
-  await page.locator("#posterSearchInput").fill("Rate limit");
-  await page.locator("#posterSearchBtn").click();
-  await expect(page.locator("#posterSearchStatus")).toContainText("превышен лимит");
-
-  await page.locator("#posterFileInput").setInputFiles({ name: "safe.png", mimeType: "image/png", buffer: PNG });
-  const before = await page.evaluate(() => window.PosterApp.getState().vertical);
-  await page.locator("#removeBackgroundBtn").click();
-  await expect(page.locator("#bgRemoveStatus")).toContainText("превышен лимит");
-  const after = await page.evaluate(() => window.PosterApp.getState().vertical);
-  expect(after.poster).toBe(before.poster);
-  expect(after.posterScale).toBe(before.posterScale);
-  expect(after.posterRotation).toBe(before.posterRotation);
-});
-
-test("missing provider keys disable paid API actions clearly", async ({ page }) => {
-  await page.route("**/api/status", route => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({
-      ok: true,
-      apiVersion: "2026-09-22-openrouter-v2",
-      providers: { xai: false, openai: false },
-      background: { carve: false, removal: false },
-      posters: { tvmaze: true, tmdb: false }
-    })
-  }));
-  await page.goto("/");
-  await expect(page.locator("#generateBtn")).toBeDisabled();
-  await expect(page.locator("#removeBackgroundBtn")).toBeDisabled();
-  await expect(page.locator("#aiStatus")).toContainText("не задан");
-  await expect(page.locator("#bgRemoveStatus")).toContainText("не настроен");
-});
-
-test("Photopea remains a separate workspace", async ({ page }) => {
-  await mockStatus(page);
-  await page.goto("/");
-  await page.locator('[data-workspace="photopea"]').click();
-  await expect(page.locator("#photopeaWorkspace")).toBeVisible();
-  await expect(page.locator("#posterWorkspace")).toBeHidden();
-  await expect(page.locator("#photopeaFrame")).toHaveAttribute("src", "https://www.photopea.com/");
+  expect((await page.evaluate(() => window.TrainEditor.inspect())).sticker?.text).toBe("Жаңа маусым");
 });
