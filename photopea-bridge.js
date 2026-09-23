@@ -4,8 +4,10 @@
   const frame=$("photopeaFrame");
   let ready=false;
   let readyWaiters=[];
+  let commandWaiters=[];
   let exportWaiter=null;
   let context=null;
+  const layeredMasterIds={};
 
   function setStatus(message,kind="") {
     $("photopeaStatus").textContent=message;
@@ -66,22 +68,136 @@
     });
   }
 
+  function jsString(value) {
+    return JSON.stringify(String(value ?? ""));
+  }
+
+  function safeNumber(value,fallback=0) {
+    const n=Number(value);
+    return Number.isFinite(n)?n:fallback;
+  }
+
+  function hexRgb(hex) {
+    const value=String(hex||"#000000").replace("#","");
+    const normalized=value.length===3?value.split("").map(x=>x+x).join(""):value.padEnd(6,"0").slice(0,6);
+    return {
+      r:parseInt(normalized.slice(0,2),16)||0,
+      g:parseInt(normalized.slice(2,4),16)||0,
+      b:parseInt(normalized.slice(4,6),16)||0
+    };
+  }
+
+  function commonLayerScript(layer,varName) {
+    const x=safeNumber(layer.x),y=safeNumber(layer.y);
+    const w=Math.max(1,safeNumber(layer.width,1)),h=Math.max(1,safeNumber(layer.height,1));
+    const rotation=safeNumber(layer.rotation);
+    const opacity=Math.max(0,Math.min(100,safeNumber(layer.opacity,1)*100));
+    const visible=layer.visible!==false;
+    const locked=!!layer.locked;
+    return [
+      varName+".name="+jsString(layer.name||layer.id||"Layer")+";",
+      "try{"+varName+".opacity="+opacity+";}catch(e){}",
+      "try{"+varName+".visible="+visible+";}catch(e){}",
+      "try{var __b="+varName+".bounds;var __l=Number(__b[0]),__t=Number(__b[1]),__r=Number(__b[2]),__bt=Number(__b[3]);var __cw=Math.max(.01,__r-__l),__ch=Math.max(.01,__bt-__t);"+varName+".resize("+w+"/__cw*100,"+h+"/__ch*100,AnchorPosition.MIDDLECENTER);}catch(e){}",
+      "try{if("+rotation+"!==0)"+varName+".rotate("+rotation+",AnchorPosition.MIDDLECENTER);}catch(e){}",
+      "try{var __b2="+varName+".bounds;var __cx=(Number(__b2[0])+Number(__b2[2]))/2,__cy=(Number(__b2[1])+Number(__b2[3]))/2;"+varName+".translate("+x+"-__cx,"+y+"-__cy);}catch(e){}",
+      "try{"+varName+".allLocked="+locked+";}catch(e){}"
+    ].join("\n");
+  }
+
+  function backgroundLayerScript(layer) {
+    const color=hexRgb(layer.color);
+    return [
+      "var ly=doc.artLayers.add();",
+      "ly.name="+jsString(layer.name||"Background")+";",
+      "var col=new SolidColor();col.rgb.red="+color.r+";col.rgb.green="+color.g+";col.rgb.blue="+color.b+";",
+      "doc.selection.selectAll();doc.selection.fill(col);doc.selection.deselect();",
+      "try{ly.allLocked="+(!!layer.locked)+";}catch(e){}"
+    ].join("\n");
+  }
+
+  function textLayerScript(layer) {
+    const color=hexRgb(layer.fill);
+    const fontSize=Math.max(1,safeNumber(layer.fontSize,24));
+    const lines=[
+      "var ly=doc.artLayers.add();ly.kind=LayerKind.TEXT;",
+      "ly.name="+jsString(layer.name||"Text")+";",
+      "var ti=ly.textItem;ti.contents="+jsString(layer.text||"")+";",
+      "try{ti.font="+jsString(layer.fontFamily||"Arial")+";}catch(e){try{ti.font='ArialMT';}catch(e2){}}",
+      "ti.size="+fontSize+";",
+      "try{ti.leading="+(fontSize*safeNumber(layer.lineHeight,1.16))+";}catch(e){}",
+      "try{ti.tracking="+safeNumber(layer.letterSpacing,0)+";}catch(e){}",
+      "var tc=new SolidColor();tc.rgb.red="+color.r+";tc.rgb.green="+color.g+";tc.rgb.blue="+color.b+";ti.color=tc;",
+      "try{ti.justification=Justification.CENTER;}catch(e){}",
+      "ti.position=[0,"+fontSize+"];",
+      commonLayerScript(layer,"ly")
+    ];
+    return lines.join("\n");
+  }
+
+  function imageLayerScript(layer) {
+    const src=layer.sourceDataUrl||layer.sourceUrl;
+    if(!src) return "";
+    return [
+      "app.open("+jsString(src)+",null,true);",
+      "var ly=app.activeDocument.activeLayer;",
+      commonLayerScript(layer,"ly")
+    ].join("\n");
+  }
+
+  function buildLayeredScript(model) {
+    const doc=model.document;
+    const ordered=[...(model.layers||[])].sort((a,b)=>(a.zIndex||0)-(b.zIndex||0));
+    const meta=encodeURIComponent(JSON.stringify({
+      workspace:model.workspace,width:doc.width,height:doc.height,
+      layers:ordered.map(layer=>({name:layer.name,type:layer.type,x:layer.x,y:layer.y,width:layer.width,height:layer.height,rotation:layer.rotation,locked:layer.locked}))
+    }));
+    const chunks=[
+      "/*POSTER_LAYERED_MODEL:"+meta+"*/",
+      "var doc=app.documents.add("+Number(doc.width)+","+Number(doc.height)+",72,"+jsString(doc.name||"Poster Editor")+",NewDocumentMode.RGB,DocumentFill.TRANSPARENT);",
+      "doc.name="+jsString(doc.name||"Poster Editor")+";"
+    ];
+    for(const layer of ordered) {
+      if(layer.type==="background") chunks.push(backgroundLayerScript(layer));
+      else if(layer.type==="text") chunks.push(textLayerScript(layer));
+      else chunks.push(imageLayerScript(layer));
+    }
+    chunks.push("try{doc.activeLayer=doc.layers[0];}catch(e){}");
+    chunks.push("app.echoToOE("+jsString("POSTER_LAYERED_READY:"+model.workspace+":"+doc.width+"x"+doc.height+":"+ordered.length)+");");
+    return chunks.join("\n");
+  }
+
+  async function sendScript(script) {
+    await ensureLoaded();
+    const donePromise=new Promise((resolve,reject)=>{
+      commandWaiters.push({resolve,reject});
+      frame.contentWindow.postMessage(script,PP_ORIGIN);
+    });
+    return Promise.race([donePromise,timeoutPromise(30000,"Photopea не завершил создание слоёв.")]);
+  }
+
+  async function openLayeredDocument(model) {
+    if(!model?.document?.width||!model?.document?.height||!Array.isArray(model.layers)) throw new Error("Некорректная модель Photopea.");
+    setStatus("Создаю многослойный документ в Photopea...");
+    context={target:model.workspace,name:model.document.name,layeredModel:model,openedAt:Date.now(),composite:false};
+    await sendScript(buildLayeredScript(model));
+    setStatus("Многослойный документ открыт: "+model.layers.length+" слоёв.","ok");
+    return model;
+  }
+
   async function editCurrentPoster() {
     const format=PosterApp.getActiveFormat();
-    const blob=await PosterApp.renderPosterBlob(format);
-    return openBlob(blob,{target:format,layer:"poster",name:format+"-poster.png",composite:true});
+    return openLayeredDocument(await PosterApp.buildPhotopeaModel(format));
   }
 
   async function editTrain() {
-    if(!window.TrainEditor?.renderMasterBlob) throw new Error("Паровозик ещё не готов.");
-    const blob=await TrainEditor.renderMasterBlob();
-    return openBlob(blob,{target:"train",layer:"background",name:"parovozik.png",composite:true});
+    if(!window.TrainEditor?.buildPhotopeaModel) throw new Error("Layered-модель Паровозика недоступна.");
+    return openLayeredDocument(await TrainEditor.buildPhotopeaModel());
   }
 
   async function editTop10() {
-    if(!window.Top10Editor?.renderBlob) throw new Error("ТОП10 ещё не готов.");
-    const blob=await Top10Editor.renderBlob();
-    return openBlob(blob,{target:"top10",layer:"background",name:"top10.png",composite:true});
+    if(!window.Top10Editor?.buildPhotopeaModel) throw new Error("Layered-модель ТОП10 недоступна.");
+    return openLayeredDocument(await Top10Editor.buildPhotopeaModel());
   }
 
   function classifyDimensions(width,height) {
@@ -171,22 +287,46 @@
     }
   }
 
+  async function requestBinary(format) {
+    const bufferPromise=Promise.race([
+      new Promise((resolve,reject)=>{exportWaiter={resolve,reject};}),
+      timeoutPromise(30000,"Photopea не ответил при экспорте "+format+".")
+    ]);
+    frame.contentWindow.postMessage('if(!app.activeDocument){throw new Error("Нет активного документа");} app.activeDocument.saveToOE('+jsString(format)+');',PP_ORIGIN);
+    const buffer=await bufferPromise;
+    exportWaiter=null;
+    return buffer;
+  }
+
+  async function saveLayeredMaster(workspace) {
+    if(!workspace||!window.SkoomaStore?.savePhotopeaMaster) return null;
+    const buffer=await requestBinary("psd:true");
+    const masterId="photopea-master-"+workspace+"-"+Date.now();
+    await SkoomaStore.savePhotopeaMaster({
+      masterId,workspace,createdAt:Date.now(),name:context?.name||workspace,
+      blob:new Blob([buffer],{type:"image/vnd.adobe.photoshop"}),
+      model:context?.layeredModel||null
+    });
+    layeredMasterIds[workspace]=masterId;
+    if(context) context.layeredMasterId=masterId;
+    return masterId;
+  }
+
   async function sendBack(forcedTarget=null) {
     setSendButtonsDisabled(true);
     const targetLabel=forcedTarget==="vertical"?"вертикальный":forcedTarget==="horizontal"?"горизонтальный":forcedTarget==="train"?"паровозик":forcedTarget==="top10"?"ТОП10":"авто";
-    setStatus("Получаю PNG из Photopea → "+targetLabel+"...");
+    setStatus("Сохраняю layered master и получаю preview → "+targetLabel+"...");
     try {
       await ensureLoaded();
-      const bufferPromise=Promise.race([
-        new Promise((resolve,reject)=>{exportWaiter={resolve,reject};}),
-        timeoutPromise(30000,"Photopea не ответил при экспорте.")
-      ]);
-      frame.contentWindow.postMessage('if(!app.activeDocument){throw new Error("Нет активного документа");} app.activeDocument.saveToOE("png");',PP_ORIGIN);
-      const buffer=await bufferPromise;
-      exportWaiter=null;
+      const masterWorkspace=forcedTarget||context?.target||null;
+      if(context?.layeredModel&&masterWorkspace) {
+        try { await saveLayeredMaster(masterWorkspace); } catch(error) { console.warn("PSD master save failed",error); }
+      }
+      const buffer=await requestBinary("png");
       const blob=new Blob([buffer],{type:"image/png"});
       const dims=await imageDimensions(blob);
-      await routeBlob(blob,dims,forcedTarget);
+      const target=await routeBlob(blob,dims,forcedTarget);
+      await window.WorkArchive?.captureWorkspace?.(target,"photopea-return");
     } catch(error) {
       setStatus(error.message||"Не удалось получить документ из Photopea.","error");
     } finally {
@@ -203,7 +343,14 @@
         ready=true;
         readyWaiters.splice(0).forEach(resolve=>resolve());
         setStatus("Photopea готов.","ok");
+      } else {
+        const waiter=commandWaiters.shift();
+        if(waiter) waiter.resolve();
       }
+      return;
+    }
+    if(typeof event.data==="string" && event.data.startsWith("POSTER_LAYERED_READY:")) {
+      if(context) context.layeredReady=event.data;
       return;
     }
     if(event.data instanceof ArrayBuffer && exportWaiter) exportWaiter.resolve(event.data);
@@ -220,6 +367,7 @@
   window.PhotopeaBridge={
     openAsset,
     openBlob,
+    openLayeredDocument,
     editSelected,
     editCurrentPoster,
     editTrain,
@@ -227,6 +375,8 @@
     sendBack,
     classifyDimensions,
     routeBlob,
+    buildLayeredScript,
+    getLayeredMasterId:workspace=>layeredMasterIds[workspace]||null,
     getContext:()=>context
   };
 })();

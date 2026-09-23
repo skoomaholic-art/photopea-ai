@@ -128,8 +128,7 @@ requireAll("worker routes", worker, [
 
 requireAll("Photopea round trip", photopea, [
   'PP_ORIGIN="https://www.photopea.com"',
-  "ArrayBuffer",
-  'saveToOE("png")',
+  "ArrayBuffer","openLayeredDocument","buildLayeredScript","POSTER_LAYERED_MODEL","psd:true",
   "classifyDimensions","routeBlob","sendPhotopeaVerticalBtn","sendPhotopeaHorizontalBtn","sendPhotopeaTrainBtn","sendPhotopeaAutoBtn","Photopea не ответил",
   "setBackgroundFromDataUrl","setImageLayer","difference<=0.03"
 ]);
@@ -226,4 +225,13 @@ for (let i=1;i<=10;i++) {
 }
 if (/Arial Black|strokeText|fillText/.test(read("top10-editor.js"))) {
   throw new Error("TOP10 number must use provided vector assets, not font/canvas text rendering");
+}
+
+
+requireAll("layered editor models", app, ["buildPhotopeaModel","sourceDataUrl","originalDataUrl"]);
+requireAll("layered train model", train, ["buildPhotopeaModel","Image - Segment","Logo - Segment"]);
+requireAll("layered TOP10 model", top10, ["buildPhotopeaModel","Bottom Darkening","TOP10 Number","Canvas Background"]);
+requireAll("Photopea master persistence", storage, ['createObjectStore("photopeaMasters"',"savePhotopeaMaster","getPhotopeaMaster"]);
+if (photopea.includes("PosterApp.renderPosterBlob(format)") || photopea.includes("TrainEditor.renderMasterBlob()") || photopea.includes("Top10Editor.renderBlob()")) {
+  throw new Error("Main Photopea edit must not use flattened PNG renderers");
 }

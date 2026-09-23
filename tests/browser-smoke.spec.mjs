@@ -76,14 +76,17 @@ async function mockUnifiedSearch(page, items, errors = []) {
 
 async function mockPhotopea(page) {
   const fake = '<!doctype html><html><body><script>' +
-    'let docW=800,docH=1200;' +
+    'let docW=800,docH=1200,layerCount=0;' +
     'function size(buffer){try{const b=new Uint8Array(buffer);if(b.length>24&&b[0]===137&&b[1]===80&&b[2]===78&&b[3]===71){const v=new DataView(buffer);return [v.getUint32(16),v.getUint32(20)];}}catch(e){}return [800,1200];}' +
     'addEventListener("message",async event=>{' +
       'if(event.data instanceof ArrayBuffer){[docW,docH]=size(event.data);parent.postMessage("done","*");return;}' +
-      'if(typeof event.data==="string"&&event.data.includes("saveToOE")){' +
-        'const c=document.createElement("canvas");c.width=docW;c.height=docH;' +
-        'const x=c.getContext("2d");x.fillStyle="#173823";x.fillRect(0,0,docW,docH);x.fillStyle="#fff";x.fillRect(0,0,Math.min(40,docW),Math.min(40,docH));' +
-        'c.toBlob(async blob=>{const buffer=await blob.arrayBuffer();parent.postMessage(buffer,"*",[buffer]);parent.postMessage("done","*");},"image/png");' +
+      'if(typeof event.data==="string"){' +
+        'const m=event.data.match(/POSTER_LAYERED_MODEL:([^*]+)\\*\\//);if(m){try{const meta=JSON.parse(decodeURIComponent(m[1]));docW=meta.width;docH=meta.height;layerCount=meta.layers.length;parent.postMessage("POSTER_LAYERED_READY:"+meta.workspace+":"+docW+"x"+docH+":"+layerCount,"*");}catch(e){}}' +
+        'if(event.data.includes("saveToOE")){' +
+          'const c=document.createElement("canvas");c.width=docW;c.height=docH;const x=c.getContext("2d");x.fillStyle="#173823";x.fillRect(0,0,docW,docH);x.fillStyle="#fff";x.fillRect(0,0,Math.min(40,docW),Math.min(40,docH));' +
+          'c.toBlob(async blob=>{const buffer=await blob.arrayBuffer();parent.postMessage(buffer,"*",[buffer]);parent.postMessage("done","*");},"image/png");return;' +
+        '}' +
+        'parent.postMessage("done","*");return;' +
       '}' +
     '});parent.postMessage("done","*");' +
     '<\/script></body></html>';
@@ -94,6 +97,7 @@ async function mockPhotopea(page) {
     body: fake
   }));
 }
+
 
 function pngSize(buffer) {
   if (buffer.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") throw new Error("Not a PNG");
@@ -717,4 +721,70 @@ test("TOP10 positions 1 through 10 use separate traced vector assets", async ({ 
     expect(number.bounds.left+number.bounds.width).toBeLessThanOrEqual(800);
     expect(number.bounds.bottom).toBeLessThanOrEqual(1400);
   }
+});
+
+
+test("Photopea main edit uses layered Vertical and Horizontal models", async ({ page }) => {
+  await mockStatus(page); await mockPhotopea(page); await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({name:"poster.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#logoFileInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#editPosterPhotopeaBtn").click();
+  await expect(page.locator("#photopeaWorkspace")).toBeVisible();
+  let ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
+  expect(ctx.layeredModel.document).toMatchObject({width:800,height:1200});
+  expect(ctx.layeredModel.layers.map(x=>x.name)).toEqual(expect.arrayContaining(["Background","Poster","Logo"]));
+  expect(ctx.layeredModel.layers.length).toBeGreaterThanOrEqual(3);
+  expect(ctx.composite).toBe(false);
+  await page.locator("#sendPhotopeaVerticalBtn").click();
+  await expect(page.locator("#posterWorkspace")).toBeVisible();
+
+  await page.locator('[data-workspace="horizontal"]').click();
+  await page.locator("#posterFileInput").setInputFiles({name:"h.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#editPosterPhotopeaBtn").click();
+  ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
+  expect(ctx.layeredModel.document).toMatchObject({width:1920,height:1080});
+});
+
+test("Photopea layered Train keeps images logos and stickers independent", async ({ page }) => {
+  await mockStatus(page); await mockPhotopea(page); await page.goto("/");
+  await page.locator('[data-workspace="train"]').click();
+  await page.locator("#trainImageInput").setInputFiles({name:"image.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#trainLogoInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#stickerSelect").selectOption("Премьера");
+  await expect.poll(()=>page.evaluate(()=>window.TrainEditor.inspect().sticker?.text)).toBe("Премьера");
+  await page.locator("#trainEditPhotopeaBtn").click();
+  const ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
+  expect(ctx.layeredModel.document).toMatchObject({width:2952,height:366});
+  const names=ctx.layeredModel.layers.map(x=>x.name);
+  expect(names.some(x=>x.startsWith("Image - Segment"))).toBe(true);
+  expect(names.some(x=>x.startsWith("Logo - Segment"))).toBe(true);
+  expect(names.some(x=>x.startsWith("Sticker - "))).toBe(true);
+});
+
+test("Photopea layered TOP10 keeps number logo darkening and background separate", async ({ page }) => {
+  await mockStatus(page); await mockPhotopea(page); await page.goto("/");
+  await page.locator('[data-workspace="top10"]').click();
+  await page.locator("#top10BackgroundInput").setInputFiles({name:"bg.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#top10LogoInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#top10PositionSelect").selectOption("7");
+  await page.locator("#top10EditPhotopeaBtn").click();
+  const ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
+  expect(ctx.layeredModel.document).toMatchObject({width:800,height:1400});
+  const names=ctx.layeredModel.layers.map(x=>x.name);
+  expect(names).toEqual(expect.arrayContaining(["Canvas Background","Background Image","Bottom Darkening","Logo","TOP10 Number"]));
+  const number=ctx.layeredModel.layers.find(x=>x.name==="TOP10 Number");
+  expect(number.sourceDataUrl).toContain("/7.svg");
+  expect(number.locked).toBe(true);
+  expect(ctx.layeredModel.layers.find(x=>x.name==="Bottom Darkening").locked).toBe(true);
+});
+
+test("Photopea return saves a layered master reference", async ({ page }) => {
+  await mockStatus(page); await mockPhotopea(page); await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({name:"poster.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#editPosterPhotopeaBtn").click();
+  await page.locator("#sendPhotopeaVerticalBtn").click();
+  await expect(page.locator("#posterWorkspace")).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>window.PhotopeaBridge.getLayeredMasterId("vertical"))).not.toBeNull();
+  const id=await page.evaluate(()=>window.PhotopeaBridge.getLayeredMasterId("vertical"));
+  expect(await page.evaluate(async id=>!!(await window.SkoomaStore.getPhotopeaMaster(id)),id)).toBe(true);
 });
