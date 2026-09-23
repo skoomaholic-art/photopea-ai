@@ -459,7 +459,7 @@
       }
       renderPoster();
       scheduleAutosave();
-      setBgStatus("Фон удалён через " + (data.provider || provider) + ". Оригинал сохранён в Asset Manager; положение и трансформация сохранены.", "ok");
+      setBgStatus("Фон удалён через " + (data.provider || provider) + ". Оригинал сохранён в Asset Manager. Положение и трансформация сохранены.", "ok");
     } catch (error) {
       setBgStatus(error.message || "Ошибка удаления фона.", "error");
     } finally {
