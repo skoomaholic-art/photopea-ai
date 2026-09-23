@@ -135,6 +135,7 @@
     posterImage.classList.toggle("selected-layer", state.selectedLayer === "poster" && !posterImage.hidden);
     logoImage.classList.toggle("selected-layer", state.selectedLayer === "logo" && !logoImage.hidden);
     syncLayerControls();
+    requestAnimationFrame(updateTransformOverlay);
   }
 
   function syncLayerControls() {
@@ -920,8 +921,8 @@
   $("resetLayerBtn").addEventListener("click", resetSelectedLayer);
   $("posterLayerUpBtn").addEventListener("click", () => changePosterLayerOrder(1));
   $("posterLayerDownBtn").addEventListener("click", () => changePosterLayerOrder(-1));
-  $("posterLockInput").addEventListener("change", e => { current().posterLocked = e.target.checked; scheduleAutosave(); });
-  $("logoLockInput").addEventListener("change", e => { current().logoLocked = e.target.checked; scheduleAutosave(); });
+  $("posterLockInput").addEventListener("change", e => { current().posterLocked = e.target.checked; updateTransformOverlay(); scheduleAutosave(); });
+  $("logoLockInput").addEventListener("change", e => { current().logoLocked = e.target.checked; updateTransformOverlay(); scheduleAutosave(); });
   $("posterBgInput").addEventListener("input", e => { current().background = e.target.value; renderPoster(); scheduleAutosave(); });
   $("aiProvider").addEventListener("change", updateAiAvailability);
   $("generateBtn").addEventListener("click", generateAi);
@@ -944,7 +945,10 @@
   });
   $("downloadResultBtn").addEventListener("click", async () => {
     if (!state.selectedAiResult) return;
-    try { downloadBlob(await (await fetch(state.selectedAiResult)).blob(), "adapted-logo.png"); } catch { window.open(state.selectedAiResult, "_blank", "noopener"); }
+    try {
+      downloadBlob(await (await fetch(state.selectedAiResult)).blob(), "adapted-logo.png");
+      await window.WorkArchive?.captureWorkspace?.(state.activeFormat,"download-ai-result");
+    } catch { window.open(state.selectedAiResult, "_blank", "noopener"); }
   });
   $("bgProviderSelect").addEventListener("change", updateBgAvailability);
   $("removeBackgroundBtn").addEventListener("click", removeBackground);
