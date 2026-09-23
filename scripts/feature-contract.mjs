@@ -3,6 +3,7 @@ import fs from "node:fs";
 const read = file => fs.readFileSync(file, "utf8");
 const html = read("index.html");
 const app = read("poster-app.js");
+const localBackground = read("local-background-removal.js");
 const train = read("train-editor.js");
 const worker = read("worker/ai-worker.js");
 const sources = read("worker/image-sources.js");
@@ -34,12 +35,14 @@ requireAll("workspace UI", html, [
   "ЛОГОТИПЫ",
   "Фильтры",
   "Редактировать в Photopea",
-  "Отправить в Poster Editor",
+  "В вертикальный",
+  "В горизонтальный",
+  "В паровозик",
+  ">Авто<",
   "Удалить фон выбранного изображения",
   "Скачать вертикальный постер",
   "Скачать горизонтальный постер",
   "Скачать всё",
-  "trainBadgeSelect",
   "Скачать выбранный размер",
   "Скачать все размеры"
 ]);
@@ -52,7 +55,7 @@ requireAll("poster state", app, [
   "saveAutosave",
   "restoreProject",
   "POSTER_BLEED = 0.035",
-  'EXPECTED_API_VERSION = "2026-09-23-assets-v3"',
+  'EXPECTED_API_VERSION = "2026-09-23-runtime-v4"',
   "posterAssetId",
   "logoAssetId",
   "getSelectedImageContext",
@@ -104,21 +107,21 @@ requireAll("modular sources", sources, [
   "searchUnifiedImages","referenceSources","secureImageProxy","imageProviderStatus",
   "image.tmdb.org","assets.fanart.tv","upload.wikimedia.org","static.tvmaze.com",
   "MAX_IMAGE_BYTES","PROXY_TIMEOUT_MS","ssrf_blocked","bad_content_type","Cache-Control",
-  "TMDB_COMMERCIAL_APPROVED","FANART_API_KEY"
+  "FANART_API_KEY"
 ]);
 
 requireAll("worker routes", worker, [
   '"/api/images/search"','"/api/images/proxy"',
   "searchUnifiedImages","secureImageProxy","imageProviderStatus",
-  'apiVersion: "2026-09-23-assets-v3"',
-  "env.OPENROUTER_API_KEY","env.CARVE_API_KEY","env.REMOVAL_AI_KEY"
+  'apiVersion: "2026-09-23-runtime-v4"',
+  "env.OPENROUTER_API_KEY","env.AI.run","cloudflareImageModel","/api/health","env.CARVE_API_KEY","env.REMOVAL_AI_KEY"
 ]);
 
 requireAll("Photopea round trip", photopea, [
   'PP_ORIGIN="https://www.photopea.com"',
   "ArrayBuffer",
   'saveToOE("png")',
-  "classifyDimensions","routeBlob","Photopea не ответил",
+  "classifyDimensions","routeBlob","sendPhotopeaVerticalBtn","sendPhotopeaHorizontalBtn","sendPhotopeaTrainBtn","sendPhotopeaAutoBtn","Photopea не ответил",
   "setBackgroundFromDataUrl","setImageLayer","difference<=0.03"
 ]);
 
@@ -150,9 +153,16 @@ for (const folder of ["1 - 164x122","2 - 246x183","3 - 328x244","4 - 492x366"]) 
 }
 
 requireAll("env example", envExample, [
-  "TMDB_ACCESS_TOKEN=","TMDB_API_KEY=","TMDB_COMMERCIAL_APPROVED=false",
+  "TMDB_ACCESS_TOKEN=","TMDB_API_KEY=",
   "FANART_API_KEY=","FANART_CLIENT_KEY=","OPENROUTER_API_KEY=","CARVE_API_KEY=","REMOVAL_AI_KEY="
 ]);
+
+requireAll("local background removal", localBackground, [
+  "@imgly/background-removal@1.7.0","model: \"small\"","image/png","progress","LocalBackgroundRemoval"
+]);
+
+if (html.includes("trainBadgeSelect")) throw new Error("Duplicate train badge selector must stay removed.");
+if (html.includes("Use POST")) throw new Error("Debug placeholder Use POST must not be visible.");
 
 requireAll("zip", zip, ["0x04034b50","0x02014b50","0x06054b50","crc32","application/zip"]);
 requireAll("icon", icon, ["<svg","#8cf06b","aria-label"]);
