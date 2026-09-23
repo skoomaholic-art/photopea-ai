@@ -269,10 +269,22 @@
   function selectLayer(layer){
     if(!["background","logo","darkening","number"].includes(layer)) return;
     runtime.selectedLayer=layer;
-    canvas.discardActiveObject();
-    if(layer==="background"&&objects.background) canvas.setActiveObject(objects.background);
-    if(layer==="logo"&&objects.logo) canvas.setActiveObject(objects.logo);
+    const target=layer==="background"?objects.background:layer==="logo"?objects.logo:null;
+    const active=canvas.getActiveObject();
+    if(target){
+      if(active!==target) canvas.setActiveObject(target);
+    }else if(active){
+      canvas.discardActiveObject();
+    }
     canvas.requestRenderAll();renderLayers();syncControls();
+  }
+
+  function syncLayerFromFabricSelection(event){
+    const kind=event?.selected?.[0]?.top10Kind;
+    if(kind!=="background"&&kind!=="logo") return;
+    runtime.selectedLayer=kind;
+    renderLayers();
+    syncControls();
   }
 
   function renderLayers(){
@@ -494,12 +506,8 @@
   canvas.on("object:moving",e=>updateStateFromObject(e.target));
   canvas.on("object:scaling",e=>updateStateFromObject(e.target));
   canvas.on("object:rotating",e=>updateStateFromObject(e.target));
-  canvas.on("selection:created",e=>{
-    const kind=e.selected?.[0]?.top10Kind;if(kind==="background"||kind==="logo") selectLayer(kind);
-  });
-  canvas.on("selection:updated",e=>{
-    const kind=e.selected?.[0]?.top10Kind;if(kind==="background"||kind==="logo") selectLayer(kind);
-  });
+  canvas.on("selection:created",syncLayerFromFabricSelection);
+  canvas.on("selection:updated",syncLayerFromFabricSelection);
   canvas.on("mouse:wheel",opt=>{
     const obj=canvas.getActiveObject(),layer=obj?.top10Kind;
     if(layer!=="background"&&layer!=="logo") return;

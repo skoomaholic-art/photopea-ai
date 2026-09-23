@@ -499,6 +499,7 @@ test("autosave survives reload with asset-backed poster and sticker", async ({ p
 
 test("TOP10 master canvas, locked template, filters, export, Photopea routing and persistence work", async ({ page }) => {
   await mockStatus(page);
+  await mockPhotopea(page);
   await page.goto("/");
   await page.locator('[data-workspace="top10"]').click();
   await page.waitForFunction(() => !!window.Top10Editor);
@@ -580,6 +581,15 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
     await window.PhotopeaBridge.routeBlob(blob,{width:800,height:1400},"top10");
   });
   await expect(page.locator("#top10Workspace")).toBeVisible();
+
+  await page.locator("#top10EditPhotopeaBtn").click();
+  await expect(page.locator("#photopeaWorkspace")).toBeVisible();
+  await expect(page.locator("#sendPhotopeaTop10Btn")).toBeVisible();
+  await page.locator("#sendPhotopeaTop10Btn").click();
+  await expect(page.locator("#top10Workspace")).toBeVisible();
+  await expect(page.locator('[data-workspace="top10"]')).toHaveClass(/active/);
+  await expect(page.locator("#photopeaStatus")).toContainText("800×1400");
+  expect((await page.evaluate(() => window.Top10Editor.getState().background))).toMatch(/^data:image\/png;base64,/);
 
   await page.locator(".top10-layer-row").filter({hasText:"TOP_NUMBER"}).click();
   await page.locator("#top10PositionSelect").selectOption("7");
