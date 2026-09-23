@@ -279,6 +279,9 @@
           <label class="upload-card">Загрузить изображение<input id="top10BackgroundInput" type="file" accept="image/jpeg,image/png,image/webp"></label>
           <h3>Логотип</h3>
           <label class="upload-card">Загрузить логотип<input id="top10LogoInput" type="file" accept="image/png,image/webp,image/svg+xml"></label>
+          <h3>Цветокор</h3>
+          <button id="top10FilterBtn" class="wide">Фильтры / Цветокор</button>
+          <p class="muted">Live preview. Фильтры применяются только к BACKGROUND_IMAGE.</p>
         </section>
         <section data-top10-controls="background">
           <h3>BACKGROUND_IMAGE</h3>
@@ -287,8 +290,7 @@
             <label>Поворот <input id="top10BgRotation" type="range" min="-180" max="180" value="0"></label>
           </div>
           <div class="button-row"><button id="top10BgCenter">Центрировать</button><button id="top10BgReset">Сбросить</button></div>
-          <button id="top10FilterBtn" class="wide">Фильтры / Цветокор</button>
-          <p class="muted">Недеструктивный цветокор применяется только к основному изображению.</p>
+          <p class="muted">Перемещение, масштаб и поворот относятся только к основному изображению.</p>
         </section>
         <section data-top10-controls="logo" hidden>
           <h3>LOGO</h3>

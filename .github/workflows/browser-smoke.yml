@@ -38,6 +38,7 @@ jobs:
           node --check photopea-bridge.js
           node --check poster-app.js
           node --check train-editor.js
+          node --check top10-editor.js
           node --check zip-store.js
 
       - name: Static smoke
