@@ -124,7 +124,8 @@
     return "Провайдер не настроен.";
   }
 
-  function scheduleAutosave() {
+  function scheduleAutosave(markDirty = true) {
+    if(markDirty && current()?.photopeaMasterId) current().photopeaMasterId=null;
     clearTimeout(state.autosaveTimer);
     state.autosaveTimer = setTimeout(saveAutosave, 500);
   }

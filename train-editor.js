@@ -241,7 +241,7 @@
     renderLayers();
     canvas.requestRenderAll();
     scheduleDevicePreview();
-    scheduleAutosave();
+    scheduleAutosave(false);
     return image;
   }
 
@@ -690,7 +690,8 @@
     }
   }
 
-  function scheduleAutosave() {
+  function scheduleAutosave(markDirty = true) {
+    if(markDirty && state.photopeaMasterId) state.photopeaMasterId=null;
     clearTimeout(state.autosaveTimer);
     state.autosaveTimer = setTimeout(async () => {
       try {

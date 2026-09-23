@@ -373,7 +373,7 @@
     canvas.discardActiveObject();
     applyStacking();
     syncControls();
-    scheduleAutosave();
+    scheduleAutosave(false);
     setStatus("Результат Photopea возвращён без дублирования слоёв.","ok");
   }
 
@@ -504,6 +504,12 @@
   async function buildPhotopeaModel(){
     const layers=[{id:"top10-canvas-background",name:"Canvas Background",type:"background",color:"#050505",
       x:MASTER_W/2,y:MASTER_H/2,width:MASTER_W,height:MASTER_H,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:true,zIndex:0}];
+    if(data.photopeaComposite && data.background){
+      const source=await bestTop10Asset(data.backgroundAssetId,data.background,data.backgroundFilters);
+      layers.push({id:"top10-photopea-result",name:"Photopea Result",type:"image",assetId:data.backgroundAssetId||null,sourceDataUrl:source,
+        x:MASTER_W/2,y:MASTER_H/2,width:MASTER_W,height:MASTER_H,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:false,zIndex:1});
+      return {version:1,workspace:"top10",document:{name:"TOP10",width:MASTER_W,height:MASTER_H,background:"#050505"},layers};
+    }
     let backgroundLayer=null,logoLayer=null;
     if(data.background){
       const source=await bestTop10Asset(data.backgroundAssetId,data.background,data.backgroundFilters);
@@ -559,7 +565,8 @@
     }catch(error){setStatus(error.message||"Ошибка экспорта.","error");}
   }
 
-  function scheduleAutosave(){
+  function scheduleAutosave(markDirty=true){
+    if(markDirty && data.photopeaMasterId) data.photopeaMasterId=null;
     clearTimeout(runtime.autosaveTimer);
     runtime.autosaveTimer=setTimeout(async()=>{
       try{

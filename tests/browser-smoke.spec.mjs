@@ -633,6 +633,10 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   await expect(page.locator('[data-workspace="top10"]')).toHaveClass(/active/);
   await expect(page.locator("#photopeaStatus")).toContainText("800×1400");
   expect((await page.evaluate(() => window.Top10Editor.getState().background))).toMatch(/^data:image\/png;base64,/);
+  if (await page.evaluate(() => window.Top10Editor.getState().photopeaComposite)) {
+    await page.locator("#top10ResetClassicBtn").click();
+    await page.locator("#resetConfirmOkBtn").click();
+  }
 
   await page.locator(".top10-layer-row").filter({hasText:"TOP_NUMBER"}).click();
   await page.locator("#top10PositionSelect").selectOption("7");
@@ -889,6 +893,16 @@ test("Photopea Train and TOP10 returns clear pre-existing editor overlays", asyn
   expect(top.logo).toBeNull();
   expect(top.photopeaMasterId).toBeTruthy();
   expect(await page.evaluate(()=>Top10Editor.inspect().layers)).toEqual(["PHOTOPEA_RESULT"]);
+});
+
+test("editing after Photopea return invalidates the stale layered master reference", async ({ page }) => {
+  await mockStatus(page); await mockPhotopea(page); await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({name:"poster.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#editPosterPhotopeaBtn").click();
+  await page.locator("#sendPhotopeaVerticalBtn").click();
+  await expect.poll(()=>page.evaluate(()=>!!PosterApp.getState().vertical.photopeaMasterId)).toBe(true);
+  await page.locator("#posterBgInput").fill("#123456");
+  await expect.poll(()=>page.evaluate(()=>PosterApp.getState().vertical.photopeaMasterId)).toBeNull();
 });
 
 test("Photopea return saves a layered master reference", async ({ page }) => {
