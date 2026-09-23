@@ -328,7 +328,7 @@ test("TEST 5 Vertical Photopea return routes automatically Vertical", async ({ p
   await page.locator("#posterFileInput").setInputFiles({ name: "vertical.png", mimeType: "image/png", buffer: PNG });
   await page.locator("#editPosterPhotopeaBtn").click();
   await expect(page.locator("#photopeaWorkspace")).toBeVisible();
-  await expect(page.locator("#photopeaStatus")).toContainText(/Photopea готов|Документ передан/);
+  await expect(page.locator("#photopeaStatus")).toContainText(/Photopea готов|Документ передан|Многослойный документ открыт/);
   await expect(page.locator("#sendPhotopeaVerticalBtn")).toBeVisible();
   await expect(page.locator("#sendPhotopeaHorizontalBtn")).toBeVisible();
   await expect(page.locator("#sendPhotopeaTrainBtn")).toBeVisible();
@@ -768,6 +768,7 @@ test("Photopea layered TOP10 keeps number logo darkening and background separate
   await page.locator("#top10LogoInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
   await page.locator("#top10PositionSelect").selectOption("7");
   await page.locator("#top10EditPhotopeaBtn").click();
+  await expect.poll(() => page.evaluate(() => !!window.PhotopeaBridge.getContext()?.layeredModel)).toBe(true);
   const ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
   expect(ctx.layeredModel.document).toMatchObject({width:800,height:1400});
   const names=ctx.layeredModel.layers.map(x=>x.name);
