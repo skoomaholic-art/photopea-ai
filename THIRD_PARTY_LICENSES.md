@@ -27,9 +27,8 @@ This file tracks runtime libraries and external APIs used by Poster Editor.
 ## TMDB
 
 - API: https://developer.themoviedb.org/
-- Free API use is for non-commercial purposes with attribution.
-- Commercial usage requires an appropriate commercial license.
-- The Worker keeps TMDB disabled unless both a server token and TMDB_COMMERCIAL_APPROVED=true are configured.
+- API use must follow TMDB's current terms and attribution requirements.
+- The Worker only requires a configured server-side TMDB credential; it no longer uses a custom UI-blocking approval flag.
 
 ## Carve.Photos
 
@@ -46,19 +45,27 @@ This file tracks runtime libraries and external APIs used by Poster Editor.
 - Use: optional server-side background removal.
 - Requires REMOVAL_AI_KEY.
 
-## OpenAI
+## Cloudflare Workers AI
 
-- API docs: https://developers.openai.com/
-- Model: gpt-image-1-mini
-- Use: optional server-side logo image edit.
-- Requires OPENAI_API_KEY.
+- Docs: https://developers.cloudflare.com/workers-ai/
+- Model: @cf/black-forest-labs/flux-2-klein-4b
+- Use: primary server-side logo image editing provider through the Worker AI binding.
+- Cloudflare provides a shared daily free allocation; usage above it follows the account plan.
 
-## xAI / SpaceXAI
+## OpenRouter
 
-- API docs: https://docs.x.ai/
-- Model: grok-imagine-image-2.0
-- Use: optional server-side logo image edit.
-- Requires XAI_API_KEY.
+- API docs: https://openrouter.ai/docs/
+- Models: x-ai/grok-imagine-image-2.0 and openai/gpt-image-1.
+- Use: optional paid fallback image editing providers.
+- Requires OPENROUTER_API_KEY stored only on the Worker.
+
+## IMG.LY background-removal
+
+- Package: @imgly/background-removal 1.7.0
+- Repository: https://github.com/imgly/background-removal-js
+- License: AGPL (see upstream license for obligations).
+- Use: browser-side background removal fallback with cached ONNX/WASM model assets.
+- Loaded on demand from jsDelivr; model/runtime assets are fetched and cached by the browser.
 
 ## Photopea
 

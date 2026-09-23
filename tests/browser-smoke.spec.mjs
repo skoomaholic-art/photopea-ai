@@ -6,17 +6,17 @@ const PNG_DATA = "data:image/png;base64," + PNG.toString("base64");
 const API = "https://skoomaholic.alexandr-petrossov.workers.dev";
 
 async function mockStatus(page, extra = {}) {
-  await page.route("**/api/status", route => route.fulfill({
+  await page.route("**/api/health", route => route.fulfill({
     status: 200,
     contentType: "application/json",
     body: JSON.stringify({
       ok: true,
-      apiVersion: "2026-09-23-assets-v3",
-      providers: { xai: true, openai: true },
-      background: { carve: true, removal: true },
+      apiVersion: "2026-09-23-runtime-v4",
+      providers: { cloudflare: true, xai: true, openai: true },
+      background: { local: true, carve: true, removal: true },
       posters: { tvmaze: true, tmdb: true },
       images: {
-        tmdb: { enabled: true, configured: true, commercialApproved: true },
+        tmdb: { enabled: true, configured: true },
         fanart: { enabled: true, configured: true },
         wikimedia: { enabled: true, configured: true },
         tvmaze: { enabled: true, configured: true }
@@ -209,6 +209,43 @@ test("TEST 3 Fanart textless artwork to Horizontal", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.PosterApp.getState().horizontal.posterAssetId)).toBeTruthy();
 });
 
+test("multiple TMDB matches are selectable before choosing artwork", async ({ page }) => {
+  await mockStatus(page);
+  const candidates = [
+    { tmdbId: 238, mediaType: "movie", title: "Крёстный отец", originalTitle: "The Godfather", year: "1972" },
+    { tmdbId: 999, mediaType: "tv", title: "Крёстный отец: сериал", originalTitle: "The Godfather Series", year: "1972" }
+  ];
+  let selectedRequest = false;
+  await page.route("**/api/images/search?*", route => {
+    const url = new URL(route.request().url());
+    const selected = url.searchParams.get("tmdbId") === "999";
+    if (selected) selectedRequest = true;
+    const identity = selected ? candidates[1] : candidates[0];
+    const item = remoteItem({
+      id: selected ? "tmdb-tv-999-poster" : "tmdb-movie-238-poster",
+      sourceId: selected ? "tv-999-poster" : "movie-238-poster",
+      title: identity.title,
+      mediaType: identity.mediaType,
+      tmdbId: identity.tmdbId
+    });
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ identity, candidates, results: [item], references: [], providers: {}, errors: [] })
+    });
+  });
+  await page.route("**/api/images/proxy?*", route => route.fulfill({ status: 200, contentType: "image/png", body: PNG }));
+
+  await page.goto("/");
+  await openSearch(page, "Крестный отец", "1972");
+  await expect(page.locator("#sourceCandidates")).toBeVisible();
+  await expect(page.locator(".source-candidate")).toHaveCount(2);
+  await page.locator(".source-candidate").filter({ hasText: "сериал" }).click();
+  await expect.poll(() => selectedRequest).toBe(true);
+  await expect(page.locator("#sourceSearchStatus")).toContainText("Крёстный отец: сериал");
+  await expect(page.locator(".source-candidate.active")).toContainText("сериал");
+});
+
 test("TEST 4 filters Cinematic plus manual Contrast survive export", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
@@ -271,6 +308,7 @@ test("background removal preserves transform", async ({ page }) => {
   await page.locator("#posterLockInput").uncheck();
   await page.locator("#layerScaleInput").fill("145");
   await page.locator("#layerRotationInput").fill("11");
+  await page.locator("#bgProviderSelect").selectOption("carve");
   await page.locator("#removeBackgroundBtn").click();
   await expect(page.locator("#bgRemoveStatus")).toContainText("Положение и трансформация сохранены");
   const state = await page.evaluate(() => window.PosterApp.getState().vertical);
@@ -286,7 +324,11 @@ test("TEST 5 Vertical Photopea return routes automatically Vertical", async ({ p
   await page.locator("#editPosterPhotopeaBtn").click();
   await expect(page.locator("#photopeaWorkspace")).toBeVisible();
   await expect(page.locator("#photopeaStatus")).toContainText(/Photopea готов|Документ передан/);
-  await page.locator("#sendPhotopeaBtn").click();
+  await expect(page.locator("#sendPhotopeaVerticalBtn")).toBeVisible();
+  await expect(page.locator("#sendPhotopeaHorizontalBtn")).toBeVisible();
+  await expect(page.locator("#sendPhotopeaTrainBtn")).toBeVisible();
+  await expect(page.locator("#sendPhotopeaAutoBtn")).toBeVisible();
+  await page.locator("#sendPhotopeaVerticalBtn").click();
   await expect(page.locator("#posterWorkspace")).toBeVisible();
   await expect(page.locator('[data-workspace="vertical"]')).toHaveClass(/active/);
   expect((await page.evaluate(() => window.PosterApp.getState().vertical)).poster).toMatch(/^data:image\/png;base64,/);
@@ -300,7 +342,7 @@ test("TEST 6 Horizontal Photopea return routes automatically Horizontal", async 
   await page.locator("#posterFileInput").setInputFiles({ name: "horizontal.png", mimeType: "image/png", buffer: PNG });
   await page.locator("#editPosterPhotopeaBtn").click();
   await expect(page.locator("#photopeaWorkspace")).toBeVisible();
-  await page.locator("#sendPhotopeaBtn").click();
+  await page.locator("#sendPhotopeaHorizontalBtn").click();
   await expect(page.locator('[data-workspace="horizontal"]')).toHaveClass(/active/);
   expect((await page.evaluate(() => window.PosterApp.getState().horizontal)).poster).toMatch(/^data:image\/png;base64,/);
 });
@@ -311,9 +353,10 @@ test("TEST 7 Parovozik Photopea return routes automatically train", async ({ pag
   await page.goto("/");
   await page.locator('[data-workspace="train"]').click();
   await page.waitForFunction(() => !!window.TrainEditor);
+  await expect(page.locator("#trainBadgeSelect")).toHaveCount(0);
   await page.locator("#trainEditPhotopeaBtn").click();
   await expect(page.locator("#photopeaWorkspace")).toBeVisible();
-  await page.locator("#sendPhotopeaBtn").click();
+  await page.locator("#sendPhotopeaTrainBtn").click();
   await expect(page.locator("#trainWorkspace")).toBeVisible();
   const inspect = await page.evaluate(() => window.TrainEditor.inspect());
   expect(inspect.masterSize).toEqual({ width: 2952, height: 366 });
@@ -341,8 +384,13 @@ test("TEST 8 nonstandard Photopea ratio asks destination", async ({ page }) => {
 
 test("TEST 9 missing keys do not crash and are surfaced", async ({ page }) => {
   await mockStatus(page, {
-    providers: { xai: false, openai: false },
-    background: { carve: false, removal: false },
+    providers: { cloudflare: false, xai: false, openai: false },
+    providerDetails: {
+      cloudflare: { status: "not_configured" },
+      xai: { status: "not_configured" },
+      openai: { status: "not_configured" }
+    },
+    background: { local: true, carve: false, removal: false },
     images: {
       tmdb: { enabled: false, configured: false, reason: "TMDB API key не настроен" },
       fanart: { enabled: false, configured: false, reason: "Fanart.tv API key не настроен" },
@@ -356,7 +404,8 @@ test("TEST 9 missing keys do not crash and are surfaced", async ({ page }) => {
   ]);
   await page.goto("/");
   await expect(page.locator("#generateBtn")).toBeDisabled();
-  await expect(page.locator("#removeBackgroundBtn")).toBeDisabled();
+  await expect(page.locator("#removeBackgroundBtn")).toBeEnabled();
+  await expect(page.locator("#bgRemoveStatus")).toContainText("Локальное удаление фона готово");
   await openSearch(page, "Test Show", "2026");
   await expect(page.locator("#sourceSearchStatus")).toContainText("TMDB API key не настроен");
   await expect(page.locator(".source-card")).toHaveCount(1);
@@ -396,7 +445,7 @@ test("TEST 11 repeated Poster Photopea Poster cycle remains PNG and usable", asy
   for (let i = 0; i < 2; i++) {
     await page.locator("#editPosterPhotopeaBtn").click();
     await expect(page.locator("#photopeaWorkspace")).toBeVisible();
-    await page.locator("#sendPhotopeaBtn").click();
+    await page.locator("#sendPhotopeaVerticalBtn").click();
     await expect(page.locator("#posterWorkspace")).toBeVisible();
   }
 

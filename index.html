@@ -7,17 +7,18 @@
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
   <link rel="icon" type="image/svg+xml" href="app-icon.svg?v=20260922c">
-  <link rel="stylesheet" href="poster-app.css?v=20260923b">
+  <link rel="stylesheet" href="poster-app.css?v=20260923c">
   <script defer src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
   <script defer src="storage.js?v=20260923b"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
   <script defer src="asset-manager.js?v=20260923b"></script>
+  <script defer src="local-background-removal.js?v=20260923a"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
-  <script defer src="poster-app.js?v=20260923b"></script>
-  <script defer src="train-editor.js?v=20260923b"></script>
+  <script defer src="poster-app.js?v=20260923c"></script>
+  <script defer src="train-editor.js?v=20260923c"></script>
   <script defer src="filter-studio.js?v=20260923b"></script>
   <script defer src="source-browser.js?v=20260923b"></script>
-  <script defer src="photopea-bridge.js?v=20260923b"></script>
+  <script defer src="photopea-bridge.js?v=20260923c"></script>
 </head>
 <body>
   <header class="topbar">
@@ -95,6 +96,7 @@
           <label class="field">Провайдер
             <select id="bgProviderSelect">
               <option value="auto">Авто</option>
+              <option value="local">Локально (без API)</option>
               <option value="carve">Carve.Photos</option>
               <option value="removal">Removal.AI</option>
             </select>
@@ -120,12 +122,13 @@
 
       <aside class="panel sidebar">
         <section>
-          <div class="section-head"><h3>Grok / GPT</h3><span id="aiServerBadge">проверка</span></div>
+          <div class="section-head"><h3>AI / IMAGE EDIT</h3><span id="aiServerBadge">проверка</span></div>
           <p class="muted">Ключи хранятся только в Worker.</p>
           <label class="field">Провайдер
             <select id="aiProvider">
-              <option value="xai">Grok Imagine</option>
-              <option value="openai">GPT Image</option>
+              <option value="cloudflare">FLUX.2 Klein (Workers AI free tier)</option>
+              <option value="xai">Grok Imagine 2.0 (OpenRouter, платный)</option>
+              <option value="openai">GPT Image 1 (OpenRouter, платный)</option>
             </select>
           </label>
           <label class="field">Язык
@@ -165,24 +168,6 @@
             <input id="trainTextInput" value="Новый текст" aria-label="Текст">
             <button id="trainAddTextBtn">+ Текст</button>
           </div>
-          <label class="field">Плашка
-            <select id="trainBadgeSelect">
-              <option>Премьера</option>
-              <option>Новые серии</option>
-              <option>Жаңа сериялар</option>
-              <option>Новый сезон</option>
-              <option>Жаңа маусым</option>
-              <option>Все серии</option>
-              <option>Барлық сериалдар</option>
-              <option>Новинка</option>
-              <option>Жаңа</option>
-              <option>Эксклюзив</option>
-              <option>Скоро...</option>
-              <option>Жуырда...</option>
-              <option>Скоро уйдёт</option>
-              <option>Көріп үлгер</option>
-            </select>
-          </label>
           <div class="button-row">
             <button id="trainAddRectBtn">+ Добавить плашку</button>
             <button id="trainDuplicateBtn">Дублировать</button>
@@ -287,7 +272,10 @@
       <strong>Photopea</strong>
       <span id="photopeaStatus" class="mini-status">Откройте изображение из Poster Editor.</span>
       <div class="button-row photopea-actions">
-        <button id="sendPhotopeaBtn" class="primary">Отправить в Poster Editor</button>
+        <button id="sendPhotopeaVerticalBtn" class="primary">В вертикальный</button>
+        <button id="sendPhotopeaHorizontalBtn">В горизонтальный</button>
+        <button id="sendPhotopeaTrainBtn">В паровозик</button>
+        <button id="sendPhotopeaAutoBtn">Авто</button>
         <button id="openPhotopeaBtn">Открыть отдельно ↗</button>
       </div>
     </div>
@@ -303,6 +291,8 @@
         <button id="sourceSearchRun" class="primary">Искать</button>
       </div>
       <div id="sourceSearchStatus" class="mini-status">Введите название.</div>
+      <div id="sourceCandidates" class="source-candidates" hidden aria-label="Результаты поиска фильма или сериала"></div>
+      <div id="sourceProviderStatus" class="source-provider-status" aria-label="Статус источников изображений"></div>
       <div class="source-tabs">
         <button class="active" data-image-tab="all">ВСЕ</button>
         <button data-image-tab="poster">ПОСТЕРЫ</button>

@@ -6,7 +6,7 @@
     horizontal: { w: 1920, h: 1080, label: "Горизонтальный" }
   };
   const POSTER_BLEED = 0.035;
-  const EXPECTED_API_VERSION = "2026-09-23-assets-v3";
+  const EXPECTED_API_VERSION = "2026-09-23-runtime-v4";
   const makePosterState = () => ({
     poster: null, logo: null, posterName: "", logoName: "",
     posterX: 50, posterY: 50, posterScale: 100, posterRotation: 0,
@@ -19,8 +19,9 @@
     activeFormat: "vertical",
     selectedLayer: "poster",
     posters: { vertical: makePosterState(), horizontal: makePosterState() },
-    aiProviders: { xai: false, openai: false },
-    backgroundProviders: { carve: false, removal: false },
+    aiProviders: { cloudflare: false, xai: false, openai: false },
+    aiProviderDetails: {},
+    backgroundProviders: { local: true, carve: false, removal: false },
     imageProviders: {},
     workerVersion: null,
     selectedAiResult: null,
@@ -83,6 +84,42 @@
     const response = await fetch(src, { cache: "no-store" });
     if (!response.ok) throw new Error("Не удалось получить изображение.");
     return blobToDataUrl(await response.blob());
+  }
+
+  async function resizeDataUrlForAi(src, maxSide = 510) {
+    const dataUrl = await sourceToDataUrl(src);
+    const image = await new Promise((resolve, reject) => {
+      const item = new Image();
+      item.onload = () => resolve(item);
+      item.onerror = () => reject(new Error("Не удалось подготовить reference image."));
+      item.src = dataUrl;
+    });
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (Math.max(width, height) <= maxSide) return dataUrl;
+    const ratio = maxSide / Math.max(width, height);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(width * ratio));
+    canvas.height = Math.max(1, Math.round(height * ratio));
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/png");
+  }
+
+  function localBackgroundReady() {
+    return !!window.LocalBackgroundRemoval?.isAvailable?.();
+  }
+
+  function providerStatusMessage(detail) {
+    const status = detail?.status;
+    if (status === "rate_limited") return "Провайдер временно упёрся в лимит.";
+    if (status === "auth_error") return "Ключ провайдера отклонён.";
+    if (status === "timeout") return "Проверка провайдера превысила таймаут.";
+    if (status === "incompatible") return "Модель не поддерживает image-to-image.";
+    if (status === "offline") return "Провайдер сейчас недоступен.";
+    return "Провайдер не настроен.";
   }
 
   function scheduleAutosave() {
@@ -211,57 +248,65 @@
   }
 
   async function checkServer() {
+    state.backgroundProviders.local = localBackgroundReady();
     if (!apiBase) {
+      state.aiProviders = { cloudflare: false, xai: false, openai: false };
+      state.backgroundProviders = { local: localBackgroundReady(), carve: false, removal: false };
       $("aiServerBadge").textContent = "не настроен";
-      $("bgProviderBadge").textContent = "не настроен";
+      $("aiServerBadge").className = "error";
+      updateAiAvailability();
+      updateBgAvailability();
       return;
     }
     try {
-      const response = await fetch(apiBase + "/api/status", { cache: "no-store" });
+      let response = await fetch(apiBase + "/api/health", { cache: "no-store" });
+      if (response.status === 404 || response.status === 405) {
+        response = await fetch(apiBase + "/api/status", { cache: "no-store" });
+      }
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       state.workerVersion = data.apiVersion || "legacy";
+      state.imageProviders = data.images || {};
+      state.aiProviderDetails = data.providerDetails || data.services?.ai?.providers || {};
       if (state.workerVersion !== EXPECTED_API_VERSION) {
-        state.aiProviders = { xai: false, openai: false };
-        state.backgroundProviders = { carve: false, removal: false };
+        state.aiProviders = { cloudflare: false, xai: false, openai: false };
+        state.backgroundProviders = { local: localBackgroundReady(), carve: false, removal: false };
         $("aiServerBadge").textContent = "нужен deploy";
         $("aiServerBadge").className = "error";
-        $("bgProviderBadge").textContent = "нужен deploy";
-        $("bgProviderBadge").className = "error";
-        $("generateBtn").disabled = true;
-        $("removeBackgroundBtn").disabled = true;
+        $("bgProviderBadge").textContent = state.backgroundProviders.local ? "local online" : "нужен deploy";
+        $("bgProviderBadge").className = state.backgroundProviders.local ? "ok" : "error";
         setAiStatus("На Cloudflare работает старая версия Worker. Нужен повторный deploy.", "error");
-        setBgStatus("На Cloudflare работает старая версия Worker. Нужен повторный deploy.", "error");
+        updateAiAvailability();
+        updateBgAvailability();
         return;
       }
       state.aiProviders = {
+        cloudflare: !!data.providers?.cloudflare,
         xai: !!data.providers?.xai,
         openai: !!data.providers?.openai
       };
       state.backgroundProviders = {
+        local: localBackgroundReady(),
         carve: !!data.background?.carve,
         removal: !!data.background?.removal
       };
-      state.imageProviders = data.images || {};
       const aiCount = Object.values(state.aiProviders).filter(Boolean).length;
       const bgCount = Object.values(state.backgroundProviders).filter(Boolean).length;
-      $("aiServerBadge").textContent = aiCount ? aiCount + "/2 online" : "ключи не заданы";
+      $("aiServerBadge").textContent = aiCount ? aiCount + "/3 online" : "не настроен";
       $("aiServerBadge").className = aiCount ? "ok" : "error";
-      $("bgProviderBadge").textContent = bgCount ? bgCount + "/2 online" : "ключи не заданы";
+      $("bgProviderBadge").textContent = bgCount ? bgCount + "/3 online" : "не настроен";
       $("bgProviderBadge").className = bgCount ? "ok" : "error";
       updateAiAvailability();
       updateBgAvailability();
     } catch (error) {
-      state.aiProviders = { xai: false, openai: false };
-      state.backgroundProviders = { carve: false, removal: false };
-      $("aiServerBadge").textContent = "offline";
+      state.aiProviders = { cloudflare: false, xai: false, openai: false };
+      state.backgroundProviders = { local: localBackgroundReady(), carve: false, removal: false };
+      $("aiServerBadge").textContent = "worker offline";
       $("aiServerBadge").className = "error";
-      $("bgProviderBadge").textContent = "offline";
-      $("bgProviderBadge").className = "error";
-      $("generateBtn").disabled = true;
-      $("removeBackgroundBtn").disabled = true;
-      setAiStatus("AI-сервер недоступен.", "error");
-      setBgStatus("Сервер обработки недоступен.", "error");
+      $("bgProviderBadge").textContent = state.backgroundProviders.local ? "local online" : "offline";
+      $("bgProviderBadge").className = state.backgroundProviders.local ? "ok" : "error";
+      setAiStatus("Worker недоступен: " + (error.message || "ошибка сети") + ".", "error");
+      updateBgAvailability();
     }
   }
 
@@ -269,22 +314,29 @@
     const provider = $("aiProvider").value;
     const ready = !!state.aiProviders[provider];
     $("generateBtn").disabled = !ready;
-    setAiStatus(
-      ready ? "Провайдер готов через OpenRouter." : "OpenRouter не задан на сервере.",
-      ready ? "ok" : "error"
-    );
+    if (ready) {
+      const message = provider === "cloudflare"
+        ? "Workers AI FLUX.2 Klein готов. Использует дневную free allocation Cloudflare, затем действуют тарифы аккаунта."
+        : "OpenRouter готов. Этот image provider расходует платные кредиты.";
+      setAiStatus(message, "ok");
+    } else {
+      setAiStatus(providerStatusMessage(state.aiProviderDetails?.[provider]), "error");
+    }
   }
 
   function updateBgAvailability() {
+    state.backgroundProviders.local = localBackgroundReady();
     const provider = $("bgProviderSelect").value;
     const ready = provider === "auto"
       ? Object.values(state.backgroundProviders).some(Boolean)
       : !!state.backgroundProviders[provider];
     $("removeBackgroundBtn").disabled = !ready;
     if (!ready) {
-      setBgStatus(provider === "auto" ? "Ни один API удаления фона не настроен." : "Ключ выбранного провайдера не задан.", "error");
+      setBgStatus(provider === "auto" ? "Ни один способ удаления фона недоступен." : "Выбранный провайдер не настроен.", "error");
+    } else if (provider === "local" || (provider === "auto" && state.backgroundProviders.local)) {
+      setBgStatus("Локальное удаление фона готово. Первый запуск загрузит модель и сохранит её в кэше браузера.", "ok");
     } else {
-      setBgStatus("Удаление фона готово.", "ok");
+      setBgStatus("Удаление фона готово через серверный API.", "ok");
     }
   }
 
@@ -298,7 +350,9 @@
     button.disabled = true;
     setAiStatus("Генерирую 3 варианта...");
     try {
-      const image = await sourceToDataUrl(s.logo);
+      const image = provider === "cloudflare"
+        ? await resizeDataUrlForAi(s.logo, 510)
+        : await sourceToDataUrl(s.logo);
       const lang = $("aiLanguage").value === "kk" ? "казахский" : "русский";
       const prompt = `${$("aiPrompt").value.trim()} Язык результата: ${lang}.`;
       const response = await fetch(apiBase + "/api/generate", {
@@ -356,14 +410,31 @@
     setBgStatus("Удаляю фон...");
     try {
       const image = await sourceToDataUrl(src);
-      const response = await fetch(apiBase + "/api/remove-background", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider: $("bgProviderSelect").value, image })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Не удалось удалить фон.");
-      if (!data.image) throw new Error("API не вернул прозрачное изображение.");
+      const requested = $("bgProviderSelect").value;
+      const provider = requested === "auto"
+        ? (state.backgroundProviders.local ? "local" : state.backgroundProviders.carve ? "carve" : state.backgroundProviders.removal ? "removal" : null)
+        : requested;
+      if (!provider) throw new Error("Нет доступного провайдера удаления фона.");
+
+      let data;
+      if (provider === "local") {
+        if (!localBackgroundReady()) throw new Error("Локальная модель недоступна в этом браузере.");
+        const resultBlob = await LocalBackgroundRemoval.remove(image, message => setBgStatus(message));
+        data = {
+          image: await blobToDataUrl(resultBlob),
+          provider: "Local @imgly/background-removal"
+        };
+      } else {
+        const response = await fetch(apiBase + "/api/remove-background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ provider, image })
+        });
+        data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Не удалось удалить фон.");
+      }
+
+      if (!data.image) throw new Error("Провайдер не вернул прозрачное изображение.");
       s[layer] = data.image;
       if (window.AssetManager) {
         const key = layer + "AssetId";
@@ -388,15 +459,14 @@
       }
       renderPoster();
       scheduleAutosave();
-      setBgStatus("Фон удалён через " + (data.provider || "API") + ". Положение и трансформация сохранены.", "ok");
+      setBgStatus("Фон удалён через " + (data.provider || provider) + ". Оригинал сохранён в Asset Manager. Положение и трансформация сохранены.", "ok");
     } catch (error) {
       setBgStatus(error.message || "Ошибка удаления фона.", "error");
     } finally {
-      const provider = $("bgProviderSelect").value;
-      const ready = provider === "auto"
-        ? Object.values(state.backgroundProviders).some(Boolean)
-        : !!state.backgroundProviders[provider];
-      button.disabled = !ready;
+      const selectedProvider = $("bgProviderSelect").value;
+      $("removeBackgroundBtn").disabled = selectedProvider === "auto"
+        ? !Object.values(state.backgroundProviders).some(Boolean)
+        : !state.backgroundProviders[selectedProvider];
     }
   }
 

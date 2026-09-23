@@ -87,18 +87,10 @@ function tmdbConfigured(env) {
   return !!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY);
 }
 
-function tmdbApproved(env) {
-  return env.TMDB_COMMERCIAL_APPROVED === "true";
-}
-
 async function tmdbJson(env, path, params = {}, ttlSeconds = 600) {
   if (!tmdbConfigured(env)) {
     throw new ImageSourceError("TMDB API key не настроен.", 503, "not_configured");
   }
-  if (!tmdbApproved(env)) {
-    throw new ImageSourceError("TMDB настроен, но коммерческое использование не подтверждено переменной TMDB_COMMERCIAL_APPROVED.", 503, "license_required");
-  }
-
   const url = new URL("https://api.themoviedb.org/3" + path);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
@@ -117,48 +109,70 @@ async function tmdbJson(env, path, params = {}, ttlSeconds = 600) {
   });
 }
 
-async function resolveTmdbIdentity(env, query, year) {
+async function searchTmdbCandidates(env, query, year) {
   const q = clean(query);
   const [movies, tv] = await Promise.all([
     tmdbJson(env, "/search/movie", {
       query: q,
       include_adult: "false",
-      language: "en-US",
+      language: "ru-RU",
       year: year || undefined,
       page: 1
     }),
     tmdbJson(env, "/search/tv", {
       query: q,
       include_adult: "false",
-      language: "en-US",
+      language: "ru-RU",
       first_air_date_year: year || undefined,
       page: 1
     })
   ]);
 
   const normalized = q.toLowerCase();
-  const candidates = [
-    ...(movies.results || []).map(item => ({ ...item, media_type: "movie", titleText: item.title, date: item.release_date })),
-    ...(tv.results || []).map(item => ({ ...item, media_type: "tv", titleText: item.name, date: item.first_air_date }))
+  return [
+    ...(movies.results || []).map(item => ({ ...item, media_type: "movie", titleText: item.title, originalTitle: item.original_title, date: item.release_date })),
+    ...(tv.results || []).map(item => ({ ...item, media_type: "tv", titleText: item.name, originalTitle: item.original_name, date: item.first_air_date }))
   ].map(item => {
     const candidateTitle = clean(item.titleText).toLowerCase();
+    const originalTitle = clean(item.originalTitle).toLowerCase();
     const candidateYear = yearOf(item.date);
     let score = Number(item.popularity) || 0;
-    if (candidateTitle === normalized) score += 10_000;
-    else if (candidateTitle.includes(normalized) || normalized.includes(candidateTitle)) score += 2_000;
+    if (candidateTitle === normalized || originalTitle === normalized) score += 10_000;
+    else if (candidateTitle.includes(normalized) || normalized.includes(candidateTitle) || originalTitle.includes(normalized) || normalized.includes(originalTitle)) score += 2_000;
     if (year && candidateYear === String(year)) score += 8_000;
-    return { ...item, candidateYear, score };
-  }).sort((a, b) => b.score - a.score);
+    return {
+      tmdbId: item.id,
+      mediaType: item.media_type,
+      title: item.titleText,
+      originalTitle: item.originalTitle || "",
+      year: candidateYear,
+      overview: item.overview || "",
+      posterPath: item.poster_path || null,
+      popularity: Number(item.popularity) || 0,
+      score
+    };
+  }).sort((a, b) => b.score - a.score).slice(0, 12);
+}
 
-  const best = candidates[0];
-  if (!best) return null;
+async function resolveTmdbIdentity(env, query, year, forcedTmdbId = null, forcedMediaType = null) {
+  const candidates = await searchTmdbCandidates(env, query, year);
+  const forcedId = forcedTmdbId ? Number(forcedTmdbId) : null;
+  const forcedType = forcedMediaType === "movie" || forcedMediaType === "tv" ? forcedMediaType : null;
+  const best = forcedId && forcedType
+    ? candidates.find(item => item.tmdbId === forcedId && item.mediaType === forcedType)
+    : candidates[0];
+  if (!best) return { identity: null, candidates };
   return {
-    tmdbId: best.id,
-    mediaType: best.media_type,
-    title: best.titleText,
-    year: best.candidateYear,
-    overview: best.overview || "",
-    imdbId: null
+    identity: {
+      tmdbId: best.tmdbId,
+      mediaType: best.mediaType,
+      title: best.title,
+      originalTitle: best.originalTitle,
+      year: best.year,
+      overview: best.overview,
+      imdbId: null
+    },
+    candidates
   };
 }
 
@@ -213,12 +227,11 @@ export class ImageSourceAdapter {
 export class TMDBSource extends ImageSourceAdapter {
   status() {
     if (!tmdbConfigured(this.env)) return { enabled: false, reason: "TMDB API key не настроен" };
-    if (!tmdbApproved(this.env)) return { enabled: false, reason: "TMDB commercial approval не подтверждён" };
     return { enabled: true };
   }
 
-  async resolve(query, year) {
-    return resolveTmdbIdentity(this.env, query, year);
+  async resolve(query, year, forcedTmdbId = null, forcedMediaType = null) {
+    return resolveTmdbIdentity(this.env, query, year, forcedTmdbId, forcedMediaType);
   }
 
   async search(identity) {
@@ -281,14 +294,14 @@ export class FanartSource extends ImageSourceAdapter {
   }
 
   status() {
-    return (this.env.FANART_API_KEY || this.env.FANART_CLIENT_KEY)
+    return this.env.FANART_API_KEY
       ? { enabled: true }
       : { enabled: false, reason: "Fanart.tv API key не настроен" };
   }
 
   async search(identity) {
     if (!identity) return [];
-    if (!this.env.FANART_API_KEY && !this.env.FANART_CLIENT_KEY) {
+    if (!this.env.FANART_API_KEY) {
       throw new ImageSourceError("Fanart.tv API key не настроен.", 503, "not_configured");
     }
 
@@ -488,7 +501,7 @@ export function referenceSources(query, year) {
     },
     {
       id: "imdb",
-      name: "IMDb Media",
+      name: "IMDb",
       mode: "external",
       url: "https://www.imdb.com/find/?q=" + q,
       reason: "Официальный IMDb API является отдельным лицензируемым продуктом; публичные datasets не дают media gallery."
@@ -511,29 +524,24 @@ export function referenceSources(query, year) {
 }
 
 export function imageProviderStatus(env) {
-  const tmdb = tmdbConfigured(env) && tmdbApproved(env);
+  const tmdb = tmdbConfigured(env);
   return {
     tmdb: {
       enabled: tmdb,
-      configured: tmdbConfigured(env),
-      commercialApproved: tmdbApproved(env),
-      reason: !tmdbConfigured(env)
-        ? "TMDB API key не настроен"
-        : !tmdbApproved(env)
-          ? "TMDB_COMMERCIAL_APPROVED не установлен в true"
-          : null
+      configured: tmdb,
+      reason: tmdb ? null : "TMDB API key не настроен"
     },
     fanart: {
-      enabled: !!(env.FANART_API_KEY || env.FANART_CLIENT_KEY),
-      configured: !!(env.FANART_API_KEY || env.FANART_CLIENT_KEY),
-      reason: (env.FANART_API_KEY || env.FANART_CLIENT_KEY) ? null : "Fanart.tv API key не настроен"
+      enabled: !!env.FANART_API_KEY,
+      configured: !!env.FANART_API_KEY,
+      reason: env.FANART_API_KEY ? null : "Fanart.tv API key не настроен"
     },
     wikimedia: { enabled: true, configured: true, reason: null },
     tvmaze: { enabled: true, configured: true, reason: null }
   };
 }
 
-export async function searchUnifiedImages(request, env, { query, year = "", source = "all" }) {
+export async function searchUnifiedImages(request, env, { query, year = "", source = "all", tmdbId = "", mediaType = "" }) {
   const q = clean(query);
   if (q.length < 2) throw new ImageSourceError("Запрос должен содержать минимум 2 символа.", 400, "bad_query");
   if (year && !/^\d{4}$/.test(String(year))) throw new ImageSourceError("Год должен содержать 4 цифры.", 400, "bad_year");
@@ -545,12 +553,15 @@ export async function searchUnifiedImages(request, env, { query, year = "", sour
   const requested = source === "all" ? new Set(["tmdb","fanart","wikimedia","tvmaze"]) : new Set([source]);
   const errors = [];
   let identity = null;
+  let candidates = [];
 
   if (requested.has("tmdb") || requested.has("fanart")) {
     const status = tmdb.status();
     if (status.enabled) {
       try {
-        identity = await tmdb.resolve(q, year);
+        const resolved = await tmdb.resolve(q, year, tmdbId, mediaType);
+        identity = resolved.identity;
+        candidates = resolved.candidates || [];
         if (!identity) errors.push({ source: "TMDB", code: "not_found", message: "TMDB: фильм или сериал не найден." });
       } catch (error) {
         errors.push({ source: "TMDB", code: error.code || "provider_error", message: error.message });
@@ -593,6 +604,7 @@ export async function searchUnifiedImages(request, env, { query, year = "", sour
 
   return {
     identity,
+    candidates,
     results,
     references: referenceSources(q, year),
     providers: imageProviderStatus(env),
