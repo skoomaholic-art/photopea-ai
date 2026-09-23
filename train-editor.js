@@ -57,7 +57,8 @@
     restoring: false,
     displayZoom: 1,
     autosaveTimer: null,
-    mode: "canvas"
+    mode: "canvas",
+    photopeaMasterId: null
   };
 
   function setStatus(message, kind = "") {
@@ -213,6 +214,39 @@
       canvas.setActiveObject(image);
     }
     canvas.requestRenderAll();
+  }
+
+  async function applyPhotopeaComposite(src, name = "Photopea result", masterId = null) {
+    const image = await F.FabricImage.fromURL(src);
+    const rawW = image.width || image.getElement()?.naturalWidth || MASTER_W;
+    const rawH = image.height || image.getElement()?.naturalHeight || MASTER_H;
+    image.rawWidth = rawW; image.rawHeight = rawH; image.source = "photopea-composite";
+    image.set({
+      left: MASTER_W / 2, top: MASTER_H / 2, originX: "center", originY: "center",
+      scaleX: MASTER_W / rawW, scaleY: MASTER_H / rawH
+    });
+    metadata(image, name || "Photopea result", "background");
+    state.muted = true;
+    canvas.discardActiveObject();
+    canvas.clear();
+    canvas.backgroundColor = "#101010";
+    canvas.add(image);
+    canvas.setActiveObject(image);
+    state.muted = false;
+    state.photopeaMasterId = masterId || null;
+    state.history = [];
+    state.historyIndex = -1;
+    snapshot("Результат Photopea");
+    state.photopeaMasterId = masterId || null;
+    renderLayers();
+    canvas.requestRenderAll();
+    scheduleDevicePreview();
+    scheduleAutosave();
+    return image;
+  }
+
+  function getPhotopeaMasterId() {
+    return state.photopeaMasterId || null;
   }
 
   async function setBackgroundFromDataUrl(src, name = "Photopea") {
@@ -684,6 +718,7 @@
     state.muted = false;
     state.history = [];
     state.historyIndex = -1;
+    state.photopeaMasterId = null;
     snapshot("Пустой холст");
     renderLayers();
     canvas.requestRenderAll();
@@ -697,7 +732,8 @@
       version: 1,
       master: { width: MASTER_W, height: MASTER_H, segmentWidth: SEG_W, segmentHeight: SEG_H },
       background: canvas.backgroundColor || "#101010",
-      canvas: canvas.toJSON(F.FabricObject.customProperties)
+      canvas: canvas.toJSON(F.FabricObject.customProperties),
+      photopeaMasterId: state.photopeaMasterId || null
     };
   }
 
@@ -705,6 +741,7 @@
     if (!data?.canvas) return;
     state.restoring = true;
     state.muted = true;
+    state.photopeaMasterId = data.photopeaMasterId || null;
     await canvas.loadFromJSON(data.canvas);
     canvas.backgroundColor = data.background || "#101010";
     $("trainBgColor").value = normalizeColor(canvas.backgroundColor);
@@ -936,7 +973,7 @@
 
   window.TrainEditor = {
     activate, serialize, restore, resetWorkspace,
-    exportAllSizes, exportSelectedSize, renderMasterBlob, buildPhotopeaModel, setBackgroundFromDataUrl,
+    exportAllSizes, exportSelectedSize, renderMasterBlob, buildPhotopeaModel, setBackgroundFromDataUrl, applyPhotopeaComposite, getPhotopeaMasterId,
     inspect: () => {
       const sticker = canvas.getObjects().find(obj => obj.sticker);
       return {
