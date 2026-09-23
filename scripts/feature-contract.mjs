@@ -128,7 +128,7 @@ requireAll("worker routes", worker, [
 
 requireAll("Photopea round trip", photopea, [
   'PP_ORIGIN="https://www.photopea.com"',
-  "ArrayBuffer","openLayeredDocument","buildLayeredScript","inspectActiveDocument","POSTER_INSPECT:","POSTER_LAYERED_MODEL","psd:true","app.open(","null,true","app.activeDocument=doc",
+  "ArrayBuffer","openLayeredDocument","openStoredMaster","restoredLayeredMaster","buildLayeredScript","inspectActiveDocument","POSTER_INSPECT:","POSTER_LAYERED_MODEL","psd:true","app.open(","null,true","app.activeDocument=doc",
   "classifyDimensions","routeBlob","sendPhotopeaVerticalBtn","sendPhotopeaHorizontalBtn","sendPhotopeaTrainBtn","sendPhotopeaAutoBtn","Photopea не ответил",
   "setBackgroundFromDataUrl","setImageLayer","difference<=0.03"
 ]);

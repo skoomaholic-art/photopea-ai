@@ -202,18 +202,35 @@
     return model;
   }
 
+  async function openStoredMaster(workspace, masterId) {
+    if(!masterId || !window.SkoomaStore?.getPhotopeaMaster) return false;
+    const saved=await SkoomaStore.getPhotopeaMaster(masterId);
+    if(!saved?.blob) return false;
+    layeredMasterIds[workspace]=masterId;
+    await openBlob(saved.blob,{
+      target:workspace,name:saved.name||workspace,layeredMasterId:masterId,
+      layeredModel:saved.model||null,restoredLayeredMaster:true,composite:false
+    });
+    if(context) context.layeredMasterId=masterId;
+    setStatus("Сохранённый layered PSD открыт в Photopea.","ok");
+    return true;
+  }
+
   async function editCurrentPoster() {
     const format=PosterApp.getActiveFormat();
+    if(await openStoredMaster(format,PosterApp.getPhotopeaMasterId?.(format))) return;
     return openLayeredDocument(await PosterApp.buildPhotopeaModel(format));
   }
 
   async function editTrain() {
     if(!window.TrainEditor?.buildPhotopeaModel) throw new Error("Layered-модель Паровозика недоступна.");
+    if(await openStoredMaster("train",TrainEditor.getPhotopeaMasterId?.())) return;
     return openLayeredDocument(await TrainEditor.buildPhotopeaModel());
   }
 
   async function editTop10() {
     if(!window.Top10Editor?.buildPhotopeaModel) throw new Error("Layered-модель ТОП10 недоступна.");
+    if(await openStoredMaster("top10",Top10Editor.getPhotopeaMasterId?.())) return;
     return openLayeredDocument(await Top10Editor.buildPhotopeaModel());
   }
 
@@ -280,15 +297,16 @@
       editedAsset:blob
     });
 
+    const masterId=context?.layeredMasterId||layeredMasterIds[target]||null;
     if(target==="train") {
       PosterApp.switchWorkspace("train");
-      await TrainEditor.setBackgroundFromDataUrl(dataUrl,context?.name||"Photopea");
+      await TrainEditor.applyPhotopeaComposite(dataUrl,context?.name||"Photopea",masterId);
     } else if(target==="top10") {
       PosterApp.switchWorkspace("top10");
-      await Top10Editor.setBackgroundFromDataUrl(dataUrl,context?.name||"Photopea",{assetId:asset.id});
+      await Top10Editor.applyPhotopeaComposite(dataUrl,context?.name||"Photopea",{assetId:asset.id,masterId});
     } else {
       PosterApp.switchWorkspace(target);
-      await PosterApp.setImageLayer("poster",dataUrl,context?.name||"Photopea",{assetId:asset.id});
+      await PosterApp.applyPhotopeaComposite(target,dataUrl,context?.name||"Photopea",asset.id,masterId);
     }
     const label=target==="train"?"Паровозик":target==="top10"?"ТОП10":target==="vertical"?"Вертикальный":"Горизонтальный";
     setStatus("Возвращено в "+label+" ("+dimensions.width+"×"+dimensions.height+").","ok");
@@ -336,7 +354,7 @@
     try {
       await ensureLoaded();
       const masterWorkspace=forcedTarget||context?.target||null;
-      if(context?.layeredModel&&masterWorkspace) {
+      if((context?.layeredModel||context?.layeredMasterId)&&masterWorkspace) {
         try { await saveLayeredMaster(masterWorkspace); } catch(error) { console.warn("PSD master save failed",error); }
       }
       const buffer=await requestBinary("png");

@@ -849,6 +849,48 @@ test("Photopea layered TOP10 keeps number logo darkening and background separate
   expect(ctx.layeredModel.layers.find(x=>x.name==="Bottom Darkening").locked).toBe(true);
 });
 
+test("Photopea return replaces old poster composition and reopens saved layered PSD", async ({ page }) => {
+  await mockStatus(page); await mockPhotopea(page); await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({name:"poster.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#logoFileInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#editPosterPhotopeaBtn").click();
+  await page.locator("#sendPhotopeaVerticalBtn").click();
+  await expect(page.locator("#posterWorkspace")).toBeVisible();
+  const state=await page.evaluate(()=>PosterApp.getState().vertical);
+  expect(state.logo).toBeNull();
+  expect(state.posterMode).toBe("exact");
+  expect(state.photopeaMasterId).toBeTruthy();
+
+  await page.locator("#editPosterPhotopeaBtn").click();
+  await expect(page.locator("#photopeaWorkspace")).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>PhotopeaBridge.getContext()?.restoredLayeredMaster===true)).toBe(true);
+});
+
+test("Photopea Train and TOP10 returns clear pre-existing editor overlays", async ({ page }) => {
+  await mockStatus(page); await mockPhotopea(page); await page.goto("/");
+
+  await page.locator('[data-workspace="train"]').click();
+  await page.locator("#trainImageInput").setInputFiles({name:"image.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#trainLogoInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#trainEditPhotopeaBtn").click();
+  await page.locator("#sendPhotopeaTrainBtn").click();
+  await expect(page.locator("#trainWorkspace")).toBeVisible();
+  expect(await page.evaluate(()=>TrainEditor.inspect().objectCount)).toBe(1);
+  expect(await page.evaluate(()=>!!TrainEditor.getPhotopeaMasterId())).toBe(true);
+
+  await page.locator('[data-workspace="top10"]').click();
+  await page.locator("#top10BackgroundInput").setInputFiles({name:"bg.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#top10LogoInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
+  await page.locator("#top10EditPhotopeaBtn").click();
+  await page.locator("#sendPhotopeaTop10Btn").click();
+  await expect(page.locator("#top10Workspace")).toBeVisible();
+  const top=await page.evaluate(()=>Top10Editor.getState());
+  expect(top.photopeaComposite).toBe(true);
+  expect(top.logo).toBeNull();
+  expect(top.photopeaMasterId).toBeTruthy();
+  expect(await page.evaluate(()=>Top10Editor.inspect().layers)).toEqual(["PHOTOPEA_RESULT"]);
+});
+
 test("Photopea return saves a layered master reference", async ({ page }) => {
   await mockStatus(page); await mockPhotopea(page); await page.goto("/");
   await page.locator("#posterFileInput").setInputFiles({name:"poster.png",mimeType:"image/png",buffer:PNG});
