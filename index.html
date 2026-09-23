@@ -95,6 +95,7 @@
           <label class="field">Провайдер
             <select id="bgProviderSelect">
               <option value="auto">Авто</option>
+              <option value="local">Локально (без API)</option>
               <option value="carve">Carve.Photos</option>
               <option value="removal">Removal.AI</option>
             </select>
@@ -124,8 +125,9 @@
           <p class="muted">Ключи хранятся только в Worker.</p>
           <label class="field">Провайдер
             <select id="aiProvider">
-              <option value="xai">Grok Imagine</option>
-              <option value="openai">GPT Image</option>
+              <option value="cloudflare">FLUX.2 Klein (Workers AI free tier)</option>
+              <option value="xai">Grok Imagine 2.0 (OpenRouter, платный)</option>
+              <option value="openai">GPT Image 1 (OpenRouter, платный)</option>
             </select>
           </label>
           <label class="field">Язык
@@ -165,24 +167,6 @@
             <input id="trainTextInput" value="Новый текст" aria-label="Текст">
             <button id="trainAddTextBtn">+ Текст</button>
           </div>
-          <label class="field">Плашка
-            <select id="trainBadgeSelect">
-              <option>Премьера</option>
-              <option>Новые серии</option>
-              <option>Жаңа сериялар</option>
-              <option>Новый сезон</option>
-              <option>Жаңа маусым</option>
-              <option>Все серии</option>
-              <option>Барлық сериалдар</option>
-              <option>Новинка</option>
-              <option>Жаңа</option>
-              <option>Эксклюзив</option>
-              <option>Скоро...</option>
-              <option>Жуырда...</option>
-              <option>Скоро уйдёт</option>
-              <option>Көріп үлгер</option>
-            </select>
-          </label>
           <div class="button-row">
             <button id="trainAddRectBtn">+ Добавить плашку</button>
             <button id="trainDuplicateBtn">Дублировать</button>
@@ -287,7 +271,10 @@
       <strong>Photopea</strong>
       <span id="photopeaStatus" class="mini-status">Откройте изображение из Poster Editor.</span>
       <div class="button-row photopea-actions">
-        <button id="sendPhotopeaBtn" class="primary">Отправить в Poster Editor</button>
+        <button id="sendPhotopeaVerticalBtn" class="primary">В вертикальный</button>
+        <button id="sendPhotopeaHorizontalBtn">В горизонтальный</button>
+        <button id="sendPhotopeaTrainBtn">В паровозик</button>
+        <button id="sendPhotopeaAutoBtn">Авто</button>
         <button id="openPhotopeaBtn">Открыть отдельно ↗</button>
       </div>
     </div>
