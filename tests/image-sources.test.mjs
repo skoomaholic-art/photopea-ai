@@ -16,7 +16,8 @@ function json(data, status = 200) {
 }
 
 globalThis.fetch = async input => {
-  const url = new URL(typeof input === "string" ? input : input.url);
+  const rawUrl = input instanceof URL ? input.href : (typeof input === "string" ? input : input.url);
+  const url = new URL(rawUrl);
 
   if (url.hostname === "api.themoviedb.org" && url.pathname === "/3/search/movie") {
     return json({ results: [{
