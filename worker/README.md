@@ -43,3 +43,22 @@ Deploy with:
     npx wrangler deploy
 
 The browser receives only availability booleans, selected model names, and API results. Secrets are never serialized to the client.
+
+
+## Unified image search
+
+New routes:
+
+- `GET /api/images/search?q=The%20Godfather&year=1972&source=all`
+- `GET /api/images/proxy?url=...`
+
+Automatic adapters:
+
+- TMDB - official API; requires `TMDB_ACCESS_TOKEN` or `TMDB_API_KEY` and `TMDB_COMMERCIAL_APPROVED=true`.
+- Fanart.tv - official v3.2 API; requires `FANART_API_KEY` and optionally `FANART_CLIENT_KEY`. Movie lookup uses TMDB ID; TV lookup resolves TheTVDB ID through TMDB external IDs.
+- Wikimedia Commons - official MediaWiki API; no secret required; license / attribution metadata is preserved.
+- TVmaze - public fallback poster source.
+
+External/reference-only sources are returned to the client as links: Kinorium, CineMaterial, MovieStillsDB, ShotDeck, The Poster Database, IMDb and IMP Awards.
+
+The image proxy only accepts HTTPS from an explicit hostname allowlist, rejects IP / localhost targets, validates MIME type, limits responses to 25 MB, follows only allowlisted redirects, times out after 12 seconds and caches validated image responses.

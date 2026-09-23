@@ -1,0 +1,9 @@
+# Local Worker development only. Never commit real values.
+TMDB_ACCESS_TOKEN=""
+TMDB_API_KEY=""
+TMDB_COMMERCIAL_APPROVED="false"
+FANART_API_KEY=""
+FANART_CLIENT_KEY=""
+OPENROUTER_API_KEY=""
+CARVE_API_KEY=""
+REMOVAL_AI_KEY=""

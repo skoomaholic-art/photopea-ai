@@ -1,3 +1,4 @@
+import { searchUnifiedImages, secureImageProxy, imageProviderStatus } from "./image-sources.js";
 const json = (data, status = 200, origin = "*") => new Response(JSON.stringify(data), {
   status,
   headers: {
@@ -323,7 +324,7 @@ export default {
       if (request.method === "GET" && url.pathname === "/api/status") {
         return json({
           ok: true,
-          apiVersion: "2026-09-22-openrouter-v2",
+          apiVersion: "2026-09-23-assets-v3",
           providers: { xai: !!env.OPENROUTER_API_KEY, openai: !!env.OPENROUTER_API_KEY },
           aiProvider: "openrouter",
           aiModels: {
@@ -333,9 +334,27 @@ export default {
           background: { carve: !!env.CARVE_API_KEY, removal: !!env.REMOVAL_AI_KEY },
           posters: {
             tvmaze: true,
-            tmdb: !!env.TMDB_BEARER_TOKEN && env.TMDB_COMMERCIAL_APPROVED === "true"
-          }
+            tmdb: !!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY) && env.TMDB_COMMERCIAL_APPROVED === "true"
+          },
+          images: imageProviderStatus(env)
         }, 200, origin);
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/images/search") {
+        const q = (url.searchParams.get("q") || "").trim();
+        const year = (url.searchParams.get("year") || "").trim();
+        const source = (url.searchParams.get("source") || "all").trim().toLowerCase();
+        const allowedSources = new Set(["all", "tmdb", "fanart", "wikimedia", "tvmaze"]);
+        if (!allowedSources.has(source)) throw new ApiError("Неизвестный источник изображений.", 400, "bad_source");
+        const data = await searchUnifiedImages(request, env, { query: q, year, source });
+        return json(data, 200, origin);
+      }
+
+      if (request.method === "GET" && (url.pathname === "/api/images/proxy" || url.pathname === "/api/image")) {
+        const response = await secureImageProxy(request, url.searchParams.get("url") || "");
+        const headers = new Headers(response.headers);
+        headers.set("Access-Control-Allow-Origin", origin);
+        return new Response(response.body, { status: response.status, headers });
       }
 
       if ((request.method === "GET" || request.method === "POST") && url.pathname === "/api/posters") {
@@ -349,10 +368,6 @@ export default {
         const tmdb = await searchTMDB(q, request, env);
         const results = [...tmdb, ...tvmaze].slice(0, 24);
         return json({ results, providers: { tvmaze: true, tmdb: tmdb.length > 0 || (!!env.TMDB_BEARER_TOKEN && env.TMDB_COMMERCIAL_APPROVED === "true") } }, 200, origin);
-      }
-
-      if (request.method === "GET" && url.pathname === "/api/image") {
-        return proxyImage(url.searchParams.get("url") || "");
       }
 
       if (request.method === "POST" && url.pathname === "/api/generate") {
@@ -383,8 +398,8 @@ export default {
 
       return json({ error: "Route not found", code: "not_found" }, 404, origin);
     } catch (error) {
-      const status = error instanceof ApiError ? error.status : 500;
-      const code = error instanceof ApiError ? error.code : "internal_error";
+      const status = Number(error?.status) || (error instanceof ApiError ? error.status : 500);
+      const code = error?.code || (error instanceof ApiError ? error.code : "internal_error");
       return json({ error: error.message || "Unexpected server error", code }, status, origin);
     }
   }
