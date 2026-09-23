@@ -264,8 +264,20 @@
   }
 
   function addRect() {
-    const text = $("trainBadgeSelect").value || "Премьера";
-    const badge = buildPromoBadge(text, false);
+    const badge = metadata(new F.Rect({
+      left: MASTER_W / 2,
+      top: MASTER_H / 2,
+      originX: "center",
+      originY: "center",
+      width: 360,
+      height: 96,
+      rx: 18,
+      ry: 18,
+      fill: "rgba(12,21,16,0.88)",
+      stroke: "#3df0a0",
+      strokeWidth: 2
+    }), "Плашка", "badge");
+    badge.badgeText = "";
     canvas.add(badge);
     canvas.setActiveObject(badge);
     canvas.requestRenderAll();
