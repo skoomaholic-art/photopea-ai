@@ -325,6 +325,7 @@
     const hasBg=!!data.background,hasLogo=!!data.logo;
     ["top10BgScale","top10BgRotation","top10BgCenter","top10BgReset","top10FilterBtn"].forEach(id=>{$(id).disabled=!hasBg;});
     ["top10LogoScale","top10LogoRotation","top10LogoCenter","top10LogoReset","top10LogoUp","top10LogoDown"].forEach(id=>{$(id).disabled=!hasLogo;});
+    $("removeTop10LogoBtn").disabled=!hasLogo;
   }
 
   function updateObjectTransform(layer){
@@ -367,6 +368,28 @@
     data.backgroundAssetId=options.assetId||null;data.backgroundFilters={...DEFAULTS(),...(options.filters||{})};
     data.backgroundX=400;data.backgroundY=700;data.backgroundScale=100;data.backgroundRotation=0;
     await renderBackgroundVisual(src);selectLayer("background");scheduleAutosave();setStatus("Изображение добавлено.","ok");
+  }
+
+  function removeTop10Logo(){
+    if(!data.logo) return;
+    if(objects.logo){
+      canvas.remove(objects.logo);
+      objects.logo=null;
+    }
+    data.logo=null;
+    data.logoName="";
+    data.logoAssetId=null;
+    data.logoX=400;
+    data.logoY=895;
+    data.logoScale=100;
+    data.logoRotation=0;
+    data.logoAboveDarkening=true;
+    if(runtime.selectedLayer==="logo") runtime.selectedLayer="background";
+    canvas.discardActiveObject();
+    applyStacking();
+    syncControls();
+    scheduleAutosave();
+    setStatus("Логотип удалён.","ok");
   }
 
   async function setLogoFromDataUrl(src,name="TOP10 logo",options={}){
@@ -528,6 +551,8 @@
     }catch(error){setStatus(error.message||"Не удалось загрузить изображение.","error");}
     finally{e.target.value="";}
   });
+
+  $("removeTop10LogoBtn").addEventListener("click",removeTop10Logo);
 
   $("top10LogoInput").addEventListener("change",async e=>{
     const file=e.target.files?.[0];

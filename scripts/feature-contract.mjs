@@ -197,5 +197,13 @@ requireAll("TOP10 Photopea routing", read("photopea-bridge.js"), [
   "editTop10",
   'id:"top10"',
   "sendPhotopeaTop10Btn",
+  "removePosterLogoBtn",
+  "removeTrainLogoBtn",
+  "removeTop10LogoBtn",
   "routeBlob"
 ]);
+
+
+if (/data-workspace="photopea"/.test(read("index.html"))) {
+  throw new Error("Top Photopea tab must stay removed while embedded Photopea dock/workspace is available");
+}

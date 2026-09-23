@@ -141,3 +141,11 @@ body.modal-open{overflow:hidden}
 .top10-tools input[type=color]{height:36px}
 @media(max-width:1120px){.top10-layout{grid-template-columns:280px minmax(0,1fr)}.top10-layout>.sidebar:last-child{grid-column:1/-1;max-height:none}}
 @media(max-width:760px){.top10-layout{display:block;padding:9px}.top10-center{margin-bottom:10px}.top10-canvas-view{max-height:none;overflow:auto}.top10-canvas-shell{min-width:320px}}
+
+
+/* Logo upload close controls */
+.asset-upload-row{display:grid;grid-template-columns:minmax(0,1fr) 38px;gap:7px;align-items:stretch}
+.asset-upload-row .upload-card{margin:0}
+.asset-clear-btn{display:flex;align-items:center;justify-content:center;min-width:38px;padding:0;border-color:#6b302d;background:#241513;color:#ff7b71;font-size:22px;font-weight:800;line-height:1}
+.asset-clear-btn:hover:not(:disabled){border-color:#db5a50;background:#351916;color:#ff9a92}
+.asset-clear-btn:disabled{opacity:.28;cursor:not-allowed}

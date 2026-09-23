@@ -158,6 +158,7 @@
 
     posterImage.hidden = !s.poster;
     logoImage.hidden = !s.logo;
+    $("removePosterLogoBtn").disabled = !s.logo;
     if (s.poster && posterImage.src !== s.poster) posterImage.src = s.poster;
     if (s.logo && logoImage.src !== s.logo) logoImage.src = s.logo;
 
@@ -209,6 +210,23 @@
     if (name === "train") window.TrainEditor?.activate();
     if (name === "top10") window.Top10Editor?.activate();
     if (name === "photopea" && $("photopeaFrame").src === "about:blank") $("photopeaFrame").src = $("photopeaFrame").dataset.src;
+  }
+
+  function removePosterLogo() {
+    const s = current();
+    if (!s.logo) return;
+    s.logo = null;
+    s.logoName = "";
+    s.logoAssetId = null;
+    s.logoX = 50;
+    s.logoY = 50;
+    s.logoScale = 100;
+    s.logoRotation = 0;
+    s.logoLocked = false;
+    if (state.selectedLayer === "logo") state.selectedLayer = "poster";
+    renderPoster();
+    scheduleAutosave();
+    showToast("Логотип удалён.", "ok");
   }
 
   async function setImageLayer(layer, src, name = "", options = {}) {
@@ -723,6 +741,7 @@
     } catch (error) { showToast(error.message, "error"); }
     e.target.value = "";
   });
+  $("removePosterLogoBtn").addEventListener("click", removePosterLogo);
   $("logoFileInput").addEventListener("change", async e => {
     try {
       const file = e.target.files?.[0];

@@ -7,16 +7,16 @@
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
   <link rel="icon" type="image/svg+xml" href="app-icon.svg?v=20260922c">
-  <link rel="stylesheet" href="poster-app.css?v=20260923top10a">
+  <link rel="stylesheet" href="poster-app.css?v=20260923logo-close">
   <script defer src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
   <script defer src="storage.js?v=20260923b"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
   <script defer src="asset-manager.js?v=20260923b"></script>
   <script defer src="local-background-removal.js?v=20260923a"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
-  <script defer src="poster-app.js?v=20260923top10a"></script>
-  <script defer src="train-editor.js?v=20260923c"></script>
-  <script defer src="top10-editor.js?v=20260923top10c"></script>
+  <script defer src="poster-app.js?v=20260923logo-close"></script>
+  <script defer src="train-editor.js?v=20260923logo-close"></script>
+  <script defer src="top10-editor.js?v=20260923logo-close"></script>
   <script defer src="filter-studio.js?v=20260923top10a"></script>
   <script defer src="source-browser.js?v=20260923b"></script>
   <script defer src="photopea-bridge.js?v=20260923top10a"></script>
@@ -33,7 +33,6 @@
       <button class="workspace-tab" data-workspace="horizontal" aria-selected="false">Горизонтальный</button>
       <button class="workspace-tab" data-workspace="train" aria-selected="false">Паровозик</button>
       <button class="workspace-tab" data-workspace="top10" aria-selected="false">ТОП10</button>
-      <button class="workspace-tab" data-workspace="photopea" aria-selected="false">Photopea</button>
     </nav>
 
     <div class="header-actions">
@@ -48,7 +47,10 @@
         <section>
           <div class="section-head"><h2 id="posterEditorTitle">Вертикальный постер</h2><span id="posterSizeLabel">800 × 1200</span></div>
           <label class="upload-card">Постер<input id="posterFileInput" type="file" accept="image/png,image/jpeg,image/webp"></label>
-          <label class="upload-card">Логотип<input id="logoFileInput" type="file" accept="image/png,image/webp"></label>
+          <div class="asset-upload-row">
+            <label class="upload-card">Логотип<input id="logoFileInput" type="file" accept="image/png,image/webp"></label>
+            <button id="removePosterLogoBtn" class="asset-clear-btn" type="button" aria-label="Удалить логотип" title="Удалить логотип" disabled>×</button>
+          </div>
         </section>
 
         <section>
@@ -165,7 +167,10 @@
           <div class="section-head"><h2>Паровозик</h2><span>2952 × 366</span></div>
           <label class="upload-card">Широкий фон<input id="trainBackgroundInput" type="file" accept="image/*"></label>
           <label class="upload-card">Добавить изображение<input id="trainImageInput" type="file" accept="image/*" multiple></label>
-          <label class="upload-card">Добавить логотип<input id="trainLogoInput" type="file" accept="image/*"></label>
+          <div class="asset-upload-row">
+            <label class="upload-card">Добавить логотип<input id="trainLogoInput" type="file" accept="image/*"></label>
+            <button id="removeTrainLogoBtn" class="asset-clear-btn" type="button" aria-label="Удалить логотип Паровозика" title="Удалить выбранный / последний логотип" disabled>×</button>
+          </div>
           <div class="search-row">
             <input id="trainTextInput" value="Новый текст" aria-label="Текст">
             <button id="trainAddTextBtn">+ Текст</button>
@@ -278,7 +283,10 @@
           <h3>Изображение</h3>
           <label class="upload-card">Загрузить изображение<input id="top10BackgroundInput" type="file" accept="image/jpeg,image/png,image/webp"></label>
           <h3>Логотип</h3>
-          <label class="upload-card">Загрузить логотип<input id="top10LogoInput" type="file" accept="image/png,image/webp,image/svg+xml"></label>
+          <div class="asset-upload-row">
+            <label class="upload-card">Загрузить логотип<input id="top10LogoInput" type="file" accept="image/png,image/webp,image/svg+xml"></label>
+            <button id="removeTop10LogoBtn" class="asset-clear-btn" type="button" aria-label="Удалить логотип ТОП10" title="Удалить логотип" disabled>×</button>
+          </div>
           <h3>Цветокор</h3>
           <button id="top10FilterBtn" class="wide">Фильтры / Цветокор</button>
           <p class="muted">Live preview. Фильтры применяются только к BACKGROUND_IMAGE.</p>

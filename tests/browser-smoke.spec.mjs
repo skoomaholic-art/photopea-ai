@@ -127,7 +127,8 @@ test("boots existing four-workspace Poster Editor with unified tools", async ({ 
   await mockStatus(page);
   await page.goto("/");
   await expect(page.locator(".brand strong")).toHaveText("Poster Editor");
-  await expect(page.locator(".workspace-tab")).toHaveCount(5);
+  await expect(page.locator(".workspace-tab")).toHaveCount(4);
+  await expect(page.locator('[data-workspace="photopea"]')).toHaveCount(0);
   await expect(page.locator("#posterWorkspace")).toBeVisible();
   await expect(page.locator("#posterSearchBtn")).toHaveText("Найти исходник");
   await expect(page.locator("#filterSelectedBtn")).toHaveText("Фильтры");
@@ -496,6 +497,42 @@ test("autosave survives reload with asset-backed poster and sticker", async ({ p
   expect((await page.evaluate(() => window.TrainEditor.inspect())).sticker?.text).toBe("Жаңа маусым");
 });
 
+
+test("logo close buttons remove logos in poster, train and TOP10 without breaking Photopea access", async ({ page }) => {
+  await mockStatus(page);
+  await mockPhotopea(page);
+  await page.goto("/");
+
+  await page.locator("#logoFileInput").setInputFiles({ name:"poster-logo.png", mimeType:"image/png", buffer:PNG });
+  await expect(page.locator("#logoImage")).toBeVisible();
+  await expect(page.locator("#removePosterLogoBtn")).toBeEnabled();
+  await page.locator("#removePosterLogoBtn").click();
+  await expect(page.locator("#logoImage")).toBeHidden();
+  expect((await page.evaluate(() => window.PosterApp.getState().vertical.logo))).toBeNull();
+
+  await page.locator('[data-workspace="horizontal"]').click();
+  await page.locator("#logoFileInput").setInputFiles({ name:"horizontal-logo.png", mimeType:"image/png", buffer:PNG });
+  await page.locator("#removePosterLogoBtn").click();
+  expect((await page.evaluate(() => window.PosterApp.getState().horizontal.logo))).toBeNull();
+
+  await page.locator('[data-workspace="train"]').click();
+  await page.locator("#trainLogoInput").setInputFiles({ name:"train-logo.png", mimeType:"image/png", buffer:PNG });
+  await expect(page.locator("#removeTrainLogoBtn")).toBeEnabled();
+  await page.locator("#removeTrainLogoBtn").click();
+  await expect(page.locator("#removeTrainLogoBtn")).toBeDisabled();
+
+  await page.locator('[data-workspace="top10"]').click();
+  await page.locator("#top10LogoInput").setInputFiles({ name:"top10-logo.png", mimeType:"image/png", buffer:PNG });
+  await expect(page.locator("#removeTop10LogoBtn")).toBeEnabled();
+  await page.locator("#removeTop10LogoBtn").click();
+  expect((await page.evaluate(() => window.Top10Editor.getState().logo))).toBeNull();
+
+  await page.locator('[data-workspace="vertical"]').click();
+  await page.locator("#posterFileInput").setInputFiles({ name:"poster.png", mimeType:"image/png", buffer:PNG });
+  await page.locator("#editPosterPhotopeaBtn").click();
+  await expect(page.locator("#photopeaWorkspace")).toBeVisible();
+  await expect(page.locator("#sendPhotopeaVerticalBtn")).toBeVisible();
+});
 
 test("TOP10 master canvas, locked template, filters, export, Photopea routing and persistence work", async ({ page }) => {
   await mockStatus(page);

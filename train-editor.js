@@ -302,6 +302,18 @@
     canvas.requestRenderAll();
   }
 
+  function removeTrainLogo() {
+    const logos = canvas.getObjects().filter(obj => obj.kind === "logo");
+    if (!logos.length) return setStatus("Логотипов нет.", "");
+    const active = activeObject();
+    const target = active?.kind === "logo" ? active : logos[logos.length - 1];
+    canvas.remove(target);
+    canvas.discardActiveObject();
+    canvas.requestRenderAll();
+    renderLayers();
+    setStatus("Логотип удалён.", "ok");
+  }
+
   function moveLayer(delta) {
     const obj = activeObject();
     if (!obj) return;
@@ -357,6 +369,7 @@
       row.append(name, visible, lock);
       root.appendChild(row);
     });
+    $("removeTrainLogoBtn").disabled = !canvas.getObjects().some(obj => obj.kind === "logo");
     syncObjectControls();
   }
 
@@ -769,6 +782,7 @@
     }
     e.target.value = "";
   });
+  $("removeTrainLogoBtn").addEventListener("click", removeTrainLogo);
   $("trainLogoInput").addEventListener("change", async e => {
     const file = e.target.files?.[0];
     if (file) try { await addImageFromFile(file, "logo"); } catch (error) { setStatus(error.message, "error"); }
