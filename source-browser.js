@@ -1,7 +1,7 @@
 (() => {
   const $ = id => document.getElementById(id);
   const apiBase=(document.querySelector('meta[name="poster-api"]')?.content||"").replace(/\/$/,"");
-  const state={items:[],references:[],identity:null,shown:48,tab:"all"};
+  const state={items:[],references:[],identity:null,candidates:[],shown:48,tab:"all"};
 
   function status(message,kind="") {
     $("sourceSearchStatus").textContent=message;
@@ -111,6 +111,42 @@
     } catch(error) { status(error.message||"Оригинал изображения недоступен.","error"); }
   }
 
+  function renderCandidates() {
+    const root=$("sourceCandidates");
+    root.innerHTML="";
+    const candidates=Array.isArray(state.candidates)?state.candidates:[];
+    if(candidates.length<=1) {
+      root.hidden=true;
+      return;
+    }
+    root.hidden=false;
+    const label=document.createElement("strong");
+    label.className="source-candidate-label";
+    label.textContent="Найдено несколько вариантов. Выберите нужный:";
+    root.appendChild(label);
+    for(const candidate of candidates) {
+      const button=document.createElement("button");
+      button.type="button";
+      button.className="source-candidate"+(
+        state.identity?.tmdbId===candidate.tmdbId && state.identity?.mediaType===candidate.mediaType ? " active" : ""
+      );
+      const title=document.createElement("strong");
+      title.textContent=candidate.title||candidate.originalTitle||"Без названия";
+      const details=document.createElement("small");
+      const original=candidate.originalTitle && candidate.originalTitle!==candidate.title ? candidate.originalTitle : "";
+      details.textContent=[
+        candidate.year||"год ?",
+        candidate.mediaType==="tv"?"Сериал":"Фильм",
+        original
+      ].filter(Boolean).join(" · ");
+      button.append(title,details);
+      button.addEventListener("click",()=>{
+        void search({tmdbId:candidate.tmdbId,mediaType:candidate.mediaType});
+      });
+      root.appendChild(button);
+    }
+  }
+
   function renderReferences() {
     const root=$("sourceReferences");
     root.innerHTML="";
@@ -179,10 +215,11 @@
       empty.textContent="По текущим фильтрам ничего нет.";
       root.appendChild(empty);
     }
+    renderCandidates();
     renderReferences();
   }
 
-  async function search() {
+  async function search(forced={}) {
     const q=$("sourceSearchQuery").value.trim();
     const year=$("sourceSearchYear").value.trim();
     if(q.length<2) return status("Введите название фильма или сериала.","error");
@@ -190,10 +227,15 @@
     $("sourceSearchRun").disabled=true;
     status("Ищу TMDB / Fanart.tv / Commons / TVmaze...");
     try {
-      const key="image-search:"+q.toLowerCase()+":"+year;
+      const forcedId=forced?.tmdbId?String(forced.tmdbId):"";
+      const forcedType=forced?.mediaType?String(forced.mediaType):"";
+      const key="image-search:"+q.toLowerCase()+":"+year+":"+forcedType+":"+forcedId;
       let data=await SkoomaStore?.getCache?.(key);
       if(!data) {
-        const response=await fetch(apiBase+"/api/images/search?q="+encodeURIComponent(q)+"&year="+encodeURIComponent(year)+"&source=all",{cache:"no-store"});
+        const params=new URLSearchParams({q,year,source:"all"});
+        if(forcedId) params.set("tmdbId",forcedId);
+        if(forcedType) params.set("mediaType",forcedType);
+        const response=await fetch(apiBase+"/api/images/search?"+params.toString(),{cache:"no-store"});
         data=await response.json().catch(()=>({}));
         if(!response.ok) throw new Error(data.error||"Источник временно недоступен.");
         await SkoomaStore?.setCache?.(key,data,10*60*1000);
@@ -201,13 +243,14 @@
       state.items=Array.isArray(data.results)?data.results:[];
       state.references=Array.isArray(data.references)?data.references:[];
       state.identity=data.identity||null;
+      state.candidates=Array.isArray(data.candidates)?data.candidates:[];
       state.shown=48;
       render();
       const problems=(data.errors||[]).map(x=>x.message).filter(Boolean);
       const identity=data.identity?[data.identity.title,data.identity.year].filter(Boolean).join(" · "):q;
       status(identity+": "+state.items.length+" изображений."+(problems.length?" "+problems.join(" "):""),state.items.length?"ok":(problems.length?"error":""));
     } catch(error) {
-      state.items=[]; state.references=[]; render();
+      state.items=[]; state.references=[]; state.identity=null; state.candidates=[]; render();
       status(error.message||"Источник временно недоступен.","error");
     } finally {
       $("sourceSearchRun").disabled=false;
