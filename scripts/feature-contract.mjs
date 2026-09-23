@@ -192,13 +192,16 @@ requireAll("TOP10 editor", top10, [
   "numberStrokeWidth",
   "logoAboveDarkening"
 ]);
+requireAll("logo close controls", html, [
+  "removePosterLogoBtn",
+  "removeTrainLogoBtn",
+  "removeTop10LogoBtn"
+]);
+
 requireAll("TOP10 Photopea routing", read("photopea-bridge.js"), [
   "editTop10",
   'id:"top10"',
   "sendPhotopeaTop10Btn",
-  "removePosterLogoBtn",
-  "removeTrainLogoBtn",
-  "removeTop10LogoBtn",
   "routeBlob"
 ]);
 
