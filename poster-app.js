@@ -86,7 +86,7 @@
     return blobToDataUrl(await response.blob());
   }
 
-  async function resizeDataUrlForAi(src, maxSide = 512) {
+  async function resizeDataUrlForAi(src, maxSide = 510) {
     const dataUrl = await sourceToDataUrl(src);
     const image = await new Promise((resolve, reject) => {
       const item = new Image();
@@ -351,7 +351,7 @@
     setAiStatus("Генерирую 3 варианта...");
     try {
       const image = provider === "cloudflare"
-        ? await resizeDataUrlForAi(s.logo, 512)
+        ? await resizeDataUrlForAi(s.logo, 510)
         : await sourceToDataUrl(s.logo);
       const lang = $("aiLanguage").value === "kk" ? "казахский" : "русский";
       const prompt = `${$("aiPrompt").value.trim()} Язык результата: ${lang}.`;
