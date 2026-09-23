@@ -713,7 +713,7 @@
 
   window.Top10Editor={
     activate,serialize,restore,resetClassic,renderCanvas,renderBlob,buildPhotopeaModel,download,
-    setBackgroundFromDataUrl,setLogoFromDataUrl,openFilters,inspect,
+    setBackgroundFromDataUrl,setLogoFromDataUrl,applyPhotopeaComposite,getPhotopeaMasterId,openFilters,inspect,
     getState:()=>clone(data),getSelectedLayer:()=>runtime.selectedLayer,
     numberAssets:TOP10_NUMBER_ASSETS,
     constants:{MASTER_W,MASTER_H}
