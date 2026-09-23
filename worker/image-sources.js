@@ -294,14 +294,14 @@ export class FanartSource extends ImageSourceAdapter {
   }
 
   status() {
-    return (this.env.FANART_API_KEY || this.env.FANART_CLIENT_KEY)
+    return this.env.FANART_API_KEY
       ? { enabled: true }
       : { enabled: false, reason: "Fanart.tv API key не настроен" };
   }
 
   async search(identity) {
     if (!identity) return [];
-    if (!this.env.FANART_API_KEY && !this.env.FANART_CLIENT_KEY) {
+    if (!this.env.FANART_API_KEY) {
       throw new ImageSourceError("Fanart.tv API key не настроен.", 503, "not_configured");
     }
 
@@ -532,9 +532,9 @@ export function imageProviderStatus(env) {
       reason: tmdb ? null : "TMDB API key не настроен"
     },
     fanart: {
-      enabled: !!(env.FANART_API_KEY || env.FANART_CLIENT_KEY),
-      configured: !!(env.FANART_API_KEY || env.FANART_CLIENT_KEY),
-      reason: (env.FANART_API_KEY || env.FANART_CLIENT_KEY) ? null : "Fanart.tv API key не настроен"
+      enabled: !!env.FANART_API_KEY,
+      configured: !!env.FANART_API_KEY,
+      reason: env.FANART_API_KEY ? null : "Fanart.tv API key не настроен"
     },
     wikimedia: { enabled: true, configured: true, reason: null },
     tvmaze: { enabled: true, configured: true, reason: null }
