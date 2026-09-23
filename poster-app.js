@@ -6,11 +6,13 @@
     horizontal: { w: 1920, h: 1080, label: "Горизонтальный" }
   };
   const POSTER_BLEED = 0.035;
+  const EXPECTED_API_VERSION = "2026-09-23-assets-v3";
   const makePosterState = () => ({
     poster: null, logo: null, posterName: "", logoName: "",
     posterX: 50, posterY: 50, posterScale: 100, posterRotation: 0,
     logoX: 50, logoY: 50, logoScale: 100, logoRotation: 0,
-    posterLocked: true, logoLocked: false, background: "#000000", order: ["poster", "logo"]
+    posterLocked: true, logoLocked: false, background: "#000000", order: ["poster", "logo"],
+    posterAssetId: null, logoAssetId: null
   });
 
   const state = {
@@ -19,6 +21,7 @@
     posters: { vertical: makePosterState(), horizontal: makePosterState() },
     aiProviders: { xai: false, openai: false },
     backgroundProviders: { carve: false, removal: false },
+    imageProviders: {},
     workerVersion: null,
     selectedAiResult: null,
     drag: null,
@@ -168,13 +171,13 @@
     if (name === "photopea" && $("photopeaFrame").src === "about:blank") $("photopeaFrame").src = $("photopeaFrame").dataset.src;
   }
 
-  async function setImageLayer(layer, src, name = "") {
+  async function setImageLayer(layer, src, name = "", options = {}) {
     const s = current();
     if (layer === "logo") {
-      s.logo = src; s.logoName = name;
+      s.logo = src; s.logoName = name; s.logoAssetId = options.assetId || null;
       s.logoX = 50; s.logoY = 50; s.logoScale = 100; s.logoRotation = 0;
     } else {
-      s.poster = src; s.posterName = name;
+      s.poster = src; s.posterName = name; s.posterAssetId = options.assetId || null;
       s.posterX = 50; s.posterY = 50; s.posterScale = 100; s.posterRotation = 0;
     }
     state.selectedLayer = layer;
@@ -329,7 +332,7 @@
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
       state.workerVersion = data.apiVersion || "legacy";
-      if (state.workerVersion !== "2026-09-22-openrouter-v2") {
+      if (state.workerVersion !== EXPECTED_API_VERSION) {
         state.aiProviders = { xai: false, openai: false };
         state.backgroundProviders = { carve: false, removal: false };
         $("aiServerBadge").textContent = "нужен deploy";
@@ -350,6 +353,7 @@
         carve: !!data.background?.carve,
         removal: !!data.background?.removal
       };
+      state.imageProviders = data.images || {};
       const aiCount = Object.values(state.aiProviders).filter(Boolean).length;
       const bgCount = Object.values(state.backgroundProviders).filter(Boolean).length;
       $("aiServerBadge").textContent = aiCount ? aiCount + "/2 online" : "ключи не заданы";
@@ -703,18 +707,48 @@
     scheduleAutosave();
   }
 
+  function getSelectedImageContext() {
+    const s = current();
+    const layer = state.selectedLayer;
+    return {
+      format: state.activeFormat,
+      layer,
+      src: s[layer],
+      name: s[layer + "Name"] || "",
+      assetId: s[layer + "AssetId"] || null
+    };
+  }
+
+  function attachAssetId(layer, assetId) {
+    const key = (layer === "logo" ? "logo" : "poster") + "AssetId";
+    current()[key] = assetId || null;
+    scheduleAutosave();
+  }
+
   document.querySelectorAll(".workspace-tab").forEach(btn => btn.addEventListener("click", () => switchWorkspace(btn.dataset.workspace)));
-  $("openPhotopeaBtn").addEventListener("click", () => window.open("https://www.photopea.com/", "_blank", "noopener"));
   $("posterFileInput").addEventListener("change", async e => {
-    try { const file = e.target.files?.[0]; if (file) await setImageLayer("poster", await readFile(file), file.name); } catch (error) { showToast(error.message, "error"); }
+    try {
+      const file = e.target.files?.[0];
+      if (file) {
+        const asset = window.AssetManager ? await AssetManager.fromFile(file, { imageType: "poster" }) : null;
+        const src = asset ? await AssetManager.dataUrl(asset, true) : await readFile(file);
+        await setImageLayer("poster", src, file.name, { assetId: asset?.id || null });
+      }
+    } catch (error) { showToast(error.message, "error"); }
     e.target.value = "";
   });
   $("logoFileInput").addEventListener("change", async e => {
-    try { const file = e.target.files?.[0]; if (file) await setImageLayer("logo", await readFile(file), file.name); } catch (error) { showToast(error.message, "error"); }
+    try {
+      const file = e.target.files?.[0];
+      if (file) {
+        const asset = window.AssetManager ? await AssetManager.fromFile(file, { imageType: "logo" }) : null;
+        const src = asset ? await AssetManager.dataUrl(asset, true) : await readFile(file);
+        await setImageLayer("logo", src, file.name, { assetId: asset?.id || null });
+      }
+    } catch (error) { showToast(error.message, "error"); }
     e.target.value = "";
   });
-  $("posterSearchBtn").addEventListener("click", searchPosters);
-  $("posterSearchInput").addEventListener("keydown", e => { if (e.key === "Enter") searchPosters(); });
+  // Unified source browser owns posterSearchBtn / posterSearchInput.
   $("posterLayerSelect").addEventListener("change", e => selectLayer(e.target.value));
   $("layerScaleInput").addEventListener("input", e => {
     const min = state.selectedLayer === "poster" ? 100 : 10;
@@ -738,6 +772,9 @@
   });
   $("bgProviderSelect").addEventListener("change", updateBgAvailability);
   $("removeBackgroundBtn").addEventListener("click", removeBackground);
+  $("filterSelectedBtn").addEventListener("click", () => window.FilterStudio?.openSelected?.().catch(error => showToast(error.message, "error")));
+  $("editSelectedPhotopeaBtn").addEventListener("click", () => window.PhotopeaBridge?.editSelected?.().catch(error => showToast(error.message, "error")));
+  $("editPosterPhotopeaBtn").addEventListener("click", () => window.PhotopeaBridge?.editCurrentPoster?.().catch(error => showToast(error.message, "error")));
   $("downloadVerticalBtn").addEventListener("click", () => downloadPoster("vertical"));
   $("downloadHorizontalBtn").addEventListener("click", () => downloadPoster("horizontal"));
   $("downloadPostersZipBtn").addEventListener("click", downloadBothPosters);
@@ -756,10 +793,19 @@
   window.PosterApp = {
     switchWorkspace,
     setFormat,
+    setImageLayer,
+    attachAssetId,
     serialize: plainProject,
     restore: restoreProject,
     renderPosterBlob,
-    getState: () => JSON.parse(JSON.stringify(state.posters))
+    renderCurrentPosterBlob: () => renderPosterBlob(state.activeFormat),
+    getState: () => JSON.parse(JSON.stringify(state.posters)),
+    getSelectedImageContext,
+    getActiveFormat: () => state.activeFormat,
+    getSelectedLayer: () => state.selectedLayer,
+    getImageProviders: () => JSON.parse(JSON.stringify(state.imageProviders)),
+    downloadBlob,
+    formats
   };
 
   switchWorkspace("vertical");

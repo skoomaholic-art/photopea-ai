@@ -79,6 +79,15 @@ window.SkoomaStore = (() => {
     return tx("assets", "readwrite", store => store.put(asset));
   }
 
+  async function getAsset(id) {
+    const db = await openDb();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction("assets", "readonly").objectStore("assets").get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
   async function deleteAsset(id) {
     return tx("assets", "readwrite", store => store.delete(id));
   }
@@ -144,7 +153,7 @@ window.SkoomaStore = (() => {
 
   return {
     saveProject, getProject, listProjects, deleteProject,
-    saveAsset, deleteAsset, clearAssets, listAssets,
+    saveAsset, getAsset, deleteAsset, clearAssets, listAssets,
     getCache, setCache, clearExpiredCache
   };
 })();

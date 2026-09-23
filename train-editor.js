@@ -215,6 +215,37 @@
     canvas.requestRenderAll();
   }
 
+  async function setBackgroundFromDataUrl(src, name = "Photopea") {
+    const image = await F.FabricImage.fromURL(src);
+    const rawW = image.width || image.getElement()?.naturalWidth || 1;
+    const rawH = image.height || image.getElement()?.naturalHeight || 1;
+    const scale = Math.max(MASTER_W / rawW, MASTER_H / rawH);
+    image.rawWidth = rawW;
+    image.rawHeight = rawH;
+    image.source = "photopea";
+    image.set({
+      left: MASTER_W / 2, top: MASTER_H / 2, originX: "center", originY: "center",
+      scaleX: scale, scaleY: scale
+    });
+    metadata(image, name || "Photopea background", "background");
+    state.muted = true;
+    for (const old of canvas.getObjects().filter(obj => obj.kind === "background")) canvas.remove(old);
+    canvas.add(image);
+    canvas.sendObjectToBack(image);
+    state.muted = false;
+    canvas.setActiveObject(image);
+    canvas.requestRenderAll();
+    snapshot("Фон обновлён из Photopea");
+    renderLayers();
+    scheduleDevicePreview();
+    return image;
+  }
+
+  async function renderMasterBlob() {
+    const master = await toMasterCanvas();
+    return canvasBlob(master);
+  }
+
   function addText() {
     const value = $("trainTextInput").value.trim() || "Новый текст";
     const text = metadata(new F.IText(value, {
@@ -756,6 +787,7 @@
   $("trainCanvasModeBtn").addEventListener("click", () => setPreviewMode("canvas"));
   $("trainDeviceModeBtn").addEventListener("click", () => setPreviewMode("device"));
   $("trainSizeSelect").addEventListener("change", scheduleDevicePreview);
+  $("trainEditPhotopeaBtn").addEventListener("click", () => window.PhotopeaBridge?.editTrain?.().catch(error => setStatus(error.message || "Не удалось открыть Photopea.", "error")));
   $("trainDownloadSelectedBtn").addEventListener("click", exportSelectedSize);
   $("trainDownloadAllBtn").addEventListener("click", exportAllSizes);
   window.addEventListener("resize", () => { if (!$("trainWorkspace").hidden) resizeDisplay(); });
@@ -766,7 +798,7 @@
 
   window.TrainEditor = {
     activate, serialize, restore,
-    exportAllSizes, exportSelectedSize,
+    exportAllSizes, exportSelectedSize, renderMasterBlob, setBackgroundFromDataUrl,
     inspect: () => {
       const sticker = canvas.getObjects().find(obj => obj.sticker);
       return {

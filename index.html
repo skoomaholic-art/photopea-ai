@@ -7,12 +7,17 @@
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
   <link rel="icon" type="image/svg+xml" href="app-icon.svg?v=20260922c">
-  <link rel="stylesheet" href="poster-app.css?v=20260922c">
+  <link rel="stylesheet" href="poster-app.css?v=20260923b">
   <script defer src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
-  <script defer src="storage.js?v=20260922c"></script>
-  <script defer src="zip-store.js?v=20260922c"></script>
-  <script defer src="poster-app.js?v=20260922c"></script>
-  <script defer src="train-editor.js?v=20260923a"></script>
+  <script defer src="storage.js?v=20260923b"></script>
+  <script defer src="zip-store.js?v=20260923b"></script>
+  <script defer src="asset-manager.js?v=20260923b"></script>
+  <script defer src="image-filters.js?v=20260923b"></script>
+  <script defer src="poster-app.js?v=20260923b"></script>
+  <script defer src="train-editor.js?v=20260923b"></script>
+  <script defer src="filter-studio.js?v=20260923b"></script>
+  <script defer src="source-browser.js?v=20260923b"></script>
+  <script defer src="photopea-bridge.js?v=20260923b"></script>
 </head>
 <body>
   <header class="topbar">
@@ -44,18 +49,19 @@
         </section>
 
         <section>
-          <h3>Поиск постеров</h3>
-          <div class="search-row">
-            <input id="posterSearchInput" placeholder="Название фильма или сериала">
-            <button id="posterSearchBtn" class="primary">Показать постеры</button>
+          <h3>Исходники</h3>
+          <div class="search-row source-quick-search">
+            <input id="posterSearchInput" placeholder="Название фильма / сериала">
+            <input id="posterSearchYear" inputmode="numeric" maxlength="4" placeholder="Год">
           </div>
-          <div id="posterSearchStatus" class="mini-status">TVmaze работает без ключа. TMDB включается только при лицензии.</div>
-          <div id="posterSearchResults" class="poster-results"></div>
-          <p class="attribution">Данные TVmaze: CC BY-SA. <a href="https://www.tvmaze.com/" target="_blank" rel="noopener">TVmaze</a></p>
+          <button id="posterSearchBtn" class="primary wide">Найти исходник</button>
+          <div id="posterSearchStatus" class="mini-status">TMDB, Fanart.tv, Wikimedia Commons и TVmaze через единый поиск.</div>
+          <div id="posterSearchResults" hidden></div>
         </section>
 
         <section>
           <h3>Выбранный слой</h3>
+
           <label class="field">Слой
             <select id="posterLayerSelect">
               <option value="poster">Постер</option>
@@ -73,6 +79,10 @@
           <div class="button-row">
             <button id="posterLayerUpBtn">Слой выше</button>
             <button id="posterLayerDownBtn">Слой ниже</button>
+          </div>
+          <div class="button-row">
+            <button id="filterSelectedBtn">Фильтры</button>
+            <button id="editSelectedPhotopeaBtn">Редактировать в Photopea</button>
           </div>
           <label class="lock-line"><input id="posterLockInput" type="checkbox" checked> Заблокировать постер</label>
           <label class="lock-line"><input id="logoLockInput" type="checkbox"> Заблокировать логотип</label>
@@ -105,6 +115,7 @@
           <img id="logoImage" class="logo-image" alt="Логотип" hidden>
         </div>
         <div id="posterStatus" class="status-line">Готов к работе</div>
+        <button id="editPosterPhotopeaBtn" class="wide">Редактировать текущий постер в Photopea</button>
       </section>
 
       <aside class="panel sidebar">
@@ -262,6 +273,7 @@
         </section>
         <section>
           <h3>Экспорт</h3>
+          <button id="trainEditPhotopeaBtn" class="wide">Редактировать Паровозик в Photopea</button>
           <button id="trainDownloadSelectedBtn" class="wide">Скачать выбранный размер</button>
           <button id="trainDownloadAllBtn" class="primary wide">Скачать все размеры</button>
           <p class="muted">Направляющие, номера, промежутки и скругления предпросмотра в PNG не экспортируются.</p>
@@ -271,9 +283,76 @@
   </main>
 
   <main id="photopeaWorkspace" class="workspace photopea-workspace" data-workspace-panel="photopea" hidden>
-    <div class="photopea-toolbar"><strong>Photopea</strong><button id="openPhotopeaBtn">Открыть отдельно ↗</button></div>
+    <div class="photopea-toolbar">
+      <strong>Photopea</strong>
+      <span id="photopeaStatus" class="mini-status">Откройте изображение из Poster Editor.</span>
+      <div class="button-row photopea-actions">
+        <button id="sendPhotopeaBtn" class="primary">Отправить в Poster Editor</button>
+        <button id="openPhotopeaBtn">Открыть отдельно ↗</button>
+      </div>
+    </div>
     <iframe id="photopeaFrame" title="Photopea" src="about:blank" data-src="https://www.photopea.com/" allow="clipboard-read; clipboard-write"></iframe>
   </main>
+
+  <div id="sourceBrowserModal" class="modal-backdrop" hidden>
+    <section class="modal-card source-browser" role="dialog" aria-modal="true" aria-label="Поиск исходников">
+      <header class="modal-head"><div><small>ASSET SEARCH</small><h2>Найти исходник</h2></div><button id="sourceBrowserClose" aria-label="Закрыть">×</button></header>
+      <div class="source-search-form">
+        <input id="sourceSearchQuery" placeholder="Название фильма / сериала">
+        <input id="sourceSearchYear" inputmode="numeric" maxlength="4" placeholder="Год">
+        <button id="sourceSearchRun" class="primary">Искать</button>
+      </div>
+      <div id="sourceSearchStatus" class="mini-status">Введите название.</div>
+      <div class="source-tabs">
+        <button class="active" data-image-tab="all">ВСЕ</button>
+        <button data-image-tab="poster">ПОСТЕРЫ</button>
+        <button data-image-tab="horizontal">ГОРИЗОНТАЛЬНЫЕ</button>
+        <button data-image-tab="still">КАДРЫ</button>
+        <button data-image-tab="textless">TEXTLESS</button>
+        <button data-image-tab="logo">ЛОГОТИПЫ</button>
+      </div>
+      <div class="source-filters">
+        <label>Источник<select id="sourceFilter"><option value="all">Все</option><option value="tmdb">TMDB</option><option value="fanart.tv">Fanart.tv</option><option value="wikimediacommons">Wikimedia</option><option value="tvmaze">TVmaze</option></select></label>
+        <label>Формат<select id="formatFilter"><option value="all">Все</option><option value="vertical">Вертикальный</option><option value="horizontal">Горизонтальный</option></select></label>
+        <label>Текст<select id="textFilter"><option value="all">Все</option><option value="textless">Без текста</option><option value="text">С текстом</option></select></label>
+        <label>Разрешение<select id="resolutionFilter"><option value="any">Любое</option><option value="fhd">Full HD+</option><option value="2k">2K+</option><option value="4k">4K+</option></select></label>
+        <label>Язык<select id="languageFilter"><option value="all">Все</option><option value="none">Без языка</option><option value="ru">RU</option><option value="kk">KZ</option><option value="en">EN</option></select></label>
+      </div>
+      <div class="source-result-head"><strong id="sourceCount">0 результатов</strong><span>Original загружается только по действию</span></div>
+      <div id="sourceGallery" class="source-gallery"></div>
+      <button id="sourceLoadMoreBtn" class="wide" hidden>Показать ещё</button>
+      <div class="reference-head"><strong>Внешние / reference источники</strong><span>Без обхода paywall, CAPTCHA и anti-bot</span></div>
+      <div id="sourceReferences" class="reference-sources"></div>
+    </section>
+  </div>
+
+  <div id="filterModal" class="modal-backdrop" hidden>
+    <section class="modal-card filter-studio" role="dialog" aria-modal="true" aria-label="Фильтры">
+      <header class="modal-head"><div><small>NON-DESTRUCTIVE</small><h2>Фильтры</h2></div><button id="filterCloseBtn" aria-label="Закрыть">×</button></header>
+      <div class="filter-layout">
+        <div class="filter-preview-wrap"><canvas id="filterPreview"></canvas><div id="filterStatus" class="mini-status">Готово</div></div>
+        <div class="filter-settings">
+          <h3>Presets</h3>
+          <div id="filterPresetGrid" class="filter-preset-grid"></div>
+          <h3>Manual</h3>
+          <div id="filterControls" class="filter-controls"></div>
+        </div>
+      </div>
+      <div class="modal-actions"><button id="filterResetBtn">Сбросить все</button><button id="filterApplyBtn" class="primary">Применить</button></div>
+    </section>
+  </div>
+
+  <div id="routeModal" class="modal-backdrop" hidden>
+    <section class="modal-card route-card" role="dialog" aria-modal="true" aria-label="Куда отправить">
+      <header class="modal-head"><div><small>FORMAT ROUTING</small><h2>Куда отправить?</h2></div></header>
+      <p class="muted">Размер / aspect ratio не совпал с шаблонами достаточно уверенно.</p>
+      <div class="route-buttons">
+        <button data-route-target="vertical">Вертикальный<br><small>800 × 1200</small></button>
+        <button data-route-target="horizontal">Горизонтальный<br><small>1920 × 1080</small></button>
+        <button data-route-target="train">Паровозик<br><small>2952 × 366</small></button>
+      </div>
+    </section>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
 </body>
