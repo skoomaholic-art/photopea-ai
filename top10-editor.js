@@ -444,6 +444,52 @@
     ctx.drawImage(source,-size.width/2,-size.height/2);ctx.restore();
   }
 
+  function top10CanvasDataUrl(canvasEl){return canvasEl.toDataURL("image/png");}
+
+  async function bestTop10Asset(assetId,fallback,filters=null){
+    if(!assetId) return fallback;
+    try{
+      const asset=await AssetManager.get(assetId);
+      if(!asset) return fallback;
+      const filtered=filters&&Object.values(filters).some(value=>Number(value)!==0);
+      return await AssetManager.dataUrl(asset,filtered);
+    }catch{return fallback;}
+  }
+
+  async function darkeningDataUrl(){
+    const c=document.createElement("canvas");c.width=MASTER_W;c.height=MASTER_H;drawDarkening(c.getContext("2d"));return top10CanvasDataUrl(c);
+  }
+
+  async function buildPhotopeaModel(){
+    const layers=[{id:"top10-canvas-background",name:"Canvas Background",type:"background",color:"#050505",
+      x:MASTER_W/2,y:MASTER_H/2,width:MASTER_W,height:MASTER_H,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:true,zIndex:0}];
+    let backgroundLayer=null,logoLayer=null;
+    if(data.background){
+      const source=await bestTop10Asset(data.backgroundAssetId,data.background,data.backgroundFilters);
+      const image=await imageFromSource(source),size=sourceSize(image),base=backgroundBaseScale(size.width,size.height)*Number(data.backgroundScale||100)/100;
+      backgroundLayer={id:"top10-background",name:Object.values(data.backgroundFilters||{}).some(Number)?"Background Image Filtered":"Background Image",
+        type:"image",assetId:data.backgroundAssetId||null,sourceDataUrl:source,originalDataUrl:data.backgroundOriginal||source,
+        x:Number(data.backgroundX),y:Number(data.backgroundY),width:size.width*base,height:size.height*base,scaleX:1,scaleY:1,
+        rotation:Number(data.backgroundRotation||0),opacity:1,visible:true,locked:false};
+    }
+    const darkeningLayer={id:"top10-darkening",name:"Bottom Darkening",type:"gradient",sourceDataUrl:await darkeningDataUrl(),
+      x:MASTER_W/2,y:MASTER_H/2,width:MASTER_W,height:MASTER_H,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:true,
+      gradient:{color:data.darkeningColor,intensity:data.darkeningIntensity,start:data.darkeningStart}};
+    if(data.logo){
+      const source=await bestTop10Asset(data.logoAssetId,data.logo,null),image=await imageFromSource(source),size=sourceSize(image);
+      const base=logoBaseScale(size.width,size.height)*Number(data.logoScale||100)/100;
+      logoLayer={id:"top10-logo",name:"Logo",type:"image",assetId:data.logoAssetId||null,sourceDataUrl:source,
+        x:Number(data.logoX),y:Number(data.logoY),width:size.width*base,height:size.height*base,scaleX:1,scaleY:1,
+        rotation:Number(data.logoRotation||0),opacity:1,visible:true,locked:false};
+    }
+    const numberLayer={id:"top10-number",name:"TOP10 Number",type:"image",sourceDataUrl:new URL(currentNumberAsset(),document.baseURI).href,
+      x:NUMBER_X,y:NUMBER_Y,width:NUMBER_SIZE,height:NUMBER_SIZE,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:true,
+      value:String(data.ranking),asset:data.numberAsset||currentNumberAsset()};
+    const ordered=data.logoAboveDarkening?[backgroundLayer,darkeningLayer,logoLayer,numberLayer]:[backgroundLayer,logoLayer,darkeningLayer,numberLayer];
+    for(const layer of ordered.filter(Boolean)){layer.zIndex=layers.length;layers.push(layer);}
+    return {version:1,workspace:"top10",document:{name:"TOP10",width:MASTER_W,height:MASTER_H,background:"#050505"},layers};
+  }
+
   async function renderCanvas(){
     const out=document.createElement("canvas");out.width=MASTER_W;out.height=MASTER_H;
     const ctx=out.getContext("2d");ctx.fillStyle="#050505";ctx.fillRect(0,0,MASTER_W,MASTER_H);
@@ -616,7 +662,7 @@
   refreshDarkening();void refreshNumber();resizeDisplay();renderLayers();syncControls();
 
   window.Top10Editor={
-    activate,serialize,restore,resetClassic,renderCanvas,renderBlob,download,
+    activate,serialize,restore,resetClassic,renderCanvas,renderBlob,buildPhotopeaModel,download,
     setBackgroundFromDataUrl,setLogoFromDataUrl,openFilters,inspect,
     getState:()=>clone(data),getSelectedLayer:()=>runtime.selectedLayer,
     numberAssets:TOP10_NUMBER_ASSETS,

@@ -1,6 +1,6 @@
 window.SkoomaStore = (() => {
   const DB_NAME = "skooma-multitool";
-  const DB_VERSION = 3;
+  const DB_VERSION = 4;
   let dbPromise;
 
   function openDb() {
@@ -24,6 +24,11 @@ window.SkoomaStore = (() => {
           const archive = db.createObjectStore("workArchive", { keyPath: "archiveId" });
           archive.createIndex("workspace", "workspace");
           archive.createIndex("createdAt", "createdAt");
+        }
+        if (!db.objectStoreNames.contains("photopeaMasters")) {
+          const masters = db.createObjectStore("photopeaMasters", { keyPath: "masterId" });
+          masters.createIndex("workspace", "workspace");
+          masters.createIndex("createdAt", "createdAt");
         }
       };
       req.onsuccess = () => resolve(req.result);
@@ -196,10 +201,24 @@ window.SkoomaStore = (() => {
     return entry;
   }
 
+  async function savePhotopeaMaster(master) {
+    return tx("photopeaMasters","readwrite",store=>store.put(master));
+  }
+
+  async function getPhotopeaMaster(masterId) {
+    const db=await openDb();
+    return new Promise((resolve,reject)=>{
+      const req=db.transaction("photopeaMasters","readonly").objectStore("photopeaMasters").get(masterId);
+      req.onsuccess=()=>resolve(req.result||null);
+      req.onerror=()=>reject(req.error);
+    });
+  }
+
   return {
     saveProject, getProject, listProjects, deleteProject,
     saveAsset, getAsset, deleteAsset, clearAssets, listAssets,
     getCache, setCache, clearExpiredCache,
-    saveArchiveEntry, getArchiveEntry, listArchiveEntries, deleteArchiveEntry, renameArchiveEntry
+    saveArchiveEntry, getArchiveEntry, listArchiveEntries, deleteArchiveEntry, renameArchiveEntry,
+    savePhotopeaMaster, getPhotopeaMaster
   };
 })();

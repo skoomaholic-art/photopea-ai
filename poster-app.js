@@ -512,6 +512,67 @@
     return { sx: 0, sy: (image.naturalHeight - sh) / 2, sw: image.naturalWidth, sh };
   }
 
+  async function photopeaAssetSource(assetId, fallbackSrc) {
+    if (!assetId) return { dataUrl:fallbackSrc, assetId:null, filtered:false };
+    try {
+      const asset=await AssetManager.get(assetId);
+      if (!asset) return { dataUrl:fallbackSrc, assetId, filtered:false };
+      const filtered=!!asset.editedAsset && !!asset.filters && Object.values(asset.filters).some(value=>Number(value)!==0);
+      return {
+        dataUrl:await AssetManager.dataUrl(asset,filtered),
+        assetId:asset.id,
+        filtered,
+        filters:asset.filters||null,
+        originalDataUrl:await AssetManager.dataUrl(asset,false)
+      };
+    } catch(error) {
+      console.warn("Photopea asset fallback",error);
+      return { dataUrl:fallbackSrc, assetId, filtered:false };
+    }
+  }
+
+  async function buildPhotopeaModel(format=state.activeFormat) {
+    const f=formats[format],s=state.posters[format];
+    if(!f||!s) throw new Error("Неизвестный формат постера.");
+    const layers=[{
+      id:"canvas-background",name:"Background",type:"background",color:s.background||"#000000",
+      x:f.w/2,y:f.h/2,width:f.w,height:f.h,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:true,zIndex:0
+    }];
+    const defs=[];
+    if(s.poster){
+      const source=await photopeaAssetSource(s.posterAssetId,s.poster);
+      const image=await loadImage(source.dataUrl);
+      const bleedW=Math.ceil(f.w*(1+POSTER_BLEED*2)),bleedH=Math.ceil(f.h*(1+POSTER_BLEED*2));
+      const sr=image.naturalWidth/image.naturalHeight,br=bleedW/bleedH;
+      let baseW,baseH;
+      if(sr>br){baseH=bleedH;baseW=baseH*sr;}else{baseW=bleedW;baseH=baseW/sr;}
+      defs.push({
+        id:"poster",name:source.filtered?"Poster Filtered":"Poster",type:"image",role:"poster",
+        assetId:s.posterAssetId||null,sourceDataUrl:source.dataUrl,originalDataUrl:source.originalDataUrl||source.dataUrl,
+        filters:source.filters||null,sourceWidth:image.naturalWidth,sourceHeight:image.naturalHeight,
+        x:f.w*s.posterX/100,y:f.h*s.posterY/100,width:baseW*Math.max(100,s.posterScale)/100,height:baseH*Math.max(100,s.posterScale)/100,
+        scaleX:1,scaleY:1,rotation:s.posterRotation||0,opacity:1,visible:true,locked:!!s.posterLocked,
+        crop:{mode:"cover",boxWidth:bleedW,boxHeight:bleedH},zIndex:0
+      });
+    }
+    if(s.logo){
+      const source=await photopeaAssetSource(s.logoAssetId,s.logo);
+      const image=await loadImage(source.dataUrl);
+      const baseW=f.w*.35,baseH=baseW*image.naturalHeight/image.naturalWidth;
+      defs.push({
+        id:"logo",name:"Logo",type:"image",role:"logo",assetId:s.logoAssetId||null,
+        sourceDataUrl:source.dataUrl,originalDataUrl:source.originalDataUrl||source.dataUrl,
+        sourceWidth:image.naturalWidth,sourceHeight:image.naturalHeight,
+        x:f.w*s.logoX/100,y:f.h*s.logoY/100,width:baseW*s.logoScale/100,height:baseH*s.logoScale/100,
+        scaleX:1,scaleY:1,rotation:s.logoRotation||0,opacity:1,visible:true,locked:!!s.logoLocked,zIndex:0
+      });
+    }
+    const order=Array.isArray(s.order)?s.order:["poster","logo"];
+    for(const key of order){const layer=defs.find(item=>item.id===key);if(layer){layer.zIndex=layers.length;layers.push(layer);}}
+    for(const layer of defs){if(!layers.includes(layer)){layer.zIndex=layers.length;layers.push(layer);}}
+    return {version:1,workspace:format,document:{name:format==="vertical"?"VERTICAL POSTER":"HORIZONTAL POSTER",width:f.w,height:f.h,background:s.background||"#000000"},layers};
+  }
+
   async function renderPosterBlob(format) {
     const f = formats[format];
     const s = state.posters[format];
@@ -841,6 +902,7 @@
     serialize: plainProject,
     restore: restoreProject,
     renderPosterBlob,
+    buildPhotopeaModel,
     renderCurrentPosterBlob: () => renderPosterBlob(state.activeFormat),
     getState: () => JSON.parse(JSON.stringify(state.posters)),
     resetWorkspace,

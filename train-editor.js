@@ -241,6 +241,61 @@
     return image;
   }
 
+  function photopeaSvgDataUrl(svg) {
+    return "data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
+  }
+
+  function segmentForObject(obj) {
+    return Math.max(1,Math.min(6,Math.floor(Number(obj.left||0)/SEG_W)+1));
+  }
+
+  async function rasterObjectSource(obj) {
+    const el=obj.getElement?.();
+    const src=el?.currentSrc||el?.src||null;
+    const cropped=Number(obj.cropX||0)!==0||Number(obj.cropY||0)!==0||
+      (obj.rawWidth&&Math.round(obj.width||0)!==Math.round(obj.rawWidth))||
+      (obj.rawHeight&&Math.round(obj.height||0)!==Math.round(obj.rawHeight));
+    if(src&&!cropped) return src;
+    try { return obj.toCanvasElement({withoutTransform:true,enableRetinaScaling:false}).toDataURL("image/png"); }
+    catch { return src; }
+  }
+
+  async function buildPhotopeaModel() {
+    const layers=[{
+      id:"train-background",name:"Wide Background",type:"background",color:canvas.backgroundColor||"#101010",
+      x:MASTER_W/2,y:MASTER_H/2,width:MASTER_W,height:MASTER_H,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:true,zIndex:0
+    }];
+    let imageIndex=0,logoIndex=0,textIndex=0,badgeIndex=0;
+    for(const obj of canvas.getObjects()){
+      const seg=segmentForObject(obj);
+      const common={x:Number(obj.left||0),y:Number(obj.top||0),width:Math.abs(Number(obj.getScaledWidth?.()||obj.width||1)),
+        height:Math.abs(Number(obj.getScaledHeight?.()||obj.height||1)),scaleX:1,scaleY:1,rotation:Number(obj.angle||0),
+        opacity:Number(obj.opacity??1),visible:obj.visible!==false,locked:!!obj.lockMovementX,zIndex:layers.length,segment:seg};
+      if(obj instanceof F.IText||obj instanceof F.Textbox){
+        textIndex++;
+        layers.push({...common,id:"train-text-"+textIndex,name:obj.name||("Text - Segment "+seg),type:"text",text:obj.text||"",
+          fontFamily:String(obj.fontFamily||"Arial").split(",")[0],fontSize:Number(obj.fontSize||54),fontWeight:String(obj.fontWeight||"normal"),
+          lineHeight:Number(obj.lineHeight||1.16),letterSpacing:Number(obj.charSpacing||0),textAlign:obj.textAlign||"left",
+          fill:typeof obj.fill==="string"?obj.fill:"#ffffff"});
+      } else if(obj instanceof F.FabricImage){
+        const isLogo=obj.kind==="logo",isSticker=!!obj.sticker;
+        if(isLogo)logoIndex++;else imageIndex++;
+        const src=isSticker&&obj.stickerAsset?new URL(obj.stickerAsset,document.baseURI).href:await rasterObjectSource(obj);
+        layers.push({...common,id:isSticker?"sticker-segment-"+seg:(isLogo?"logo-"+logoIndex:"image-"+imageIndex),
+          name:isSticker?("Sticker - "+(obj.stickerText||"Segment "+seg)):(isLogo?("Logo - Segment "+seg):(obj.kind==="background"?"Wide Background Image":("Image - Segment "+seg))),
+          type:isSticker?"sticker":"image",sourceDataUrl:src,source:obj.source||"fabric",
+          crop:{cropX:Number(obj.cropX||0),cropY:Number(obj.cropY||0),width:Number(obj.width||0),height:Number(obj.height||0)}});
+      } else if(obj instanceof F.Rect){
+        badgeIndex++;
+        const w=Math.max(1,Number(obj.width||1)),h=Math.max(1,Number(obj.height||1)),rx=Math.max(0,Number(obj.rx||0));
+        const fill=typeof obj.fill==="string"?obj.fill:"rgba(12,21,16,.88)",stroke=typeof obj.stroke==="string"?obj.stroke:"#3df0a0",sw=Number(obj.strokeWidth||0);
+        const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'"><rect x="'+sw/2+'" y="'+sw/2+'" width="'+Math.max(0,w-sw)+'" height="'+Math.max(0,h-sw)+'" rx="'+rx+'" fill="'+fill+'" stroke="'+stroke+'" stroke-width="'+sw+'"/></svg>';
+        layers.push({...common,id:"badge-"+badgeIndex,name:obj.name||("Badge - Segment "+seg),type:"shape",sourceDataUrl:photopeaSvgDataUrl(svg)});
+      }
+    }
+    return {version:1,workspace:"train",document:{name:"PAROVOZIK",width:MASTER_W,height:MASTER_H,background:canvas.backgroundColor||"#101010"},layers};
+  }
+
   async function renderMasterBlob() {
     const master = await toMasterCanvas();
     return canvasBlob(master);
@@ -847,7 +902,7 @@
 
   window.TrainEditor = {
     activate, serialize, restore, resetWorkspace,
-    exportAllSizes, exportSelectedSize, renderMasterBlob, setBackgroundFromDataUrl,
+    exportAllSizes, exportSelectedSize, renderMasterBlob, buildPhotopeaModel, setBackgroundFromDataUrl,
     inspect: () => {
       const sticker = canvas.getObjects().find(obj => obj.sticker);
       return {
