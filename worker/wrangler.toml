@@ -9,3 +9,7 @@ OPENROUTER_SITE_URL = "https://skoomaholic-art.github.io/photopea-ai/"
 OPENROUTER_APP_TITLE = "Skooma Multitool"
 OPENROUTER_OPENAI_IMAGE_MODEL = "openai/gpt-image-1"
 OPENROUTER_XAI_IMAGE_MODEL = "x-ai/grok-imagine-image-2.0"
+CLOUDFLARE_IMAGE_MODEL = "@cf/black-forest-labs/flux-2-klein-4b"
+
+[ai]
+binding = "AI"
