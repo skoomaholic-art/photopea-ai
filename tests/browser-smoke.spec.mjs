@@ -75,13 +75,15 @@ async function mockUnifiedSearch(page, items, errors = []) {
 }
 
 async function mockPhotopea(page) {
-  const fake = '<!doctype html><html><body><script>' +
-    'let docW=800,docH=1200,layerCount=0;' +
+  const psd=await readFile(new URL('../assets/psd.js',import.meta.url),'utf8');
+  const fake = '<!doctype html><html><body><script>'+psd+'<\/script><script>' +
+    'let docW=800,docH=1200,layerCount=0,layerNames=[];'  +
     'function size(buffer){try{const b=new Uint8Array(buffer);if(b.length>24&&b[0]===137&&b[1]===80&&b[2]===78&&b[3]===71){const v=new DataView(buffer);return [v.getUint32(16),v.getUint32(20)];}}catch(e){}return [800,1200];}' +
     'addEventListener("message",async event=>{' +
-      'if(event.data instanceof ArrayBuffer){[docW,docH]=size(event.data);parent.postMessage("done","*");return;}' +
+      'if(event.data instanceof ArrayBuffer){const b=new Uint8Array(event.data);if(b[0]===56&&b[1]===66){const d=PSD.readPsd(event.data,{skipLayerImageData:true,skipCompositeImageData:true});docW=d.width;docH=d.height;layerNames=d.children.map(l=>l.name);}else [docW,docH]=size(event.data);parent.postMessage("done","*");return;}' +
       'if(typeof event.data==="string"){' +
-        'const m=event.data.match(/POSTER_LAYERED_MODEL:([^*]+)\\*\\//);if(m){try{const meta=JSON.parse(decodeURIComponent(m[1]));docW=meta.width;docH=meta.height;layerCount=meta.layers.length;parent.postMessage("POSTER_LAYERED_READY:"+meta.workspace+":"+docW+"x"+docH+":"+layerCount,"*");}catch(e){}}' +
+        'const m=event.data.match(/POSTER_LAYERED_MODEL:([^*]+)\\*\\//);if(m){try{const meta=JSON.parse(decodeURIComponent(m[1]));docW=meta.width;docH=meta.height;layerCount=meta.layers.length;layerNames=meta.layers.map(l=>l.name);parent.postMessage("POSTER_LAYERED_READY:"+meta.workspace+":"+docW+"x"+docH+":"+layerCount,"*");}catch(e){}}' +
+        'if(event.data.includes("psd:true")){const b=PSD.writePsd({width:docW,height:docH,children:layerNames.map(name=>({name}))});parent.postMessage(b,"*",[b]);parent.postMessage("done","*");return;}' +
         'if(event.data.includes("saveToOE")){' +
           'const c=document.createElement("canvas");c.width=docW;c.height=docH;const x=c.getContext("2d");x.fillStyle="#173823";x.fillRect(0,0,docW,docH);x.fillStyle="#fff";x.fillRect(0,0,Math.min(40,docW),Math.min(40,docH));' +
           'c.toBlob(async blob=>{const buffer=await blob.arrayBuffer();parent.postMessage(buffer,"*",[buffer]);parent.postMessage("done","*");},"image/png");return;' +
@@ -131,10 +133,10 @@ test("boots existing four-workspace Poster Editor with unified tools", async ({ 
   await mockStatus(page);
   await page.goto("/");
   await expect(page.locator(".brand strong")).toHaveText("Poster Editor");
-  await expect(page.locator(".workspace-tab")).toHaveCount(4);
-  await expect(page.locator('[data-workspace="photopea"]')).toHaveCount(0);
+  await expect(page.locator(".workspace-tab")).toHaveCount(5);
+  await expect(page.locator('[data-workspace="photopea"]')).toHaveCount(1);
   await expect(page.locator("#posterWorkspace")).toBeVisible();
-  await expect(page.locator("#posterSearchBtn")).toHaveText("Найти исходник");
+  await expect(page.locator("#posterSearchBtn")).toHaveText("Показать постеры");
   await expect(page.locator("#filterSelectedBtn")).toHaveText("Фильтры");
   await expect(page.locator("#editSelectedPhotopeaBtn")).toContainText("Photopea");
   await expect(page.locator("#generateBtn")).toBeEnabled();
@@ -567,7 +569,7 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   await page.locator("#top10LogoInput").setInputFiles({ name:"logo.png", mimeType:"image/png", buffer:PNG });
   await expect.poll(() => page.evaluate(() => !!window.Top10Editor.getState().logo)).toBe(true);
 
-  await page.locator(".top10-layer-row").filter({hasText:"TOP_NUMBER"}).click();
+  await page.locator(".top10-layer-row").filter({hasText:"TOP10 Number"}).click();
   await page.locator("#top10PositionSelect").selectOption("2");
   let inspect = await page.evaluate(() => window.Top10Editor.inspect());
   expect(inspect.state.ranking).toBe("2");
@@ -580,7 +582,7 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   expect(inspect.number.bounds.left).toBeGreaterThanOrEqual(0);
   expect(inspect.number.bounds.left + inspect.number.bounds.width).toBeLessThanOrEqual(800);
 
-  await page.locator(".top10-layer-row").filter({hasText:"BOTTOM_DARKENING"}).click();
+  await page.locator(".top10-layer-row").filter({hasText:"Bottom Darkening"}).click();
   const darkBefore = await page.evaluate(() => window.Top10Editor.inspect().darkening);
   await page.mouse.move(400,700); await page.mouse.down(); await page.mouse.move(500,800); await page.mouse.up();
   const darkAfter = await page.evaluate(() => window.Top10Editor.inspect().darkening);
@@ -588,13 +590,13 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   await page.locator("#top10DarkColor").fill("#112233");
   await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().darkeningColor)).toBe("#112233");
 
-  await page.locator(".top10-layer-row").filter({hasText:"TOP_NUMBER"}).click();
+  await page.locator(".top10-layer-row").filter({hasText:"TOP10 Number"}).click();
   await page.locator("#top10PositionSelect").selectOption("7");
   await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/7.svg");
   await page.locator("#top10PositionSelect").selectOption("10");
   await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/10.svg");
 
-  await page.locator(".top10-layer-row").filter({hasText:"BACKGROUND_IMAGE"}).click();
+  await page.locator(".top10-layer-row").filter({hasText:"Background Image"}).click();
   const unaffectedBefore = await page.evaluate(() => {
     const s=window.Top10Editor.getState();
     return {logo:s.logo,ranking:s.ranking,darkeningColor:s.darkeningColor};
@@ -638,9 +640,9 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
     await page.locator("#resetConfirmOkBtn").click();
   }
 
-  await page.locator(".top10-layer-row").filter({hasText:"TOP_NUMBER"}).click();
+  await page.locator(".top10-layer-row").filter({hasText:"TOP10 Number"}).click();
   await page.locator("#top10PositionSelect").selectOption("7");
-  await page.locator(".top10-layer-row").filter({hasText:"BOTTOM_DARKENING"}).click();
+  await page.locator(".top10-layer-row").filter({hasText:"Bottom Darkening"}).click();
   await page.locator("#top10DarkIntensity").fill("81");
   await page.waitForTimeout(900);
   await page.reload();
@@ -785,9 +787,10 @@ test("Photopea main edit uses layered Vertical and Horizontal models", async ({ 
   await page.locator("#logoFileInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
   await page.locator("#editPosterPhotopeaBtn").click();
   await expect(page.locator("#photopeaWorkspace")).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>window.PhotopeaBridge.getContext()?.layeredReady)).toBeTruthy();
   let ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
   expect(ctx.layeredModel.document).toMatchObject({width:800,height:1200});
-  expect(ctx.layeredModel.layers.map(x=>x.name)).toEqual(expect.arrayContaining(["Background","Poster","Logo"]));
+  expect(ctx.layeredModel.layers.map(x=>x.name)).toEqual(expect.arrayContaining(["Background","Постер","Логотип"]));
   expect(ctx.layeredModel.layers.length).toBeGreaterThanOrEqual(3);
   expect(ctx.composite).toBe(false);
   await page.locator("#sendPhotopeaVerticalBtn").click();
@@ -827,6 +830,7 @@ test("Photopea layered Train keeps images logos and stickers independent", async
   await page.locator("#stickerSelect").selectOption("Премьера");
   await expect.poll(()=>page.evaluate(()=>window.TrainEditor.inspect().sticker?.text)).toBe("Премьера");
   await page.locator("#trainEditPhotopeaBtn").click();
+  await expect.poll(()=>page.evaluate(()=>window.PhotopeaBridge.getContext()?.layeredReady)).toBeTruthy();
   const ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
   expect(ctx.layeredModel.document).toMatchObject({width:2952,height:366});
   const names=ctx.layeredModel.layers.map(x=>x.name);
@@ -843,6 +847,7 @@ test("Photopea layered TOP10 keeps number logo darkening and background separate
   await page.locator("#top10PositionSelect").selectOption("7");
   await page.locator("#top10EditPhotopeaBtn").click();
   await expect.poll(() => page.evaluate(() => !!window.PhotopeaBridge.getContext()?.layeredModel)).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>window.PhotopeaBridge.getContext()?.layeredReady)).toBeTruthy();
   const ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
   expect(ctx.layeredModel.document).toMatchObject({width:800,height:1400});
   const names=ctx.layeredModel.layers.map(x=>x.name);

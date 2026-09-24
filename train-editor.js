@@ -18,19 +18,19 @@
     "Новый сезон": { src: "assets/stickers/new-season-ru.svg?v=20260923a", width: 286 },
     "Жаңа маусым": { src: "assets/stickers/new-season-kz.svg?v=20260923a", width: 286 },
     "Все серии": { src: "assets/stickers/all-series-ru.svg?v=20260923a", width: 236 },
-    "Барлық сериалдар": { src: "assets/stickers/all-series-kz.svg?v=20260923a", width: 354 },
+    "Барлық сериялар": { src: "assets/stickers/all-series-kz.svg?v=20260923a", width: 354 },
     "Новинка": { src: "assets/stickers/new-ru.svg?v=20260923a", width: 216 },
     "Жаңа": { src: "assets/stickers/new-kz.svg?v=20260923a", width: 166 },
     "Эксклюзив": { src: "assets/stickers/exclusive.svg?v=20260923a", width: 258 },
-    "Скоро...": { src: "assets/stickers/soon-ru.svg?v=20260923a", width: 214 },
-    "Жуырда...": { src: "assets/stickers/soon-kz.svg?v=20260923a", width: 222 },
+    "Скоро…": { src: "assets/stickers/soon-ru.svg?v=20260923a", width: 214 },
+    "Жуырда…": { src: "assets/stickers/soon-kz.svg?v=20260923a", width: 222 },
     "Скоро уйдёт": { src: "assets/stickers/leaving-soon-ru.svg?v=20260923a", width: 288 },
     "Көріп үлгер": { src: "assets/stickers/leaving-soon-kz.svg?v=20260923a", width: 288 },
   };
   const STICKER_ALIASES = {
-    "Барлық сериялар": "Барлық сериалдар",
-    "Скоро…": "Скоро...",
-    "Жуырда…": "Жуырда..."
+    "Барлық сериалдар": "Барлық сериялар",
+    "Скоро...": "Скоро…",
+    "Жуырда...": "Жуырда…"
   };
   let stickerLoadRequest = 0;
 
@@ -46,6 +46,7 @@
 
   const canvas = new F.Canvas("trainCanvas", {
     preserveObjectStacking: true,
+    enableRetinaScaling: false,
     selection: true,
     backgroundColor: "#101010"
   });
@@ -214,6 +215,7 @@
       canvas.setActiveObject(image);
     }
     canvas.requestRenderAll();
+    if(rawW < image.getScaledWidth() || rawH < image.getScaledHeight()) setStatus("Исходник мал для выбранного масштаба. Детали могут потерять чёткость; экспорт доступен.");
   }
 
   async function applyPhotopeaComposite(src, name = "Photopea result", masterId = null) {
@@ -301,8 +303,8 @@
     }];
     let imageIndex=0,logoIndex=0,textIndex=0,badgeIndex=0;
     for(const obj of canvas.getObjects()){
-      const seg=segmentForObject(obj);
-      const common={x:Number(obj.left||0),y:Number(obj.top||0),width:Math.abs(Number(obj.getScaledWidth?.()||obj.width||1)),
+      const seg=segmentForObject(obj),center=obj.getCenterPoint();
+      const common={x:center.x,y:center.y,width:Math.abs(Number(obj.getScaledWidth?.()||obj.width||1)),
         height:Math.abs(Number(obj.getScaledHeight?.()||obj.height||1)),scaleX:1,scaleY:1,rotation:Number(obj.angle||0),
         opacity:Number(obj.opacity??1),visible:obj.visible!==false,locked:!!obj.lockMovementX,zIndex:layers.length,segment:seg};
       if(obj instanceof F.IText||obj instanceof F.Textbox){
@@ -314,7 +316,7 @@
       } else if(obj instanceof F.FabricImage){
         const isLogo=obj.kind==="logo",isSticker=!!obj.sticker;
         if(isLogo)logoIndex++;else imageIndex++;
-        const src=isSticker&&obj.stickerAsset?new URL(obj.stickerAsset,document.baseURI).href:await rasterObjectSource(obj);
+        const src=isSticker&&obj.stickerAsset?await AssetManager.blobToDataUrl(await (await fetch(new URL(obj.stickerAsset,document.baseURI).href)).blob()):await rasterObjectSource(obj);
         layers.push({...common,id:isSticker?"sticker-segment-"+seg:(isLogo?"logo-"+logoIndex:"image-"+imageIndex),
           name:isSticker?("Sticker - "+(obj.stickerText||"Segment "+seg)):(isLogo?("Logo - Segment "+seg):(obj.kind==="background"?"Wide Background Image":("Image - Segment "+seg))),
           type:isSticker?"sticker":"image",sourceDataUrl:src,source:obj.source||"fabric",
@@ -516,7 +518,7 @@
   }
 
   function stickerStyle(text) {
-    if (["Скоро...", "Жуырда...", "Скоро…", "Жуырда…"].includes(text)) {
+    if (["Скоро…", "Жуырда…", "Скоро…", "Жуырда…"].includes(text)) {
       return { fill: "#111714", text: "#edf5ef", stroke: "#34493c", strokeWidth: 1 };
     }
     if (text === "Скоро уйдёт" || text === "Көріп үлгер") {
@@ -673,7 +675,11 @@
       if (requestId !== stickerLoadRequest) return;
       state.muted = true;
       const current = canvas.getObjects().find(obj => obj.sticker);
-      if (current) canvas.remove(current);
+      if(current) {
+        const width=current.getScaledWidth();
+        sticker.set({left:current.left,top:current.top,scaleX:width/sticker.width,scaleY:width/sticker.width});
+        constrainSticker(sticker);canvas.remove(current);
+      }
       canvas.add(sticker);
       canvas.setActiveObject(sticker);
       state.muted = false;
@@ -744,6 +750,7 @@
     state.muted = true;
     state.photopeaMasterId = data.photopeaMasterId || null;
     await canvas.loadFromJSON(data.canvas);
+    for(const obj of canvas.getObjects()) if(obj.sticker){constrainSticker(obj);canvas.bringObjectToFront(obj);}
     canvas.backgroundColor = data.background || "#101010";
     $("trainBgColor").value = normalizeColor(canvas.backgroundColor);
     state.muted = false;
@@ -771,12 +778,22 @@
     return new Promise((resolve, reject) => c.toBlob(blob => blob ? resolve(blob) : reject(new Error("Не удалось создать PNG.")), "image/png"));
   }
 
+  const scaledMasters=new WeakMap();
+  function scaledMaster(master,spec) {
+    let cached=scaledMasters.get(master);if(!cached){cached=new Map();scaledMasters.set(master,cached);}
+    if(!cached.has(spec.key)) {
+      const out=document.createElement("canvas");out.width=spec.segW*6;out.height=spec.segH;
+      const ctx=out.getContext("2d");ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+      ctx.drawImage(master,0,0,out.width,out.height);cached.set(spec.key,out);
+    }
+    return cached.get(spec.key);
+  }
   async function createSegmentBlob(master, spec, index) {
     const c = document.createElement("canvas");
     c.width = spec.segW;
     c.height = spec.segH;
     const ctx = c.getContext("2d");
-    ctx.drawImage(master, index * SEG_W, 0, SEG_W, SEG_H, 0, 0, spec.segW, spec.segH);
+    ctx.drawImage(scaledMaster(master,spec),index*spec.segW,0,spec.segW,spec.segH,0,0,spec.segW,spec.segH);
     return canvasBlob(c);
   }
 
@@ -786,7 +803,7 @@
     try {
       const master = await toMasterCanvas();
       const entries = [];
-      for (let i = 0; i < 6; i++) entries.push({ name: "part_" + (i + 1) + ".png", data: await createSegmentBlob(master, spec, i) });
+      for (let i = 0; i < 6; i++) entries.push({ name: spec.folder+"/part_" + (i + 1) + ".png", data: await createSegmentBlob(master, spec, i) });
       const zip = await ZipStore.build(entries);
       ZipStore.download(zip, "Паровозик-" + spec.key + ".zip");
       await window.WorkArchive?.captureWorkspace?.("train","download-selected-size");
@@ -866,6 +883,7 @@
   }
 
   canvas.on("object:added", e => {
+    const sticker=canvas.getObjects().find(obj=>obj.sticker);if(sticker) canvas.bringObjectToFront(sticker);
     if (!state.muted && !state.restoring) snapshot("Добавлен слой");
     renderLayers();
     scheduleDevicePreview();
@@ -968,6 +986,12 @@
   $("trainDownloadAllBtn").addEventListener("click", exportAllSizes);
   window.addEventListener("resize", () => { if (!$("trainWorkspace").hidden) resizeDisplay(); });
 
+  const catalog=$("stickerCatalog");
+  for(const [label,spec] of Object.entries(STICKER_ASSETS)) {
+    const button=document.createElement("button"),preview=document.createElement("img"),title=document.createElement("span");
+    button.type="button";preview.src=spec.src;preview.alt="";title.textContent=label;
+    button.append(preview,title);button.addEventListener("click",()=>{void setSticker(label);catalog.closest("details").open=false;});catalog.append(button);
+  }
   snapshot("Пустой холст");
   resizeDisplay();
   renderLayers();

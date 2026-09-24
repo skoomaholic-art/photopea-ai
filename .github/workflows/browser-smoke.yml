@@ -44,10 +44,13 @@ jobs:
           node --check zip-store.js
 
       - name: Static smoke
-        run: npm run smoke
-
-      - name: Install Playwright
-        run: npm install --no-package-lock
+        run: |
+          npm ci
+          npm run build:vendor
+          npm run check:syntax
+          npm run smoke
+          npm run test:unit
+          npm run build:static
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium

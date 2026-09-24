@@ -251,7 +251,7 @@
         const params=new URLSearchParams({q,year,source:"all"});
         if(forcedId) params.set("tmdbId",forcedId);
         if(forcedType) params.set("mediaType",forcedType);
-        const response=await fetch(apiBase+"/api/images/search?"+params.toString(),{cache:"no-store"});
+        const response=await fetch(apiBase+"/api/images/search?"+params.toString(),{cache:"no-store",signal:AbortSignal.timeout(30000)});
         data=await response.json().catch(()=>({}));
         if(!response.ok) throw new Error(data.error||"Источник временно недоступен.");
         await SkoomaStore?.setCache?.(key,data,10*60*1000);

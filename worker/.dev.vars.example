@@ -6,3 +6,7 @@ FANART_CLIENT_KEY=""
 OPENROUTER_API_KEY=""
 CARVE_API_KEY=""
 REMOVAL_AI_KEY=""
+
+# Requests that may spend credits stay disabled by default.
+AI_REQUESTS_ENABLED=false
+REMOTE_BACKGROUND_ENABLED=false

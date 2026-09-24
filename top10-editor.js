@@ -31,6 +31,7 @@
 
   const canvas = new F.Canvas("top10Canvas", {
     preserveObjectStacking: true,
+    enableRetinaScaling: false,
     selection: false,
     backgroundColor: "#050505"
   });
@@ -40,6 +41,8 @@
     backgroundX:400, backgroundY:700, backgroundScale:100, backgroundRotation:0, backgroundFilters:DEFAULTS(),
     logo:null, logoName:"", logoAssetId:null,
     logoX:400, logoY:895, logoScale:100, logoRotation:0, logoAboveDarkening:true,
+    numberX:NUMBER_X,numberY:NUMBER_Y,numberScale:100,numberRotation:0,numberLocked:true,
+    darkeningX:400,darkeningY:700,darkeningScale:100,darkeningRotation:0,darkeningLocked:true,canvasBackground:"#050505",
     ranking:"2", numberAsset:TOP10_NUMBER_ASSETS["2"],
     darkeningColor:"#000000", darkeningIntensity:94, darkeningStart:58,
     photopeaMasterId:null, photopeaComposite:false
@@ -116,7 +119,7 @@
   }
 
   function drawDarkening(ctx){
-    const start=Math.max(0,Math.min(.96,Number(data.darkeningStart||0)/100));
+    const start=Math.max(0,Math.min(1,Number(data.darkeningStart||0)/100));
     const intensity=Math.max(0,Math.min(1,Number(data.darkeningIntensity||0)/100));
     const middle=start+(1-start)*.54;
     const strong=start+(1-start)*.82;
@@ -126,14 +129,17 @@
     gradient.addColorStop(middle,rgba(data.darkeningColor,intensity*.34));
     gradient.addColorStop(strong,rgba(data.darkeningColor,intensity*.72));
     gradient.addColorStop(1,rgba(data.darkeningColor,intensity));
-    ctx.fillStyle=gradient;
-    ctx.fillRect(0,0,MASTER_W,MASTER_H);
+    ctx.save();ctx.translate(data.darkeningX,data.darkeningY);ctx.rotate(data.darkeningRotation*Math.PI/180);ctx.scale(data.darkeningScale/100,data.darkeningScale/100);
+    // Construct in layer coordinates so moving/rotating the layer moves its gradient too.
+    const local=ctx.createLinearGradient(0,-MASTER_H/2,0,MASTER_H/2);
+    local.addColorStop(0,rgba(data.darkeningColor,0));local.addColorStop(start,rgba(data.darkeningColor,0));local.addColorStop(middle,rgba(data.darkeningColor,intensity*.34));local.addColorStop(strong,rgba(data.darkeningColor,intensity*.72));local.addColorStop(1,rgba(data.darkeningColor,intensity));
+    ctx.fillStyle=local;ctx.fillRect(-MASTER_W/2,-MASTER_H/2,MASTER_W,MASTER_H);ctx.restore();
   }
 
   function refreshDarkening(){
     if(objects.darkening){ canvas.remove(objects.darkening); objects.darkening=null; }
     if(data.photopeaComposite){ applyStacking(); return; }
-    const start=Math.max(0,Math.min(.96,Number(data.darkeningStart||0)/100));
+    const start=Math.max(0,Math.min(1,Number(data.darkeningStart||0)/100));
     const intensity=Math.max(0,Math.min(1,Number(data.darkeningIntensity||0)/100));
     const middle=start+(1-start)*.54;
     const strong=start+(1-start)*.82;
@@ -150,8 +156,17 @@
     objects.darkening=lockedObject(new F.Rect({
       left:0,top:0,originX:"left",originY:"top",width:MASTER_W,height:MASTER_H,fill:gradient,strokeWidth:0
     }),"darkening");
-    canvas.add(objects.darkening);
+    objects.darkening.set({left:data.darkeningX,top:data.darkeningY,originX:"center",originY:"center",angle:data.darkeningRotation,scaleX:data.darkeningScale/100,scaleY:data.darkeningScale/100});
+    objects.darkening.top10BaseScale=1;
+    applyLock("darkening");canvas.add(objects.darkening);
     applyStacking();
+  }
+
+  function applyLock(layer) {
+    const obj=objects[layer];if(!obj)return;
+    const locked=!!data[layer+"Locked"];
+    obj.set({selectable:!locked,evented:!locked,hasControls:!locked,lockMovementX:locked,lockMovementY:locked,lockScalingX:locked,lockScalingY:locked,lockRotation:locked});
+    obj.setCoords();canvas.requestRenderAll();
   }
 
   function currentNumberAsset() {
@@ -169,10 +184,12 @@
     if(token!==numberLoadToken) return;
     objects.number=lockedObject(image,"number");
     objects.number.set({
-      left:NUMBER_X,top:NUMBER_Y,originX:"center",originY:"center",
-      scaleX:NUMBER_SIZE/(image.width||500),scaleY:NUMBER_SIZE/(image.height||500),
+      left:data.numberX,top:data.numberY,angle:data.numberRotation,originX:"center",originY:"center",
+      scaleX:NUMBER_SIZE/(image.width||500)*data.numberScale/100,scaleY:NUMBER_SIZE/(image.height||500)*data.numberScale/100,
       objectCaching:false
     });
+    objects.number.top10BaseScale=NUMBER_SIZE/(image.width||500);
+    applyLock("number");
     objects.number.numberAsset=asset;
     objects.number.numberValue=String(data.ranking);
     runtime.numberMetrics={left:NUMBER_X-NUMBER_SIZE/2,top:NUMBER_Y-NUMBER_SIZE/2,width:NUMBER_SIZE,height:NUMBER_SIZE,bottom:NUMBER_Y+NUMBER_SIZE/2,asset};
@@ -184,13 +201,12 @@
     const asset=currentNumberAsset();
     data.numberAsset=asset;
     const image=await imageFromSource(new URL(asset,document.baseURI).href);
-    ctx.drawImage(image,NUMBER_X-NUMBER_SIZE/2,NUMBER_Y-NUMBER_SIZE/2,NUMBER_SIZE,NUMBER_SIZE);
+    EditorCore.draw(ctx,image,{x:data.numberX,y:data.numberY,w:NUMBER_SIZE*data.numberScale/100,h:NUMBER_SIZE*data.numberScale/100,rotation:data.numberRotation});
   }
 
   function applyStacking(){
-    const ordered=data.logoAboveDarkening
-      ?[objects.background,objects.darkening,objects.logo,objects.number]
-      :[objects.background,objects.logo,objects.darkening,objects.number];
+    data.logoAboveDarkening=true;
+    const ordered=[objects.background,objects.darkening,objects.logo,objects.number];
     ordered.filter(Boolean).forEach((obj,index)=>canvas.moveObjectTo(obj,index));
     canvas.requestRenderAll();
     renderLayers();
@@ -268,7 +284,7 @@
   function selectLayer(layer){
     if(!["background","logo","darkening","number"].includes(layer)) return;
     runtime.selectedLayer=layer;
-    const target=layer==="background"?objects.background:layer==="logo"?objects.logo:null;
+    const target=objects[layer] && !data[layer+"Locked"]?objects[layer]:null;
     const active=canvas.getActiveObject();
     if(target){
       if(active!==target) canvas.setActiveObject(target);
@@ -280,7 +296,7 @@
 
   function syncLayerFromFabricSelection(event){
     const kind=event?.selected?.[0]?.top10Kind;
-    if(kind!=="background"&&kind!=="logo") return;
+    if(!objects[kind]) return;
     runtime.selectedLayer=kind;
     renderLayers();
     syncControls();
@@ -290,17 +306,15 @@
     const root=$("top10Layers");
     if(!root) return;
     root.innerHTML="";
-    const order=data.photopeaComposite?["background"]:(data.logoAboveDarkening
-      ?["number","logo","darkening","background"]
-      :["number","darkening","logo","background"]);
-    const labels={number:"TOP_NUMBER",logo:"LOGO",darkening:"BOTTOM_DARKENING",background:data.photopeaComposite?"PHOTOPEA_RESULT":"BACKGROUND_IMAGE"};
+    const order=data.photopeaComposite?["background","canvasBackground"]:["number","logo","darkening","background","canvasBackground"];
+    const labels={number:"TOP10 Number",logo:"Logo",darkening:"Bottom Darkening",background:data.photopeaComposite?"Photopea Result":"Background Image",canvasBackground:"Canvas Background"};
     for(const layer of order){
       const row=document.createElement("button");
       row.type="button";
       row.className="top10-layer-row"+(runtime.selectedLayer===layer?" active":"");
       if((layer==="background"&&!data.background)||(layer==="logo"&&!data.logo)) row.classList.add("empty");
       const title=document.createElement("span");title.textContent=labels[layer];
-      const lock=document.createElement("b");lock.textContent=(layer==="number"||layer==="darkening")?"🔒":"";
+      const lock=document.createElement("b");lock.textContent=data[layer+"Locked"]?"🔒":"";
       row.append(title,lock);row.addEventListener("click",()=>selectLayer(layer));root.appendChild(row);
     }
   }
@@ -321,35 +335,46 @@
     ["top10BgScale","top10BgRotation","top10BgCenter","top10BgReset","top10FilterBtn"].forEach(id=>{$(id).disabled=!hasBg;});
     ["top10LogoScale","top10LogoRotation","top10LogoCenter","top10LogoReset","top10LogoUp","top10LogoDown"].forEach(id=>{$(id).disabled=!hasLogo;});
     $("removeTop10LogoBtn").disabled=!hasLogo;
+    $("top10LogoDown").disabled=true;$("top10LogoUp").disabled=true;
+    $("top10NumberScale").value=String(data.numberScale);$("top10NumberRotation").value=String(data.numberRotation);
+    for(const id of ["top10NumberScale","top10NumberRotation","top10NumberCenter","top10NumberReset"]) $(id).disabled=data.numberLocked;
+    for(const layer of ["number","darkening"]){$("top10"+layer+"Lock").checked=data[layer+"Locked"];$("top10"+layer+"LockLabel").textContent=data[layer+"Locked"]?"Заблокирован":"Открыт";}
+    $("top10CanvasBackground").value=data.canvasBackground;
   }
 
   function updateObjectTransform(layer){
     const obj=objects[layer];if(!obj) return;
-    const prefix=layer==="background"?"background":"logo";
+    const prefix=layer;
     const base=obj.top10BaseScale||1;
     obj.set({
       left:data[prefix+"X"],top:data[prefix+"Y"],angle:data[prefix+"Rotation"],
       scaleX:base*data[prefix+"Scale"]/100,scaleY:base*data[prefix+"Scale"]/100
     });
     obj.setCoords();canvas.requestRenderAll();
+    if(layer==="number") runtime.numberMetrics={...obj.getBoundingRect(),bottom:obj.getBoundingRect().top+obj.getBoundingRect().height,asset:data.numberAsset};
   }
 
   function updateStateFromObject(obj){
     const layer=obj?.top10Kind;
-    if(layer!=="background"&&layer!=="logo") return;
+    if(!objects[layer] || data[layer+"Locked"]) return;
     const base=obj.top10BaseScale||1;
     data[layer+"X"]=obj.left;data[layer+"Y"]=obj.top;data[layer+"Rotation"]=obj.angle||0;
     data[layer+"Scale"]=Math.max(5,Math.min(500,(obj.scaleX||base)/base*100));
+    if(layer==="number") runtime.numberMetrics={...obj.getBoundingRect(),bottom:obj.getBoundingRect().top+obj.getBoundingRect().height,asset:data.numberAsset};
     syncControls();scheduleAutosave();
   }
 
   function centerLayer(layer){
+    if(data[layer+"Locked"]) return;
+    if(layer==="number"){data.numberX=MASTER_W/2;data.numberY=MASTER_H/2;}
     if(layer==="background"){data.backgroundX=400;data.backgroundY=700;}
     else if(layer==="logo"){data.logoX=400;data.logoY=895;}
     updateObjectTransform(layer);scheduleAutosave();
   }
 
   function resetLayer(layer){
+    if(data[layer+"Locked"]) return;
+    if(layer==="number"){data.numberX=NUMBER_X;data.numberY=NUMBER_Y;data.numberScale=100;data.numberRotation=0;}
     if(layer==="background"){
       data.backgroundX=400;data.backgroundY=700;data.backgroundScale=100;data.backgroundRotation=0;
     }else if(layer==="logo"){
@@ -493,16 +518,20 @@
       const asset=await AssetManager.get(assetId);
       if(!asset) return fallback;
       const filtered=filters&&Object.values(filters).some(value=>Number(value)!==0);
-      return await AssetManager.dataUrl(asset,filtered);
+      return fallback || await AssetManager.dataUrl(asset,true);
     }catch{return fallback;}
   }
 
   async function darkeningDataUrl(){
-    const c=document.createElement("canvas");c.width=MASTER_W;c.height=MASTER_H;drawDarkening(c.getContext("2d"));return top10CanvasDataUrl(c);
+    const c=document.createElement("canvas");c.width=MASTER_W;c.height=MASTER_H;
+    const saved=[data.darkeningX,data.darkeningY,data.darkeningScale,data.darkeningRotation];
+    try {data.darkeningX=400;data.darkeningY=700;data.darkeningScale=100;data.darkeningRotation=0;drawDarkening(c.getContext("2d"));}
+    finally {[data.darkeningX,data.darkeningY,data.darkeningScale,data.darkeningRotation]=saved;}
+    return top10CanvasDataUrl(c);
   }
 
   async function buildPhotopeaModel(){
-    const layers=[{id:"top10-canvas-background",name:"Canvas Background",type:"background",color:"#050505",
+    const layers=[{id:"top10-canvas-background",name:"Canvas Background",type:"background",color:data.canvasBackground,
       x:MASTER_W/2,y:MASTER_H/2,width:MASTER_W,height:MASTER_H,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:true,zIndex:0}];
     if(data.photopeaComposite && data.background){
       const source=await bestTop10Asset(data.backgroundAssetId,data.background,data.backgroundFilters);
@@ -514,14 +543,14 @@
     if(data.background){
       const source=await bestTop10Asset(data.backgroundAssetId,data.background,data.backgroundFilters);
       const image=await imageFromSource(source),size=sourceSize(image),base=backgroundBaseScale(size.width,size.height)*Number(data.backgroundScale||100)/100;
-      backgroundLayer={id:"top10-background",name:Object.values(data.backgroundFilters||{}).some(Number)?"Background Image Filtered":"Background Image",
+      backgroundLayer={id:"top10-background",name:"Background Image",
         type:"image",assetId:data.backgroundAssetId||null,sourceDataUrl:source,originalDataUrl:data.backgroundOriginal||source,
         x:Number(data.backgroundX),y:Number(data.backgroundY),width:size.width*base,height:size.height*base,scaleX:1,scaleY:1,
         rotation:Number(data.backgroundRotation||0),opacity:1,visible:true,locked:false};
     }
     const darkeningLayer={id:"top10-darkening",name:"Bottom Darkening",type:"gradient",sourceDataUrl:await darkeningDataUrl(),
-      x:MASTER_W/2,y:MASTER_H/2,width:MASTER_W,height:MASTER_H,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:true,
-      gradient:{color:data.darkeningColor,intensity:data.darkeningIntensity,start:data.darkeningStart}};
+      x:data.darkeningX,y:data.darkeningY,width:MASTER_W*data.darkeningScale/100,height:MASTER_H*data.darkeningScale/100,scaleX:1,scaleY:1,rotation:data.darkeningRotation,opacity:1,visible:true,locked:data.darkeningLocked,
+      gradient:{color:data.darkeningColor,intensity:data.darkeningIntensity,start:data.darkeningStart},originalTransform:{x:data.darkeningX,y:data.darkeningY,scale:data.darkeningScale,rotation:data.darkeningRotation}};
     if(data.logo){
       const source=await bestTop10Asset(data.logoAssetId,data.logo,null),image=await imageFromSource(source),size=sourceSize(image);
       const base=logoBaseScale(size.width,size.height)*Number(data.logoScale||100)/100;
@@ -529,17 +558,19 @@
         x:Number(data.logoX),y:Number(data.logoY),width:size.width*base,height:size.height*base,scaleX:1,scaleY:1,
         rotation:Number(data.logoRotation||0),opacity:1,visible:true,locked:false};
     }
-    const numberLayer={id:"top10-number",name:"TOP10 Number",type:"image",sourceDataUrl:new URL(currentNumberAsset(),document.baseURI).href,
-      x:NUMBER_X,y:NUMBER_Y,width:NUMBER_SIZE,height:NUMBER_SIZE,scaleX:1,scaleY:1,rotation:0,opacity:1,visible:true,locked:true,
+    const numberLayer={id:"top10-number",name:"TOP10 Number",type:"image",sourceDataUrl:await AssetManager.blobToDataUrl(await (await fetch(new URL(currentNumberAsset(),document.baseURI).href)).blob()),
+      x:data.numberX,y:data.numberY,width:NUMBER_SIZE*data.numberScale/100,height:NUMBER_SIZE*data.numberScale/100,scaleX:1,scaleY:1,rotation:data.numberRotation,opacity:1,visible:true,locked:data.numberLocked,
       value:String(data.ranking),asset:data.numberAsset||currentNumberAsset()};
-    const ordered=data.logoAboveDarkening?[backgroundLayer,darkeningLayer,logoLayer,numberLayer]:[backgroundLayer,logoLayer,darkeningLayer,numberLayer];
+    const blank=document.createElement("canvas");blank.width=MASTER_W;blank.height=MASTER_H;
+    const empty=(id,name)=>({id,name,type:"image",sourceDataUrl:blank.toDataURL("image/png"),x:400,y:700,width:800,height:1400,opacity:1,visible:true,locked:false});
+    const ordered=[backgroundLayer||empty("top10-background","Background Image"),darkeningLayer,logoLayer||empty("top10-logo","Logo"),numberLayer];
     for(const layer of ordered.filter(Boolean)){layer.zIndex=layers.length;layers.push(layer);}
     return {version:1,workspace:"top10",document:{name:"TOP10",width:MASTER_W,height:MASTER_H,background:"#050505"},layers};
   }
 
   async function renderCanvas(){
     const out=document.createElement("canvas");out.width=MASTER_W;out.height=MASTER_H;
-    const ctx=out.getContext("2d");ctx.fillStyle="#050505";ctx.fillRect(0,0,MASTER_W,MASTER_H);
+    const ctx=out.getContext("2d");ctx.fillStyle=data.canvasBackground;ctx.fillRect(0,0,MASTER_W,MASTER_H);
     const background=await processedBackgroundForExport();
     if(background) drawTransformed(ctx,background,"background",true);
     if(data.photopeaComposite) return out;
@@ -588,6 +619,7 @@
   async function restore(saved){
     data={...freshState(),...(saved||{})};
     data.backgroundFilters={...DEFAULTS(),...(saved?.backgroundFilters||{})};
+    data.logoAboveDarkening=true;canvas.backgroundColor=data.canvasBackground;
     if(objects.background){canvas.remove(objects.background);objects.background=null;}
     if(objects.logo){canvas.remove(objects.logo);objects.logo=null;}
     refreshDarkening();await refreshNumber();
@@ -603,11 +635,11 @@
       backingSize:{width:$("top10Canvas").width,height:$("top10Canvas").height},
       displayZoom:runtime.displayZoom,selectedLayer:runtime.selectedLayer,state:clone(data),
       darkening:{
-        locked:true,left:objects.darkening?.left??0,top:objects.darkening?.top??0,
+        locked:data.darkeningLocked,left:objects.darkening?.left??0,top:objects.darkening?.top??0,
         selectable:objects.darkening?.selectable??false,evented:objects.darkening?.evented??false
       },
       number:{
-        locked:true,left:objects.number?.left??0,top:objects.number?.top??0,
+        locked:data.numberLocked,left:objects.number?.left??0,top:objects.number?.top??0,
         selectable:objects.number?.selectable??false,evented:objects.number?.evented??false,
         asset:data.numberAsset||currentNumberAsset(),
         value:String(data.ranking),
@@ -629,7 +661,7 @@
   canvas.on("selection:updated",syncLayerFromFabricSelection);
   canvas.on("mouse:wheel",opt=>{
     const obj=canvas.getActiveObject(),layer=obj?.top10Kind;
-    if(layer!=="background"&&layer!=="logo") return;
+    if(!objects[layer] || data[layer+"Locked"]) return;
     opt.e.preventDefault();opt.e.stopPropagation();
     const delta=opt.e.deltaY<0?4:-4,min=layer==="background"?25:10;
     data[layer+"Scale"]=Math.max(min,Math.min(500,data[layer+"Scale"]+delta));
@@ -683,7 +715,16 @@
   $("top10LogoCenter").addEventListener("click",()=>centerLayer("logo"));
   $("top10LogoReset").addEventListener("click",()=>resetLayer("logo"));
   $("top10LogoUp").addEventListener("click",()=>{data.logoAboveDarkening=true;applyStacking();scheduleAutosave();});
-  $("top10LogoDown").addEventListener("click",()=>{data.logoAboveDarkening=false;applyStacking();scheduleAutosave();});
+  $("top10LogoDown").addEventListener("click",()=>setStatus("Порядок шаблона фиксирован: логотип над затемнением."));
+
+  for(const layer of ["number","darkening"]) $("top10"+layer+"Lock").addEventListener("change",e=>{
+    data[layer+"Locked"]=e.target.checked;applyLock(layer);selectLayer(layer);syncControls();scheduleAutosave();
+  });
+  $("top10NumberScale").addEventListener("input",e=>{if(data.numberLocked)return;data.numberScale=Math.max(10,Math.min(300,+e.target.value));updateObjectTransform("number");scheduleAutosave();});
+  $("top10NumberRotation").addEventListener("input",e=>{if(data.numberLocked)return;data.numberRotation=+e.target.value;updateObjectTransform("number");scheduleAutosave();});
+  $("top10NumberCenter").addEventListener("click",()=>centerLayer("number"));
+  $("top10NumberReset").addEventListener("click",()=>resetLayer("number"));
+  $("top10CanvasBackground").addEventListener("input",e=>{data.canvasBackground=e.target.value;canvas.backgroundColor=e.target.value;canvas.requestRenderAll();scheduleAutosave();});
 
   $("top10PositionSelect").addEventListener("change",async e=>{
     await leavePhotopeaComposite();
@@ -699,7 +740,7 @@
     data.darkeningIntensity=Math.max(0,Math.min(100,Number(e.target.value)||0));refreshDarkening();scheduleAutosave();
   });
   $("top10DarkStart").addEventListener("input",async e=>{await leavePhotopeaComposite();
-    data.darkeningStart=Math.max(0,Math.min(96,Number(e.target.value)||0));refreshDarkening();scheduleAutosave();
+    data.darkeningStart=Math.max(0,Math.min(100,Number(e.target.value)||0));refreshDarkening();scheduleAutosave();
   });
 
 

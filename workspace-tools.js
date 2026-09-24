@@ -238,5 +238,5 @@
   $("top10ResetClassicBtn").addEventListener("click",()=>resetWorkspace("top10"));
 
   window.WorkspaceTools={confirmAction,resetWorkspace};
-  window.WorkArchive={captureWorkspace,captureAll,openArchive,restoreEntry,list:(workspace)=>SkoomaStore.listArchiveEntries(workspace)};
+  window.WorkArchive={bundleAssets,restoreBundledAssets,captureWorkspace,captureAll,openArchive,restoreEntry,list:(workspace)=>SkoomaStore.listArchiveEntries(workspace)};
 })();

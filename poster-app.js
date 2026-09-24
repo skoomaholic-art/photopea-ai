@@ -5,14 +5,16 @@
     vertical: { w: 800, h: 1200, label: "Вертикальный" },
     horizontal: { w: 1920, h: 1080, label: "Горизонтальный" }
   };
-  const POSTER_BLEED = 0.035;
+  const decodedImages = new Map();
   const EXPECTED_API_VERSION = "2026-09-23-runtime-v4";
   const makePosterState = () => ({
     poster: null, logo: null, posterName: "", logoName: "",
     posterX: 50, posterY: 50, posterScale: 100, posterRotation: 0,
     logoX: 50, logoY: 50, logoScale: 100, logoRotation: 0,
     posterLocked: true, logoLocked: false, background: "#000000", order: ["poster", "logo"],
-    posterAssetId: null, logoAssetId: null, posterMode: "cover", photopeaMasterId: null
+    posterAssetId: null, logoAssetId: null, posterMode: "cover", photopeaMasterId: null,
+    posterOpacity: 1, logoOpacity: 1, posterVisible: true, logoVisible: true,
+    aiOriginal: null, aiResults: [], aiSelected: null, aiTitle: "", aiLanguage: "kk"
   });
 
   const state = {
@@ -149,6 +151,13 @@
     $("posterLockInput").checked = s.posterLocked;
     $("logoLockInput").checked = s.logoLocked;
     $("posterBgInput").value = s.background;
+    $("layerOpacityInput").value = Math.round((s[prefix+"Opacity"]??1)*100);
+    $("layerVisibleInput").checked = s[prefix+"Visible"]!==false;
+    for(const id of ["layerScaleInput","layerRotationInput","layerOpacityInput","layerPositionInput","layerVisibleInput","centerLayerBtn","resetLayerBtn","posterLayerUpBtn","posterLayerDownBtn"])
+      $(id).disabled = !!s[prefix+"Locked"];
+    $("posterLockLabel").textContent=s.posterLocked?"Заблокирован":"Открыт";
+    $("logoLockLabel").textContent=s.logoLocked?"Заблокирован":"Открыт";
+    $("removePosterLogoBtn").disabled=!s.logo || s.logoLocked;
   }
 
   function renderPoster() {
@@ -172,10 +181,20 @@
 
     posterImage.style.left = s.posterX + "%";
     posterImage.style.top = s.posterY + "%";
-    const exactPoster = s.posterMode === "exact";
-    posterImage.style.width = exactPoster ? "100%" : (100 * (1 + POSTER_BLEED * 2)) + "%";
-    posterImage.style.height = exactPoster ? "100%" : (100 * (1 + POSTER_BLEED * 2)) + "%";
-    posterImage.style.transform = `translate(-50%,-50%) rotate(${s.posterRotation}deg) scale(${Math.max(100, s.posterScale) / 100})`;
+    const image=decodedImages.get(s.poster);
+    if(s.poster && !image) loadImage(s.poster).then(()=>{if(s===current()) renderPoster();}).catch(error=>setPosterStatus(error.message,"error"));
+    if(image) {
+      const rect=posterGeometry(s,f,image);
+      s.posterX=rect.x/f.w*100;s.posterY=rect.y/f.h*100;
+      posterImage.style.left=s.posterX+"%";posterImage.style.top=s.posterY+"%";
+      posterImage.style.width=(rect.w/f.w*100)+"%";
+      posterImage.style.height=(rect.h/f.h*100)+"%";
+      posterImage.style.transform=`translate(-50%,-50%) rotate(${s.posterRotation}deg)`;
+    }
+    posterImage.style.opacity=String(s.posterOpacity??1);
+    logoImage.style.opacity=String(s.logoOpacity??1);
+    posterImage.hidden=!s.poster || s.posterVisible===false;
+    logoImage.hidden=!s.logo || s.logoVisible===false;
 
     logoImage.style.left = s.logoX + "%";
     logoImage.style.top = s.logoY + "%";
@@ -202,7 +221,8 @@
       return;
     }
     const stageRect=stage.getBoundingClientRect();
-    const rect=selected.el.getBoundingClientRect();
+    const raw=selected.el.getBoundingClientRect();
+    const rect=selected.layer==="poster"?{left:Math.max(raw.left,stageRect.left+5),top:Math.max(raw.top,stageRect.top+5),width:Math.min(raw.right,stageRect.right-5)-Math.max(raw.left,stageRect.left+5),height:Math.min(raw.bottom,stageRect.bottom-5)-Math.max(raw.top,stageRect.top+5)}:raw;
     transformOverlay.hidden=false;
     transformOverlay.classList.toggle("locked",selected.locked);
     transformOverlay.style.left=(rect.left-stageRect.left)+"px";
@@ -257,8 +277,9 @@
 
   function setFormat(format) {
     if (!formats[format]) return;
+    state.drag=null; state.handleTransform=null;
     state.activeFormat = format;
-    renderPoster();
+    renderPoster(); syncAiPanel();
     setPosterStatus(formats[format].label + " редактор активен");
   }
 
@@ -287,7 +308,7 @@
 
   function removePosterLogo() {
     const s = current();
-    if (!s.logo) return;
+    if (!s.logo || s.logoLocked) return;
     s.logo = null;
     s.logoName = "";
     s.logoAssetId = null;
@@ -304,8 +325,12 @@
 
   async function setImageLayer(layer, src, name = "", options = {}) {
     const s = current();
+    if(options.respectLock && s[layer+"Locked"]) throw new Error("Сначала откройте замок слоя.");
+    if(layer!=="logo") src=await EditorCore.trimPoster(src);
+    await loadImage(src);
     s.photopeaMasterId = null;
     if (layer === "logo") {
+      if(!options.keepAiOriginal) {s.aiOriginal=src;s.aiResults=[];s.aiSelected=null;}
       s.logo = src; s.logoName = name; s.logoAssetId = options.assetId || null;
       s.logoX = 50; s.logoY = 50; s.logoScale = 100; s.logoRotation = 0;
     } else {
@@ -313,7 +338,7 @@
       s.posterX = 50; s.posterY = 50; s.posterScale = 100; s.posterRotation = 0; s.posterMode = "cover";
     }
     state.selectedLayer = layer;
-    renderPoster();
+    if(s===current()) { renderPoster(); syncAiPanel(); }
     scheduleAutosave();
   }
 
@@ -340,6 +365,7 @@
 
   function changePosterLayerOrder(delta) {
     const s = current();
+    if(s[state.selectedLayer+"Locked"]) return;
     const order = Array.isArray(s.order) ? [...s.order] : ["poster", "logo"];
     const index = order.indexOf(state.selectedLayer);
     if (index < 0) return;
@@ -355,6 +381,7 @@
   function resetSelectedLayer() {
     const s = current();
     const p = state.selectedLayer;
+    if(s[p+"Locked"]) return;
     s[p + "X"] = 50;
     s[p + "Y"] = 50;
     s[p + "Scale"] = 100;
@@ -365,7 +392,7 @@
 
   async function checkServer() {
     state.backgroundProviders.local = localBackgroundReady();
-    if (!apiBase) {
+    if (!apiBase && location.protocol === "file:") {
       state.aiProviders = { cloudflare: false, xai: false, openai: false };
       state.backgroundProviders = { local: localBackgroundReady(), carve: false, removal: false };
       $("aiServerBadge").textContent = "не настроен";
@@ -375,9 +402,9 @@
       return;
     }
     try {
-      let response = await fetch(apiBase + "/api/health", { cache: "no-store" });
+      let response = await fetch(apiBase + "/api/health", { cache: "no-store", signal: AbortSignal.timeout(15000) });
       if (response.status === 404 || response.status === 405) {
-        response = await fetch(apiBase + "/api/status", { cache: "no-store" });
+        response = await fetch(apiBase + "/api/status", { cache: "no-store", signal: AbortSignal.timeout(15000) });
       }
       if (!response.ok) throw new Error("HTTP " + response.status);
       const data = await response.json();
@@ -408,9 +435,9 @@
       };
       const aiCount = Object.values(state.aiProviders).filter(Boolean).length;
       const bgCount = Object.values(state.backgroundProviders).filter(Boolean).length;
-      $("aiServerBadge").textContent = aiCount ? aiCount + "/3 online" : "не настроен";
+      $("aiServerBadge").textContent = aiCount ? aiCount + "/3 настроено" : "не настроен";
       $("aiServerBadge").className = aiCount ? "ok" : "error";
-      $("bgProviderBadge").textContent = bgCount ? bgCount + "/3 online" : "не настроен";
+      $("bgProviderBadge").textContent = bgCount ? bgCount + "/3 настроено" : "не настроен";
       $("bgProviderBadge").className = bgCount ? "ok" : "error";
       updateAiAvailability();
       updateBgAvailability();
@@ -433,7 +460,7 @@
     if (ready) {
       const message = provider === "cloudflare"
         ? "Workers AI FLUX.2 Klein готов. Использует дневную free allocation Cloudflare, затем действуют тарифы аккаунта."
-        : "OpenRouter готов. Этот image provider расходует платные кредиты.";
+        : "Провайдер настроен на сервере. Генерация платная; доступность проверяется при запросе.";
       setAiStatus(message, "ok");
     } else {
       setAiStatus(providerStatusMessage(state.aiProviderDetails?.[provider]), "error");
@@ -456,45 +483,69 @@
     }
   }
 
+  const creditMessage="На аккаунте Puter/Grok закончились доступные кредиты или исчерпан лимит генерации. Попробуйте другой AI-провайдер или повторите позже";
+  function aiError(error) {
+    const message=String(error?.message||error||"");
+    if(/insufficient.*(credit|balance|fund)|not.*enough.*(credit|balance|fund)|doesn.t have enough|quota.*exceed|low.balance/i.test(message)) return creditMessage;
+    if(error?.name==="TimeoutError" || error?.name==="AbortError") return "AI-сервис не ответил вовремя. Попробуйте позже.";
+    return message||"Не удалось получить результат AI.";
+  }
+  function buildLogoPrompt(title,language,extra="") {
+    return `Используй загруженный PNG-логотип как строгий визуальный референс. Замени только оригинальный текст на точное название: "${title}". Язык текста: ${language}.
+Сохрани исходную форму логотипа, композицию, количество строк, расположение элементов, пропорции, перспективу, контуры, толщину обводки, цветовую палитру, градиенты, текстуры, потёртости, объём, тени, свечение и общий характер дизайна.
+Используй шрифт, максимально близкий к исходному по начертанию, ширине, наклону, толщине и декоративным особенностям. Новый текст должен быть грамматически правильным, полностью читаемым и написан точно так: "${title}".
+Не изменяй смысл и визуальную идентичность логотипа. Не добавляй новые слова, случайные буквы, транслитерацию, подписи, водяные знаки, рамки, изображения, персонажей, предметы или фон.
+Не растягивай, не сжимай, не переворачивай, не дублируй и не обрезай буквы. Не создавай повторяющийся текст. Не допускай наложения букв друг на друга. Не заменяй кириллицу латиницей.
+Сохрани исходное соотношение сторон логотипа. Оставь безопасные поля вокруг изображения. Результат должен содержать только один готовый логотип, без мокапа и без размещения на постере.
+Выведи профессиональный PNG с прозрачным фоном в максимально доступном разрешении.
+Дополнительные пожелания: ${extra}`;
+  }
+  function syncAiPanel() {
+    const s=current();
+    $("aiTitle").value=s.aiTitle||"";$("aiLanguage").value=s.aiLanguage||"kk";
+    $("aiTitleLabel").textContent=s.aiLanguage==="ru"?"Название на русском":"Название на казахском";
+    $("aiTitle").placeholder=s.aiLanguage==="ru"?"Точное русское название":"Жекпе-жек чемпиондары";
+    $("aiOriginalPreview").hidden=!s.aiOriginal;
+    if(s.aiOriginal) $("aiOriginalPreview").src=s.aiOriginal;
+    renderAiResults(s.aiResults||[],s.aiSelected);
+  }
   async function generateAi() {
-    const provider = $("aiProvider").value;
-    const s = current();
-    if (!s.logo) return setAiStatus("Сначала добавьте логотип.", "error");
-    if (!state.aiProviders[provider]) return updateAiAvailability();
-
-    const button = $("generateBtn");
-    button.disabled = true;
-    setAiStatus("Генерирую 3 варианта...");
+    const provider=$("aiProvider").value, s=current(), source=s.aiOriginal||s.logo;
+    const title=$("aiTitle").value.trim(), language=$("aiLanguage").value==="kk"?"казахский":"русский";
+    if(!title) return setAiStatus(language==="казахский"?"Введите точное название на казахском языке":"Введите точное название на русском языке","error");
+    if(!source) return setAiStatus("Сначала добавьте логотип.","error");
+    if(!state.aiProviders[provider]) return updateAiAvailability();
+    const button=$("generateBtn"); button.disabled=true;
+    s.aiOriginal=source;s.aiTitle=title;s.aiLanguage=$("aiLanguage").value;
+    setAiStatus("Генерация трёх вариантов...");
     try {
-      const image = provider === "cloudflare"
-        ? await resizeDataUrlForAi(s.logo, 510)
-        : await sourceToDataUrl(s.logo);
-      const lang = $("aiLanguage").value === "kk" ? "казахский" : "русский";
-      const prompt = `${$("aiPrompt").value.trim()} Язык результата: ${lang}.`;
-      const response = await fetch(apiBase + "/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, prompt, image, count: 3 })
+      const image=provider==="cloudflare"?await resizeDataUrlForAi(source,510):await sourceToDataUrl(source);
+      const prompt=buildLogoPrompt(title,language,$("aiPrompt").value.trim());
+      const response=await fetch(apiBase+"/api/generate",{
+        method:"POST",headers:{"Content-Type":"application/json"},signal:AbortSignal.timeout(120000),
+        body:JSON.stringify({provider,prompt,image,count:3})
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || "Ошибка AI.");
-      if (!Array.isArray(data.images) || !data.images.length) throw new Error("API не вернул изображения.");
-      renderAiResults(data.images);
-      setAiStatus("Готово: " + data.images.length + " варианта.", "ok");
-    } catch (error) {
-      setAiStatus(error.message || "Ошибка AI.", "error");
-    } finally {
-      button.disabled = !state.aiProviders[provider];
-    }
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error(typeof data.error==="string"?data.error:data.message||data.error?.message||"Ошибка AI (HTTP "+response.status+").");
+      if(!Array.isArray(data.images)||!data.images.length) throw new Error("API не вернул изображения.");
+      s.aiResults=data.images; s.aiSelected=data.images[0];
+      if(s===current()) { syncAiPanel(); setAiStatus("Готово. Выберите вариант и нажмите «Переместить на постер».","ok"); }
+      scheduleAutosave(false);
+    } catch(error) {setAiStatus(aiError(error),"error");}
+    finally {button.disabled=!state.aiProviders[$("aiProvider").value];}
   }
 
-  function renderAiResults(images) {
+  function renderAiResults(images,selected=images[0]) {
+    $("moveResultBtn").disabled=!images.length;$("downloadResultBtn").disabled=!images.length;
+    $("aiResultPreview").hidden=!images.length;
+    if(selected) $("aiResultPreview").src=selected;
+    $("aiResultLabel").textContent=$("aiProvider").value==="xai"?"Результат Grok":$("aiProvider").value==="openai"?"Результат GPT":"Результат AI";
     const root = $("results");
     root.innerHTML = "";
     state.selectedAiResult = null;
     images.forEach((src, index) => {
       const button = document.createElement("button");
-      button.className = "result-card" + (index === 0 ? " active" : "");
+      button.className = "result-card" + (src === selected ? " active" : "");
       const img = document.createElement("img");
       img.src = src;
       img.alt = "AI вариант " + (index + 1);
@@ -503,12 +554,14 @@
         root.querySelectorAll(".result-card").forEach(x => x.classList.remove("active"));
         button.classList.add("active");
         state.selectedAiResult = src;
+        current().aiSelected=src; $("aiResultPreview").src=src;
         $("moveResultBtn").disabled = false;
         $("downloadResultBtn").disabled = false;
       });
       root.appendChild(button);
-      if (index === 0) {
+      if (src === selected) {
         state.selectedAiResult = src;
+        current().aiSelected=src; $("aiResultPreview").src=src;
         $("moveResultBtn").disabled = false;
         $("downloadResultBtn").disabled = false;
       }
@@ -587,24 +640,18 @@
   }
 
   function loadImage(src) {
+    if(decodedImages.has(src)) return Promise.resolve(decodedImages.get(src));
     return new Promise((resolve, reject) => {
       const image = new Image();
       image.crossOrigin = "anonymous";
-      image.onload = () => resolve(image);
+      image.onload = () => {decodedImages.set(src,image);resolve(image);};
       image.onerror = () => reject(new Error("Не удалось загрузить изображение для экспорта."));
       image.src = src;
     });
   }
 
-  function coverCrop(image, targetW, targetH) {
-    const ir = image.naturalWidth / image.naturalHeight;
-    const tr = targetW / targetH;
-    if (ir > tr) {
-      const sw = image.naturalHeight * tr;
-      return { sx: (image.naturalWidth - sw) / 2, sy: 0, sw, sh: image.naturalHeight };
-    }
-    const sh = image.naturalWidth / tr;
-    return { sx: 0, sy: (image.naturalHeight - sh) / 2, sw: image.naturalWidth, sh };
+  function posterGeometry(s,f,image) {
+    return EditorCore.cover(image.naturalWidth,image.naturalHeight,f.w,f.h,Math.max(1,s.posterScale/100),s.posterRotation||0,f.w*s.posterX/100,f.h*s.posterY/100);
   }
 
   async function photopeaAssetSource(assetId, fallbackSrc) {
@@ -614,7 +661,7 @@
       if (!asset) return { dataUrl:fallbackSrc, assetId, filtered:false };
       const filtered=!!asset.editedAsset && !!asset.filters && Object.values(asset.filters).some(value=>Number(value)!==0);
       return {
-        dataUrl:await AssetManager.dataUrl(asset,filtered),
+        dataUrl:fallbackSrc || await AssetManager.dataUrl(asset,true),
         assetId:asset.id,
         filtered,
         filters:asset.filters||null,
@@ -637,19 +684,14 @@
     if(s.poster){
       const source=await photopeaAssetSource(s.posterAssetId,s.poster);
       const image=await loadImage(source.dataUrl);
-      const exact=s.posterMode==="exact";
-      const bleedW=exact?f.w:Math.ceil(f.w*(1+POSTER_BLEED*2)),bleedH=exact?f.h:Math.ceil(f.h*(1+POSTER_BLEED*2));
-      const sr=image.naturalWidth/image.naturalHeight,br=bleedW/bleedH;
-      let baseW,baseH;
-      if(exact){baseW=f.w;baseH=f.h;}
-      else if(sr>br){baseH=bleedH;baseW=baseH*sr;}else{baseW=bleedW;baseH=baseW/sr;}
+      const rect=posterGeometry(s,f,image);
       defs.push({
-        id:"poster",name:source.filtered?"Poster Filtered":"Poster",type:"image",role:"poster",
+        id:"poster",name:"Постер",type:"image",role:"poster",
         assetId:s.posterAssetId||null,sourceDataUrl:source.dataUrl,originalDataUrl:source.originalDataUrl||source.dataUrl,
         filters:source.filters||null,sourceWidth:image.naturalWidth,sourceHeight:image.naturalHeight,
-        x:f.w*s.posterX/100,y:f.h*s.posterY/100,width:baseW*Math.max(100,s.posterScale)/100,height:baseH*Math.max(100,s.posterScale)/100,
-        scaleX:1,scaleY:1,rotation:s.posterRotation||0,opacity:1,visible:true,locked:!!s.posterLocked,
-        crop:{mode:exact?"exact":"cover",boxWidth:bleedW,boxHeight:bleedH},zIndex:0
+        x:rect.x,y:rect.y,width:rect.w,height:rect.h,
+        scaleX:1,scaleY:1,rotation:s.posterRotation||0,opacity:s.posterOpacity??1,visible:s.posterVisible!==false,locked:!!s.posterLocked,
+        crop:{mode:"cover",boxWidth:f.w,boxHeight:f.h},zIndex:0
       });
     }
     if(s.logo){
@@ -657,11 +699,11 @@
       const image=await loadImage(source.dataUrl);
       const baseW=f.w*.35,baseH=baseW*image.naturalHeight/image.naturalWidth;
       defs.push({
-        id:"logo",name:"Logo",type:"image",role:"logo",assetId:s.logoAssetId||null,
+        id:"logo",name:"Логотип",type:"image",role:"logo",assetId:s.logoAssetId||null,
         sourceDataUrl:source.dataUrl,originalDataUrl:source.originalDataUrl||source.dataUrl,
         sourceWidth:image.naturalWidth,sourceHeight:image.naturalHeight,
         x:f.w*s.logoX/100,y:f.h*s.logoY/100,width:baseW*s.logoScale/100,height:baseH*s.logoScale/100,
-        scaleX:1,scaleY:1,rotation:s.logoRotation||0,opacity:1,visible:true,locked:!!s.logoLocked,zIndex:0
+        scaleX:1,scaleY:1,rotation:s.logoRotation||0,opacity:s.logoOpacity??1,visible:s.logoVisible!==false,locked:!!s.logoLocked,zIndex:0
       });
     }
     const order=Array.isArray(s.order)?s.order:["poster","logo"];
@@ -672,7 +714,7 @@
 
   async function renderPosterBlob(format) {
     const f = formats[format];
-    const s = state.posters[format];
+    const s = structuredClone(state.posters[format]);
     const canvas = document.createElement("canvas");
     canvas.width = f.w; canvas.height = f.h;
     const ctx = canvas.getContext("2d");
@@ -680,32 +722,18 @@
     ctx.fillRect(0, 0, f.w, f.h);
 
     async function drawPosterLayer() {
-      if (!s.poster) return;
-      const image = await loadImage(s.poster);
-      const exact = s.posterMode === "exact";
-      const bleedW = exact ? f.w : Math.ceil(f.w * (1 + POSTER_BLEED * 2));
-      const bleedH = exact ? f.h : Math.ceil(f.h * (1 + POSTER_BLEED * 2));
-      const layerCanvas = document.createElement("canvas");
-      layerCanvas.width = bleedW; layerCanvas.height = bleedH;
-      if (exact) layerCanvas.getContext("2d").drawImage(image, 0, 0, bleedW, bleedH);
-      else {
-        const crop = coverCrop(image, bleedW, bleedH);
-        layerCanvas.getContext("2d").drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, bleedW, bleedH);
-      }
-      ctx.save();
-      ctx.translate(f.w * s.posterX / 100, f.h * s.posterY / 100);
-      ctx.rotate(s.posterRotation * Math.PI / 180);
-      ctx.scale(Math.max(100, s.posterScale) / 100, Math.max(100, s.posterScale) / 100);
-      ctx.drawImage(layerCanvas, -bleedW / 2, -bleedH / 2);
-      ctx.restore();
+      if(!s.poster || s.posterVisible===false) return;
+      const image=await loadImage(s.poster);
+      EditorCore.draw(ctx,image,posterGeometry(s,f,image),s.posterOpacity??1);
     }
 
     async function drawLogoLayer() {
-      if (!s.logo) return;
+      if (!s.logo || s.logoVisible===false) return;
       const image = await loadImage(s.logo);
       const baseW = f.w * 0.35;
       const baseH = baseW * image.naturalHeight / image.naturalWidth;
       ctx.save();
+      ctx.globalAlpha=s.logoOpacity??1;
       ctx.translate(f.w * s.logoX / 100, f.h * s.logoY / 100);
       ctx.rotate(s.logoRotation * Math.PI / 180);
       ctx.scale(s.logoScale / 100, s.logoScale / 100);
@@ -799,6 +827,16 @@
     const project = plainProject();
     project.id = "poster-editor-autosave";
     try { await SkoomaStore?.saveProject(project); } catch {}
+    project.assets=[];project.photopeaMasters=[];
+    const workspaces={...project.posters,train:project.train,top10:project.top10};
+    for(const [workspace,snapshot] of Object.entries(workspaces)) {
+      if(!snapshot) continue;
+      project.assets.push(...(await window.WorkArchive?.bundleAssets?.(workspace,snapshot)||[]));
+      if(snapshot.photopeaMasterId) {
+        const master=await SkoomaStore.getPhotopeaMaster(snapshot.photopeaMasterId);
+        if(master?.blob) project.photopeaMasters.push({...master,blob:undefined,dataUrl:await blobToDataUrl(master.blob)});
+      }
+    }
     const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
     downloadBlob(blob, "poster-project.json");
     await window.WorkArchive?.captureAll?.("save-project");
@@ -807,6 +845,8 @@
 
   async function restoreProject(project) {
     if (!project || project.type !== "poster-editor-project" || !project.posters) throw new Error("Это не проект Poster Editor.");
+    await window.WorkArchive?.restoreBundledAssets?.(project.assets||[]);
+    for(const master of project.photopeaMasters||[]) if(master.masterId && master.dataUrl) await SkoomaStore.savePhotopeaMaster({...master,dataUrl:undefined,blob:await AssetManager.dataUrlToBlob(master.dataUrl)});
     state.posters.vertical = { ...makePosterState(), ...(project.posters.vertical || {}) };
     state.posters.horizontal = { ...makePosterState(), ...(project.posters.horizontal || {}) };
     renderPoster();
@@ -816,6 +856,7 @@
     }
     if (window.Top10Editor?.restore) await window.Top10Editor.restore(project.top10 || null);
     else window.__pendingTop10Project = project.top10 || null;
+    syncAiPanel();
     showToast("Проект восстановлен.", "ok");
   }
 
@@ -942,18 +983,30 @@
   // Unified source browser owns posterSearchBtn / posterSearchInput.
   $("posterLayerSelect").addEventListener("change", e => selectLayer(e.target.value));
   $("layerScaleInput").addEventListener("input", e => {
+    if(current()[state.selectedLayer+"Locked"]) return;
     const min = state.selectedLayer === "poster" ? 100 : 10;
     current()[state.selectedLayer + "Scale"] = Math.max(min, +e.target.value);
     renderPoster(); scheduleAutosave();
   });
-  $("layerRotationInput").addEventListener("input", e => { current()[state.selectedLayer + "Rotation"] = +e.target.value; renderPoster(); scheduleAutosave(); });
-  $("centerLayerBtn").addEventListener("click", () => { current()[state.selectedLayer + "X"] = 50; current()[state.selectedLayer + "Y"] = 50; renderPoster(); scheduleAutosave(); });
+  $("layerRotationInput").addEventListener("input", e => { if(current()[state.selectedLayer+"Locked"]) return; current()[state.selectedLayer + "Rotation"] = +e.target.value; renderPoster(); scheduleAutosave(); });
+  $("centerLayerBtn").addEventListener("click", () => { if(current()[state.selectedLayer+"Locked"]) return; current()[state.selectedLayer + "X"] = 50; current()[state.selectedLayer + "Y"] = 50; renderPoster(); scheduleAutosave(); });
   $("resetLayerBtn").addEventListener("click", resetSelectedLayer);
   $("posterLayerUpBtn").addEventListener("click", () => changePosterLayerOrder(1));
   $("posterLayerDownBtn").addEventListener("click", () => changePosterLayerOrder(-1));
-  $("posterLockInput").addEventListener("change", e => { current().posterLocked = e.target.checked; updateTransformOverlay(); scheduleAutosave(); });
-  $("logoLockInput").addEventListener("change", e => { current().logoLocked = e.target.checked; updateTransformOverlay(); scheduleAutosave(); });
+  $("posterLockInput").addEventListener("change", e => { current().posterLocked = e.target.checked; state.drag=null;state.handleTransform=null;syncLayerControls();updateTransformOverlay();scheduleAutosave(); });
+  $("logoLockInput").addEventListener("change", e => { current().logoLocked = e.target.checked; state.drag=null;state.handleTransform=null;syncLayerControls();updateTransformOverlay();scheduleAutosave(); });
   $("posterBgInput").addEventListener("input", e => { current().background = e.target.value; renderPoster(); scheduleAutosave(); });
+  $("aiTitle").addEventListener("input",e=>{current().aiTitle=e.target.value;scheduleAutosave(false);});
+  $("aiLanguage").addEventListener("change",e=>{current().aiLanguage=e.target.value;syncAiPanel();scheduleAutosave(false);});
+  $("layerOpacityInput").addEventListener("input",e=>{if(current()[state.selectedLayer+"Locked"]) return;current()[state.selectedLayer+"Opacity"]=+e.target.value/100;renderPoster();scheduleAutosave();});
+  $("layerVisibleInput").addEventListener("change",e=>{if(current()[state.selectedLayer+"Locked"]) return;current()[state.selectedLayer+"Visible"]=e.target.checked;renderPoster();scheduleAutosave();});
+  $("layerPositionInput").addEventListener("change",e=>{
+    const s=current(),p=state.selectedLayer,v=e.target.value;if(s[p+"Locked"]) return;
+    s[p+"X"]=v==="center"?50:v.endsWith("l")?0:100;
+    s[p+"Y"]=v==="center"?50:v.startsWith("t")?0:100;
+    if(p==="logo") {const im=decodedImages.get(s.logo),f=formats[state.activeFormat];if(im){const halfW=17.5*s.logoScale/100,halfH=f.w*.35*s.logoScale/100*im.naturalHeight/im.naturalWidth/f.h*50;s.logoX=Math.max(halfW,Math.min(100-halfW,s.logoX));s.logoY=Math.max(halfH,Math.min(100-halfH,s.logoY));}}
+    renderPoster();scheduleAutosave();
+  });
   $("aiProvider").addEventListener("change", updateAiAvailability);
   $("generateBtn").addEventListener("click", generateAi);
   $("moveResultBtn").addEventListener("click", async () => {
@@ -968,7 +1021,7 @@
           imageType: "logo"
         });
       }
-      await setImageLayer("logo", state.selectedAiResult, "AI logo", { assetId: asset?.id || null });
+      await setImageLayer("logo", state.selectedAiResult, "AI logo", { assetId: asset?.id || null, keepAiOriginal:true, respectLock:true });
     } catch (error) {
       showToast(error.message || "Не удалось добавить AI-результат.", "error");
     }
@@ -976,9 +1029,10 @@
   $("downloadResultBtn").addEventListener("click", async () => {
     if (!state.selectedAiResult) return;
     try {
-      downloadBlob(await (await fetch(state.selectedAiResult)).blob(), "adapted-logo.png");
+      const im=await loadImage(state.selectedAiResult), out=EditorCore.canvas(im.naturalWidth,im.naturalHeight);
+      out.getContext("2d").drawImage(im,0,0);downloadBlob(await EditorCore.png(out),"adapted-logo.png");
       await window.WorkArchive?.captureWorkspace?.(state.activeFormat,"download-ai-result");
-    } catch { window.open(state.selectedAiResult, "_blank", "noopener"); }
+    } catch(error) { showToast(error.message||"Не удалось скачать PNG.","error"); }
   });
   $("bgProviderSelect").addEventListener("change", updateBgAvailability);
   $("removeBackgroundBtn").addEventListener("click", removeBackground);
@@ -988,7 +1042,7 @@
   $("downloadVerticalBtn").addEventListener("click", () => downloadPoster("vertical"));
   $("downloadHorizontalBtn").addEventListener("click", () => downloadPoster("horizontal"));
   $("downloadPostersZipBtn").addEventListener("click", downloadBothPosters);
-  $("saveProjectBtn").addEventListener("click", saveProject);
+  $("saveProjectBtn").addEventListener("click",()=>saveProject().catch(error=>showToast(error.message||"Не удалось сохранить проект.","error")));
   $("projectFileInput").addEventListener("change", e => openProjectFile(e.target.files?.[0]));
 
   transformOverlay.querySelectorAll("[data-transform-action]").forEach(handle=>handle.addEventListener("pointerdown",startHandleTransform));
@@ -1009,6 +1063,8 @@
     serialize: plainProject,
     restore: restoreProject,
     renderPosterBlob,
+    buildLogoPrompt,
+    aiError,
     buildPhotopeaModel,
     applyPhotopeaComposite,
     getPhotopeaMasterId,
