@@ -246,19 +246,6 @@
   const clone=x=>JSON.parse(JSON.stringify(x));
   const labels={vertical:'Вертикальный',horizontal:'Горизонтальный',train:'Паровозик',top10:'ТОП10'};
   const read=w=>w==='top10'?Top10Editor.serialize():PosterApp.getState()[w];
-  const bar=document.createElement('details');bar.className='project-tools';
-  bar.innerHTML=`<summary>Проект и инструменты <small>Сборка 2026.09.25</small></summary>
-    <div class="project-tools-body">
-      <label>Название проекта <input id="projectTitle" placeholder="Название тайтла или события"></label>
-      <button id="globalUndo">Отменить</button><button id="globalRedo">Повторить</button>
-      <label>Копировать изображение в <select id="copyLayerTarget"><option value="vertical">Вертикальный</option><option value="horizontal">Горизонтальный</option><option value="train">Паровозик</option><option value="top10">ТОП10</option></select></label>
-      <button id="copyLayerBtn">Копировать выбранное</button>
-      <button id="saveTemplateBtn">Сохранить шаблон проекта</button>
-      <select id="projectTemplates" aria-label="Шаблоны проекта"><option value="">Выберите шаблон</option></select>
-      <button id="applyTemplateBtn">Открыть шаблон</button><button id="deleteTemplateBtn">Удалить шаблон</button>
-      <span id="projectToolsStatus" role="status"></span>
-    </div>`;
-  document.querySelector('.topbar').after(bar);
   const status=text=>{$('projectToolsStatus').textContent=text;};
   const histories={},timers={};let restoring=false;
   function record(w){
