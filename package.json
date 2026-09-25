@@ -4,10 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "smoke": "node scripts/static-smoke.mjs && node scripts/feature-contract.mjs && node tests/image-sources.test.mjs",
-    "test:e2e": "playwright test"
+    "dev": "node scripts/dev-server.mjs",
+    "smoke": "node scripts/static-smoke.mjs && node scripts/feature-contract.mjs",
+    "test:e2e": "playwright test",
+    "test:server": "node --test tests/server.test.mjs",
+    "build:vendor": "node scripts/build-vendor.mjs",
+    "build:static": "node scripts/build-static.mjs",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "test:render": "node --test tests/render.test.mjs",
+    "test:unit": "node --test tests/server.test.mjs tests/image-sources.test.mjs tests/worker.test.mjs tests/render.test.mjs tests/messaging.test.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "1.63.0"
+    "@napi-rs/canvas": "0.1.100",
+    "@playwright/test": "1.63.0",
+    "ag-psd": "31.0.2",
+    "esbuild": "0.28.2",
+    "fabric": "^7.4.0",
+    "fake-indexeddb": "6.2.5",
+    "happy-dom": "20.14.5"
   }
 }

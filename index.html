@@ -6,9 +6,11 @@
   <meta name="theme-color" content="#07100b">
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
-  <link rel="icon" type="image/svg+xml" href="app-icon.svg?v=20260922c">
+  <link rel="icon" type="image/png" href="assets/poster-markup-icon.png?v=20260925a">
   <link rel="stylesheet" href="poster-app.css?v=20260923-transform-handles">
-  <script defer src="https://cdn.jsdelivr.net/npm/fabric@7.4.0/dist/index.min.js"></script>
+  <script defer src="assets/fabric.js"></script>
+  <script defer src="editor-core.js?v=20260924"></script>
+  <link rel="stylesheet" href="poster-overrides.css?v=20260924">
   <script defer src="storage.js?v=20260923-layered-model"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
   <script defer src="asset-manager.js?v=20260923b"></script>
@@ -26,7 +28,7 @@
 <body>
   <header class="topbar">
     <a class="brand" href="#" aria-label="Poster Editor">
-      <img class="brand-icon" src="app-icon.svg?v=20260922c" alt="">
+      <img class="brand-icon" src="assets/poster-markup-icon.png?v=20260925a" alt="">
       <span><small>FREEDOM TOOLKIT</small><strong>Poster Editor</strong></span>
     </a>
 
@@ -35,6 +37,7 @@
       <button class="workspace-tab" data-workspace="horizontal" aria-selected="false">Горизонтальный</button>
       <button class="workspace-tab" data-workspace="train" aria-selected="false">Паровозик</button>
       <button class="workspace-tab" data-workspace="top10" aria-selected="false">ТОП10</button>
+      <button class="workspace-tab" data-workspace="photopea" aria-selected="false">Photopea</button>
     </nav>
 
     <div class="header-actions">
@@ -42,6 +45,17 @@
       <label class="ghost file-button">Открыть проект<input id="projectFileInput" type="file" accept="application/json"></label>
     </div>
   </header>
+  <details class="project-tools"><summary>Проект и инструменты <small>Сборка 2026.09.25</small></summary>
+    <div class="project-tools-body">
+      <label>Название проекта <input id="projectTitle" placeholder="Название тайтла или события"></label>
+      <button id="globalUndo">Отменить</button><button id="globalRedo">Повторить</button>
+      <label>Копировать изображение в <select id="copyLayerTarget"><option value="vertical">Вертикальный</option><option value="horizontal">Горизонтальный</option><option value="train">Паровозик</option><option value="top10">ТОП10</option></select></label>
+      <button id="copyLayerBtn">Копировать выбранное</button>
+      <button id="saveTemplateBtn">Сохранить шаблон проекта</button>
+      <select id="projectTemplates" aria-label="Шаблоны проекта"><option value="">Выберите шаблон</option></select>
+      <button id="applyTemplateBtn">Открыть шаблон</button><button id="deleteTemplateBtn">Удалить шаблон</button>
+      <span id="projectToolsStatus" role="status"></span>
+    </div></details>
 
   <main id="posterWorkspace" class="workspace active" data-workspace-panel="poster">
     <div class="poster-layout">
@@ -61,7 +75,7 @@
             <input id="posterSearchInput" placeholder="Название фильма / сериала">
             <input id="posterSearchYear" inputmode="numeric" maxlength="4" placeholder="Год">
           </div>
-          <button id="posterSearchBtn" class="primary wide">Найти исходник</button>
+          <button id="posterSearchBtn" class="primary wide">Показать постеры</button>
           <div id="posterSearchStatus" class="mini-status">TMDB, Fanart.tv, Wikimedia Commons и TVmaze через единый поиск.</div>
           <div id="posterSearchResults" hidden></div>
         </section>
@@ -91,9 +105,12 @@
             <button id="filterSelectedBtn">Фильтры</button>
             <button id="editSelectedPhotopeaBtn">Редактировать в Photopea</button>
           </div>
-          <label class="lock-line"><input id="posterLockInput" type="checkbox" checked> Заблокировать постер</label>
-          <label class="lock-line"><input id="logoLockInput" type="checkbox"> Заблокировать логотип</label>
-          <p class="muted bleed-note">Постер имеет постоянный вылет 3.5% за края видимой области.</p>
+          <label class="layer-toggle"><span>Постер</span><input id="posterLockInput" type="checkbox" role="switch" aria-label="Блокировка постера" checked><i aria-hidden="true"></i><span id="posterLockLabel">Заблокирован</span></label>
+          <label class="layer-toggle"><span>Логотип</span><input id="logoLockInput" type="checkbox" role="switch" aria-label="Блокировка логотипа"><i aria-hidden="true"></i><span id="logoLockLabel">Открыт</span></label>
+          <p class="muted">Постер заполняет формат целиком. Кадрирование сохраняет пропорции и учитывает поворот.</p>
+          <label class="field">Непрозрачность слоя <input id="layerOpacityInput" type="range" min="0" max="100" value="100"></label>
+          <label class="field">Положение <select id="layerPositionInput"><option value="center">По центру</option><option value="tl">Сверху слева</option><option value="tr">Сверху справа</option><option value="bl">Снизу слева</option><option value="br">Снизу справа</option></select></label>
+          <label><input id="layerVisibleInput" type="checkbox" checked> Показывать слой</label>
           <label class="field">Фон холста <input id="posterBgInput" type="color" value="#000000"></label>
         </section>
 
@@ -137,25 +154,32 @@
       <aside class="panel sidebar">
         <section>
           <div class="section-head"><h3>AI / IMAGE EDIT</h3><span id="aiServerBadge">проверка</span></div>
-          <p class="muted">Ключи хранятся только в Worker.</p>
+          <p class="muted">Ключи хранятся только на сервере. Генерация расходует лимит выбранного сервиса.</p>
           <label class="field">Провайдер
             <select id="aiProvider">
-              <option value="cloudflare">FLUX.2 Klein (Workers AI free tier)</option>
-              <option value="xai">Grok Imagine 2.0 (OpenRouter, платный)</option>
-              <option value="openai">GPT Image 1 (OpenRouter, платный)</option>
+              <option value="cloudflare">FLUX.2 Klein (лимиты Cloudflare)</option>
+              <option value="xai">Grok Imagine (платный)</option>
+              <option value="openai">GPT Image (платный)</option>
             </select>
           </label>
           <label class="field">Язык
             <select id="aiLanguage"><option value="kk">Казахский</option><option value="ru">Русский</option></select>
           </label>
-          <label class="field">Промпт
+          <label class="field"><span id="aiTitleLabel">Название на казахском</span><input id="aiTitle" required maxlength="250" placeholder="Жекпе-жек чемпиондары"></label>
+          <label class="field">Дополнительные пожелания
             <textarea id="aiPrompt" rows="4">Адаптируй логотип на выбранный язык, сохрани стиль, композицию и цвета. Верни чистый логотип на прозрачном фоне.</textarea>
           </label>
+          <div class="button-row"><button id="copyAiPromptBtn">Скопировать промпт</button><button id="downloadAiSourceBtn">Скачать исходник</button><label class="file-button">Загрузить результат<input id="manualAiResult" type="file" accept="image/png,image/webp,image/jpeg"></label></div>
           <button id="generateBtn" class="primary wide" disabled>Адаптировать логотип</button>
           <div id="aiStatus" class="mini-status">Проверяю AI-сервер...</div>
+          <div class="ai-comparison">
+            <figure><figcaption>Загруженный исходник</figcaption><img id="aiOriginalPreview" alt="Исходный логотип" hidden></figure>
+            <span aria-hidden="true">→</span>
+            <figure><figcaption id="aiResultLabel">Результат Grok</figcaption><img id="aiResultPreview" alt="Выбранный результат" hidden></figure>
+          </div>
           <div id="results" class="ai-results"></div>
           <div class="button-row">
-            <button id="moveResultBtn" disabled>На постер</button>
+            <button id="moveResultBtn" disabled>Переместить на постер</button>
             <button id="downloadResultBtn" disabled>Скачать</button>
           </div>
         </section>
@@ -190,7 +214,7 @@
             <button id="trainAddTextBtn">+ Текст</button>
           </div>
           <div class="button-row">
-            <button id="trainAddRectBtn">+ Добавить плашку</button>
+            <button id="trainAddRectBtn">+ Прямоугольник</button>
             <button id="trainDuplicateBtn">Дублировать</button>
           </div>
           <label class="field">Фон <input id="trainBgColor" type="color" value="#101010"></label>
@@ -204,10 +228,10 @@
             <label>Прозрачность <input id="trainOpacityInput" type="range" min="0" max="1" step="0.05" value="1"></label>
           </div>
           <div class="crop-grid">
-            <label>Crop L %<input id="cropLeftInput" type="number" min="0" max="45" value="0"></label>
-            <label>Crop T %<input id="cropTopInput" type="number" min="0" max="45" value="0"></label>
-            <label>Crop R %<input id="cropRightInput" type="number" min="0" max="45" value="0"></label>
-            <label>Crop B %<input id="cropBottomInput" type="number" min="0" max="45" value="0"></label>
+            <label>Слева, %<input id="cropLeftInput" type="number" min="0" max="45" value="0"></label>
+            <label>Сверху, %<input id="cropTopInput" type="number" min="0" max="45" value="0"></label>
+            <label>Справа, %<input id="cropRightInput" type="number" min="0" max="45" value="0"></label>
+            <label>Снизу, %<input id="cropBottomInput" type="number" min="0" max="45" value="0"></label>
           </div>
           <button id="applyCropBtn" class="wide">Применить обрезку</button>
           <div class="button-row">
@@ -218,7 +242,7 @@
 
         <section>
           <h3>Стикер первого сегмента</h3>
-          <select id="stickerSelect">
+          <select id="stickerSelect" hidden aria-hidden="true" tabindex="-1">
             <option>Без стикера</option>
             <option>Премьера</option>
             <option>Новые серии</option>
@@ -226,19 +250,25 @@
             <option>Новый сезон</option>
             <option>Жаңа маусым</option>
             <option>Все серии</option>
-            <option>Барлық сериалдар</option>
+            <option>Барлық сериялар</option>
             <option>Новинка</option>
             <option>Жаңа</option>
             <option>Эксклюзив</option>
-            <option>Скоро...</option>
-            <option>Жуырда...</option>
+            <option>Скоро…</option>
+            <option>Жуырда…</option>
             <option>Скоро уйдёт</option>
             <option>Көріп үлгер</option>
           </select>
+          <details class="sticker-catalog"><summary id="stickerSummary">Без стикера</summary><div id="stickerCatalog"></div></details>
         </section>
       </aside>
 
       <section class="panel train-center">
+        <div class="train-view-tools">
+          <label>Масштаб просмотра <input id="trainViewZoom" type="range" min="10" max="200" value="100"><output id="trainViewZoomValue">100%</output></label>
+          <button id="trainViewFit">Вписать</button><button id="trainViewActual">100%</button>
+          <span>Прокрутка для перемещения; Ctrl + колесо для приближения</span>
+        </div>
         <div class="train-toolbar">
           <div class="segmented">
             <button id="trainCanvasModeBtn" class="active">Единый холст</button>
@@ -327,21 +357,24 @@
           <div class="button-row"><button id="top10LogoUp">Слой выше</button><button id="top10LogoDown">Слой ниже</button></div>
         </section>
         <section data-top10-controls="darkening" data-top10-always>
-          <h3>BOTTOM_DARKENING 🔒</h3>
+          <h3>Bottom Darkening</h3><label class="layer-toggle"><input id="top10darkeningLock" type="checkbox" checked role="switch" aria-label="Блокировка затемнения"><i aria-hidden="true"></i><span id="top10darkeningLockLabel">Заблокирован</span></label>
           <label class="field">Цвет <input id="top10DarkColor" type="color" value="#000000"></label>
           <label class="field">Интенсивность <input id="top10DarkIntensity" type="range" min="0" max="100" value="94"></label>
-          <label class="field">Начало градиента <input id="top10DarkStart" type="range" min="0" max="96" value="58"></label>
+          <label class="field">Начало градиента <input id="top10DarkStart" type="range" min="0" max="100" value="58"></label>
           <p class="muted">LOCK POSITION · LOCK SIZE · EDIT APPEARANCE</p>
         </section>
         <section data-top10-controls="number" data-top10-always>
-          <h3>TOP_NUMBER 🔒</h3>
+          <h3>TOP10 Number</h3><label class="layer-toggle"><input id="top10numberLock" type="checkbox" checked role="switch" aria-label="Блокировка номера"><i aria-hidden="true"></i><span id="top10numberLockLabel">Заблокирован</span></label>
           <label class="field">Позиция в ТОП10
             <select id="top10PositionSelect">
               <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
               <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
             </select>
           </label>
-          <p class="muted">Используется отдельный векторный asset выбранной цифры. Позиция и размер заблокированы шаблоном.</p>
+          <label class="field">Масштаб номера <input id="top10NumberScale" type="range" min="10" max="300" value="100"></label>
+          <label class="field">Поворот номера <input id="top10NumberRotation" type="range" min="-180" max="180" value="0"></label>
+          <div class="button-row"><button id="top10NumberCenter">Центрировать</button><button id="top10NumberReset">Сбросить</button></div>
+          <label class="field">Canvas Background <input id="top10CanvasBackground" type="color" value="#050505"></label>
         </section>
       </aside>
       <section class="panel top10-center">
@@ -375,9 +408,10 @@
         <button id="sendPhotopeaTrainBtn">В паровозик</button>
         <button id="sendPhotopeaTop10Btn">В ТОП10</button>
         <button id="sendPhotopeaAutoBtn">Авто</button>
-        <button id="openPhotopeaBtn">Открыть отдельно ↗</button>
+        <button id="openPhotopeaBtn">Открыть Photopea</button>
       </div>
     </div>
+    <button id="reloadPhotopeaBtn" type="button">Перезагрузить Photopea</button>
     <iframe id="photopeaFrame" title="Photopea" src="about:blank" data-src="https://www.photopea.com/" allow="clipboard-read; clipboard-write"></iframe>
   </main>
 

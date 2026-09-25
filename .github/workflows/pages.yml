@@ -25,17 +25,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Syntax checks
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install and build runtime assets
         run: |
-          node --check worker/ai-worker.js
-          node --check worker/image-sources.js
-          node --check asset-manager.js
-          node --check image-filters.js
-          node --check filter-studio.js
-          node --check source-browser.js
-          node --check photopea-bridge.js
-          node --check poster-app.js
-          node --check train-editor.js
+          npm ci
+          npm run build:vendor
+          npm run check:syntax
+          npm run test:unit
+          npm run build:static
 
       - name: Static smoke check
         run: node scripts/static-smoke.mjs
@@ -49,7 +50,7 @@ jobs:
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist
 
       - name: Deploy to GitHub Pages
         id: deployment

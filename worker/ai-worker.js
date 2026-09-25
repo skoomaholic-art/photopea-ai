@@ -1,4 +1,9 @@
 import { searchUnifiedImages, secureImageProxy, imageProviderStatus } from "./image-sources.js";
+const CREDIT_MESSAGE="На аккаунте Puter/Grok закончились доступные кредиты или исчерпан лимит генерации. Попробуйте другой AI-провайдер или повторите позже";
+async function timedFetch(url,options={}) {
+  try{return await fetch(url,{...options,signal:options.signal||AbortSignal.timeout(90000)});}
+  catch(error){throw new ApiError(error.name==="TimeoutError"||error.name==="AbortError"?"Сервис не ответил вовремя.":"Ошибка сети внешнего сервиса.",error.name==="TimeoutError"||error.name==="AbortError"?504:502,"network_error");}
+}
 const json = (data, status = 200, origin = "*") => new Response(JSON.stringify(data), {
   status,
   headers: {
@@ -45,7 +50,7 @@ function bytesToBase64(bytes) {
 }
 
 async function responseToDataUrl(url) {
-  const response = await fetch(url);
+  const response = await timedFetch(url);
   if (!response.ok) throw new ApiError(`Не удалось получить изображение результата (${response.status}).`, 502, "result_fetch_failed");
   const type = response.headers.get("content-type") || "image/png";
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -54,10 +59,12 @@ async function responseToDataUrl(url) {
 
 function providerError(provider, response, data) {
   const message = data?.error?.message || data?.error || data?.message || `${provider} API ${response.status}`;
+  if(/insufficient.*(credit|fund|balance)|not.*enough.*(credit|balance|fund)|doesn.t have enough|quota.*exceed|low.balance/i.test(String(message)) || response.status===402) return new ApiError(CREDIT_MESSAGE,402,"quota_exhausted");
+  if(response.status===404) return new ApiError("Модель или API-маршрут не найдены. Проверьте настройки сервера.",404,"invalid_model");
   if (response.status === 401 || response.status === 403) return new ApiError(`${provider}: неверный или недоступный API-ключ.`, 401, "auth_error");
   if (response.status === 402) return new ApiError(`${provider}: закончился оплаченный баланс/кредиты.`, 402, "quota_exhausted");
   if (response.status === 429) return new ApiError(`${provider}: превышен лимит запросов. Повторите позже.`, 429, "rate_limit");
-  return new ApiError(String(message), response.status >= 500 ? 502 : 400, "provider_error");
+  return new ApiError(provider+": запрос отклонён или сервис недоступен (HTTP "+response.status+").", response.status >= 500 ? 502 : 400, "provider_error");
 }
 
 function openRouterHeaders(env) {
@@ -97,7 +104,7 @@ function extractOpenRouterImages(data) {
 
 async function requestOpenRouterImage(env, payload) {
   const baseUrl = String(env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/$/, "");
-  const response = await fetch(`${baseUrl}/images`, {
+  const response = await timedFetch(`${baseUrl}/images`, {
     method: "POST",
     headers: openRouterHeaders(env),
     body: JSON.stringify(payload)
@@ -118,7 +125,6 @@ async function callOpenAI(env, prompt, imageDataUrl, count) {
       { type: "image_url", image_url: { url: imageDataUrl } }
     ],
     n: count,
-    aspect_ratio: "1:1",
     quality: "low",
     background: "transparent"
   };
@@ -132,8 +138,7 @@ async function callXAI(env, prompt, imageDataUrl, count) {
     input_references: [
       { type: "image_url", image_url: { url: imageDataUrl } }
     ],
-    n: 1,
-    aspect_ratio: "1:1"
+    n: 1
   };
   const jobs = Array.from({ length: count }, async () => {
     const images = await requestOpenRouterImage(env, common);
@@ -179,30 +184,10 @@ async function callCloudflareAI(env, prompt, imageDataUrl, count) {
 }
 
 async function probeOpenRouterModel(env, provider) {
-  if (!env.OPENROUTER_API_KEY) return { status: "not_configured", configured: false, available: false };
-  const model = openRouterImageModel(env, provider);
-  const baseUrl = String(env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/$/, "");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
-  try {
-    const response = await fetch(baseUrl + "/model/" + model, {
-      headers: openRouterHeaders(env),
-      signal: controller.signal
-    });
-    if (response.status === 429) return { status: "rate_limited", configured: true, available: false, model };
-    if (response.status === 401 || response.status === 403) return { status: "auth_error", configured: true, available: false, model };
-    if (!response.ok) return { status: "offline", configured: true, available: false, model, httpStatus: response.status };
-    const data = await response.json().catch(() => ({}));
-    const architecture = data?.data?.architecture || {};
-    const inputs = architecture.input_modalities || [];
-    const outputs = architecture.output_modalities || [];
-    const compatible = inputs.includes("image") && outputs.includes("image");
-    return { status: compatible ? "online" : "incompatible", configured: true, available: compatible, model };
-  } catch (error) {
-    return { status: error?.name === "AbortError" ? "timeout" : "offline", configured: true, available: false, model };
-  } finally {
-    clearTimeout(timer);
-  }
+  const model=openRouterImageModel(env,provider),configured=!!env.OPENROUTER_API_KEY;
+  const compatible=provider==="xai"?model==="x-ai/grok-imagine-image-2.0":/^openai\/gpt-image-(?:1|1-mini|1.5|2)$/.test(model);
+  return {model,configured,available:configured && compatible && env.AI_REQUESTS_ENABLED==="true",
+    status:!configured?"not_configured":!compatible?"incompatible":env.AI_REQUESTS_ENABLED!=="true"?"disabled":"configured"};
 }
 
 async function serviceHealth(env) {
@@ -212,10 +197,10 @@ async function serviceHealth(env) {
     probeOpenRouterModel(env, "openai")
   ]);
   const cloudflare = env.AI?.run
-    ? { status: "online", configured: true, available: true, model: cloudflareImageModel(env), freeTier: "10000 neurons/day shared Workers AI allocation" }
+    ? { status: env.AI_REQUESTS_ENABLED==="true"?"configured":"disabled", configured: true, available: env.AI_REQUESTS_ENABLED==="true", model: cloudflareImageModel(env), freeTier: "10000 neurons/day shared Workers AI allocation" }
     : { status: "not_configured", configured: false, available: false, model: cloudflareImageModel(env) };
   return {
-    ok: true,
+    ok: true,upstreamChecked:false,aiEnabled:env.AI_REQUESTS_ENABLED==="true",
     apiVersion: "2026-09-23-runtime-v4",
     services: {
       tmdb: {
@@ -240,7 +225,7 @@ async function serviceHealth(env) {
         status: env.CARVE_API_KEY || env.REMOVAL_AI_KEY ? "online" : "browser_local_available",
         configured: !!(env.CARVE_API_KEY || env.REMOVAL_AI_KEY),
         available: true,
-        providers: { carve: !!env.CARVE_API_KEY, removal: !!env.REMOVAL_AI_KEY, local: true }
+        providers: { carve: !!env.CARVE_API_KEY && env.REMOTE_BACKGROUND_ENABLED==="true", removal: !!env.REMOVAL_AI_KEY && env.REMOTE_BACKGROUND_ENABLED==="true", local: true }
       },
       photopea: { status: "client_check", configured: true, available: null }
     },
@@ -255,7 +240,7 @@ async function serviceHealth(env) {
       xai: openRouterImageModel(env, "xai"),
       openai: openRouterImageModel(env, "openai")
     },
-    background: { local: true, carve: !!env.CARVE_API_KEY, removal: !!env.REMOVAL_AI_KEY },
+    background: { local: true, carve: !!env.CARVE_API_KEY && env.REMOTE_BACKGROUND_ENABLED==="true", removal: !!env.REMOVAL_AI_KEY && env.REMOTE_BACKGROUND_ENABLED==="true" },
     posters: {
       tvmaze: true,
       tmdb: !!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY)
@@ -272,7 +257,7 @@ function makeProxyUrl(request, originalUrl) {
 }
 
 async function searchTVmaze(query, request) {
-  const response = await fetch("https://api.tvmaze.com/search/shows?q=" + encodeURIComponent(query), {
+  const response = await timedFetch("https://api.tvmaze.com/search/shows?q=" + encodeURIComponent(query), {
     headers: { "User-Agent": "Freedom-Poster-Editor/1.0" }
   });
   if (response.status === 429) throw new ApiError("TVmaze: превышен лимит 20 запросов за 10 секунд.", 429, "rate_limit");
@@ -295,7 +280,7 @@ async function searchTVmaze(query, request) {
 
 async function searchTMDB(query, request, env) {
   if (!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY)) return [];
-  const response = await fetch("https://api.themoviedb.org/3/search/multi?include_adult=false&language=ru-RU&query=" + encodeURIComponent(query), {
+  const response = await timedFetch("https://api.themoviedb.org/3/search/multi?include_adult=false&language=ru-RU&query=" + encodeURIComponent(query), {
     headers: {
       Authorization: `Bearer ${env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN}`,
       Accept: "application/json"
@@ -327,7 +312,7 @@ async function proxyImage(urlString) {
   try { url = new URL(urlString); } catch { throw new ApiError("Некорректный URL изображения.", 400, "bad_url"); }
   const allowedHosts = new Set(["static.tvmaze.com", "image.tmdb.org"]);
   if (url.protocol !== "https:" || !allowedHosts.has(url.hostname)) throw new ApiError("Источник изображения не разрешён.", 403, "forbidden_source");
-  const response = await fetch(url.toString(), { headers: { "User-Agent": "Freedom-Poster-Editor/1.0" } });
+  const response = await timedFetch(url.toString(), { headers: { "User-Agent": "Freedom-Poster-Editor/1.0" } });
   if (!response.ok) throw new ApiError("Не удалось получить постер.", 502, "image_fetch_failed");
   const headers = new Headers();
   headers.set("Content-Type", response.headers.get("content-type") || "image/jpeg");
@@ -345,7 +330,7 @@ async function callCarve(env, imageDataUrl) {
   form.append("image", new Blob([bytes], { type }), "image.png");
   form.append("format", "png");
   form.append("size", "auto");
-  const create = await fetch("https://api.carve.photos/api/v1/images/remove_bg", {
+  const create = await timedFetch("https://api.carve.photos/api/v1/images/remove_bg", {
     method: "POST",
     headers: { "X-API-Key": env.CARVE_API_KEY },
     body: form
@@ -357,7 +342,7 @@ async function callCarve(env, imageDataUrl) {
 
   for (let attempt = 0; attempt < 36; attempt++) {
     await sleep(1500);
-    const status = await fetch(`https://api.carve.photos/api/v1/images/images/${encodeURIComponent(imageId)}`, {
+    const status = await timedFetch(`https://api.carve.photos/api/v1/images/images/${encodeURIComponent(imageId)}`, {
       headers: { "X-API-Key": env.CARVE_API_KEY }
     });
     if (status.status === 200) {
@@ -401,7 +386,7 @@ async function callRemovalAI(env, imageDataUrl) {
   form.append("image_file", new Blob([bytes], { type }), "image.png");
   form.append("get_base64", "1");
   form.append("crop", "0");
-  const response = await fetch("https://api.removal.ai/3.0/remove", {
+  const response = await timedFetch("https://api.removal.ai/3.0/remove", {
     method: "POST",
     headers: { "Rm-Token": env.REMOVAL_AI_KEY },
     body: form
@@ -415,8 +400,8 @@ async function callRemovalAI(env, imageDataUrl) {
 
 async function removeBackground(env, provider, image) {
   const available = {
-    carve: !!env.CARVE_API_KEY,
-    removal: !!env.REMOVAL_AI_KEY
+    carve: !!env.CARVE_API_KEY && env.REMOTE_BACKGROUND_ENABLED==="true",
+    removal: !!env.REMOVAL_AI_KEY && env.REMOTE_BACKGROUND_ENABLED==="true"
   };
   const selected = provider === "auto"
     ? (available.carve ? "carve" : available.removal ? "removal" : null)
@@ -443,7 +428,7 @@ export default {
     try {
       const url = new URL(request.url);
 
-      if (request.method === "GET" && (url.pathname === "/api/status" || url.pathname === "/api/health")) {
+      if (request.method === "GET" && ["/api/status","/api/health","/api/config"].includes(url.pathname)) {
         return json(await serviceHealth(env), 200, origin);
       }
 
@@ -481,6 +466,7 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/api/generate") {
+        if(env.AI_REQUESTS_ENABLED!=="true") throw new ApiError("Генерация выключена на сервере. Для включения проверьте тариф и настройте AI_REQUESTS_ENABLED.",403,"ai_disabled");
         const body = await request.json();
         const provider = body.provider;
         const prompt = String(body.prompt || "").trim();
@@ -494,6 +480,9 @@ export default {
           const result = await callCloudflareAI(env, prompt, image, count);
           return json({ images: result.images, provider: "cloudflare-workers-ai", model: result.model }, 200, origin);
         }
+        const configuration=await probeOpenRouterModel(env,provider);
+        if(!configuration.configured) throw new ApiError("OPENROUTER_API_KEY не настроен на сервере.",503,"missing_key");
+        if(configuration.status==="incompatible") throw new ApiError("Неподдерживаемая модель изображения.",400,"invalid_model");
         let images;
         if (provider === "openai") images = await callOpenAI(env, prompt, image, count);
         else if (provider === "xai") images = await callXAI(env, prompt, image, count);
@@ -502,6 +491,7 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/api/remove-background") {
+        if(env.REMOTE_BACKGROUND_ENABLED!=="true") throw new ApiError("Серверное удаление фона выключено. Выберите локальное удаление без API.",403,"remote_background_disabled");
         const body = await request.json();
         const image = String(body.image || "");
         if (!image.startsWith("data:image/")) throw new ApiError("Некорректное изображение.", 400, "bad_image");
@@ -514,7 +504,7 @@ export default {
     } catch (error) {
       const status = Number(error?.status) || (error instanceof ApiError ? error.status : 500);
       const code = error?.code || (error instanceof ApiError ? error.code : "internal_error");
-      return json({ error: error.message || "Unexpected server error", code }, status, origin);
+      return json({ error: error instanceof ApiError || error.name==="ImageSourceError" ? error.message : "Внутренняя ошибка сервера.", code }, status, origin);
     }
   }
 };

@@ -21,7 +21,7 @@
     ]);
     const fn = mod.removeBackground || mod.default;
     if (typeof fn !== "function") throw new Error("Локальный модуль удаления фона несовместим.");
-    const result = await fn(input, {
+    const result = await EditorCore.withTimeout(fn(input, {
       model: "small",
       output: { format: "image/png", quality: 1 },
       progress: (key, current, total) => {
@@ -29,7 +29,7 @@
         const stage = String(key || "").replace("fetch:", "").replace("compute:", "");
         onProgress("Локально: " + stage + " " + Math.round(ratio * 100) + "%", ratio);
       }
-    });
+    }),120000,"Локальная модель не ответила вовремя. Проверьте загрузку модели и память устройства.");
     if (!(result instanceof Blob) || !result.type.startsWith("image/")) throw new Error("Локальная модель не вернула PNG.");
     onProgress("Локально: готово", 1);
     return result;

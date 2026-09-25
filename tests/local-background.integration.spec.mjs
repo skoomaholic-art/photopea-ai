@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 test("local background removal loads real browser model and returns PNG", async ({ page }) => {
+  test.skip(process.env.REAL_BACKGROUND!=="1","Real ML download is opt-in; default checks use mocks.");
   test.setTimeout(180_000);
 
   await page.route("**/api/health", route => route.fulfill({

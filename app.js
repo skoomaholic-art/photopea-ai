@@ -81,19 +81,32 @@ window.APP = (() => {
 
   function switchEditor(value) {
     const skooma = $("skoomaHost");
+    const poster = $("posterHost");
     const external = $("externalHost");
     const frame = $("externalEditorFrame");
     const fallback = $("externalFallback");
     if (value === "skooma") {
       skooma.classList.add("active");
+      poster.classList.remove("active");
       external.classList.remove("active");
       frame.src = "about:blank";
       setTimeout(() => window.Studio?.fitToViewport(), 40);
       return;
     }
+    if (value === "poster") {
+      skooma.classList.remove("active");
+      poster.classList.add("active");
+      external.classList.remove("active");
+      frame.src = "about:blank";
+      window.PosterEditor?.resize?.();
+      return;
+    }
     const editor = externalEditors[value];
     skooma.classList.remove("active");
+    poster.classList.remove("active");
     external.classList.add("active");
+    $("externalEditorName").textContent = editor?.name || "External editor";
+    $("externalOpenAlways").onclick = () => window.open(editor?.url, "_blank", "noopener");
     if (editor?.embed) {
       fallback.classList.add("hidden");
       frame.classList.remove("hidden");

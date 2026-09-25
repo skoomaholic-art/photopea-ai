@@ -102,7 +102,7 @@ async function tmdbJson(env, path, params = {}, ttlSeconds = 600) {
 
   const key = "tmdb:" + url.pathname + "?" + [...url.searchParams.entries()].filter(([k]) => k !== "api_key").map(([k,v]) => k + "=" + v).join("&");
   return cachedJson(key, ttlSeconds, async () => {
-    const response = await fetch(url, { headers });
+    const response = await fetch(url, { headers, signal:AbortSignal.timeout(PROXY_TIMEOUT_MS) });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw sourceErrorMessage("TMDB", response, data);
     return data;
@@ -323,7 +323,7 @@ export class FanartSource extends ImageSourceAdapter {
     if (this.env.FANART_CLIENT_KEY) headers["client-key"] = this.env.FANART_CLIENT_KEY;
     const cacheKey = "fanart:" + endpoint;
     const data = await cachedJson(cacheKey, 1800, async () => {
-      const response = await fetch(endpoint, { headers });
+      const response = await fetch(endpoint, { headers, signal:AbortSignal.timeout(PROXY_TIMEOUT_MS) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw sourceErrorMessage("Fanart.tv", response, body);
       return body;
@@ -382,7 +382,7 @@ export class WikimediaSource extends ImageSourceAdapter {
     }).forEach(([k,v]) => url.searchParams.set(k, v));
 
     const data = await cachedJson("commons:" + search.toLowerCase(), 900, async () => {
-      const response = await fetch(url, { headers: { "User-Agent": "Freedom-Poster-Editor/1.0 (Wikimedia Commons source adapter)" } });
+      const response = await fetch(url, { headers: { "User-Agent": "Freedom-Poster-Editor/1.0 (Wikimedia Commons source adapter)" },signal:AbortSignal.timeout(PROXY_TIMEOUT_MS) });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw sourceErrorMessage("Wikimedia Commons", response, body);
       return body;
@@ -423,6 +423,7 @@ export class TVmazeSource extends ImageSourceAdapter {
     const q = clean(query);
     const data = await cachedJson("tvmaze:" + q.toLowerCase(), 600, async () => {
       const response = await fetch("https://api.tvmaze.com/search/shows?q=" + encodeURIComponent(q), {
+        signal:AbortSignal.timeout(PROXY_TIMEOUT_MS),
         headers: { "User-Agent": "Freedom-Poster-Editor/1.0" }
       });
       const body = await response.json().catch(() => []);

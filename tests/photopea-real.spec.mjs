@@ -8,6 +8,9 @@ test.describe("Real Photopea layered integration", () => {
     await page.goto("/");
     await page.waitForFunction(() => !!window.PhotopeaBridge && !!window.PosterApp);
 
+    const diagnostics=[];
+    page.on("requestfailed",req=>{if(req.url().includes("photopea.com"))diagnostics.push({path:new URL(req.url()).pathname,error:req.failure()?.errorText});});
+    page.on("response",res=>{if(res.url().includes("photopea.com")&&res.status()>=400)diagnostics.push({path:new URL(res.url()).pathname,status:res.status()});});
     const result=await page.evaluate(async () => {
       const c=document.createElement("canvas");
       c.width=32;c.height=48;
@@ -25,6 +28,10 @@ test.describe("Real Photopea layered integration", () => {
         ]
       });
       return window.PhotopeaBridge.inspectActiveDocument();
+    }).catch(async error=>{
+      const frame=page.frames().find(f=>f.url().includes("photopea.com"));
+      const message=frame?await frame.locator("body").innerText({timeout:2000}).catch(()=>"Frame content unavailable"):"No Photopea frame";
+      throw new Error(error.message+"\nPhotopea diagnostics: "+JSON.stringify(diagnostics)+"\nFrame: "+message.slice(0,1000));
     });
 
     expect(result.error).toBeUndefined();

@@ -4,9 +4,11 @@
   const frame=$("photopeaFrame");
   let ready=false;
   let readyWaiters=[];
-  let commandWaiters=[];
-  let exportWaiter=null;
-  let inspectWaiter=null;
+  let pending=null;
+  let commandQueue=Promise.resolve();
+  let connectionError=null;
+  let editJob=null;
+  let busy=0;
   let context=null;
   const layeredMasterIds={};
 
@@ -15,22 +17,65 @@
     $("photopeaStatus").className="mini-status "+kind;
   }
 
-  function timeoutPromise(ms,message) {
-    return new Promise((_,reject)=>setTimeout(()=>reject(new Error(message)),ms));
-  }
-
   function waitReady() {
+    if(connectionError) return Promise.reject(connectionError);
     if(ready) return Promise.resolve();
-    return Promise.race([
-      new Promise(resolve=>readyWaiters.push(resolve)),
-      timeoutPromise(20000,"Photopea не ответил.")
-    ]);
+    return new Promise((resolve,reject)=>{
+      const waiter={resolve:()=>{clearTimeout(waiter.timer);resolve();},reject};
+      waiter.timer=setTimeout(()=>{
+        readyWaiters=readyWaiters.filter(item=>item!==waiter);
+        reject(new Error("Photopea не ответила. Проверьте соединение и повторите загрузку."));
+      },20000);
+      readyWaiters.push(waiter);
+    });
   }
 
   function ensureLoaded() {
     PosterApp.switchWorkspace("photopea");
-    if(frame.src==="about:blank" || !frame.src) frame.src=frame.dataset.src;
+    if(frame.src==="about:blank" || !frame.src) {
+      setStatus("Загрузка Photopea...");
+      frame.src=frame.dataset.src;
+    }
     return waitReady();
+  }
+
+  // A command is complete only after its payload AND the official done ACK.
+  // After a timeout late messages cannot be assigned to the next command.
+  function command(payload, kind="script") {
+    const task=commandQueue.then(async()=>{
+      await ensureLoaded();
+      if(connectionError) throw connectionError;
+      return new Promise((resolve,reject)=>{
+        const job={kind,resolve,reject,done:false,value:null,error:null};
+        job.timer=setTimeout(()=>{
+          if(pending!==job) return;
+          pending=null;
+          connectionError=new Error("Photopea не завершила операцию. Перезагрузите Photopea перед повтором.");
+          reject(connectionError);
+        },30000);
+        pending=job;
+        frame.contentWindow.postMessage(payload,PP_ORIGIN);
+      });
+    });
+    commandQueue=task.catch(()=>{});
+    return task;
+  }
+
+  function completeCommand() {
+    const job=pending;
+    if(!job || !job.done) return;
+    if(!job.error && job.kind!=="script" && job.value===null) return;
+    clearTimeout(job.timer);pending=null;
+    if(job.error) job.reject(job.error); else job.resolve(job.value);
+  }
+
+  function checkedScript(script) {
+    return 'try{\n'+script+'\n}catch(__error){app.echoToOE("POSTER_ERROR:"+encodeURIComponent(String(__error.message||__error)));}';
+  }
+
+  function changeBusy(delta) {
+    busy=Math.max(0,busy+delta);
+    setSendButtonsDisabled(busy>0);
   }
 
   async function sourceBlob(src) {
@@ -44,8 +89,8 @@
     await ensureLoaded();
     const buffer=await blob.arrayBuffer();
     context={...meta,openedAt:Date.now()};
-    frame.contentWindow.postMessage(buffer,PP_ORIGIN,[buffer]);
-    setStatus("Документ передан в Photopea.","ok");
+    await command(buffer);
+    setStatus("Готово. Документ открыт в Photopea.","ok");
   }
 
   async function openAsset(asset, meta={}) {
@@ -97,11 +142,11 @@
     const locked=!!layer.locked;
     return [
       varName+".name="+jsString(layer.name||layer.id||"Layer")+";",
-      "try{"+varName+".opacity="+opacity+";}catch(e){}",
-      "try{"+varName+".visible="+visible+";}catch(e){}",
-      "try{var __b="+varName+".bounds;var __l=Number(__b[0]),__t=Number(__b[1]),__r=Number(__b[2]),__bt=Number(__b[3]);var __cw=Math.max(.01,__r-__l),__ch=Math.max(.01,__bt-__t);"+varName+".resize("+w+"/__cw*100,"+h+"/__ch*100,AnchorPosition.MIDDLECENTER);}catch(e){}",
-      "try{if("+rotation+"!==0)"+varName+".rotate("+rotation+",AnchorPosition.MIDDLECENTER);}catch(e){}",
-      "try{var __b2="+varName+".bounds;var __cx=(Number(__b2[0])+Number(__b2[2]))/2,__cy=(Number(__b2[1])+Number(__b2[3]))/2;"+varName+".translate("+x+"-__cx,"+y+"-__cy);}catch(e){}",
+      varName+".opacity="+opacity+";",
+      varName+".visible="+visible+";",
+      "var __b="+varName+".bounds;var __l=Number(__b[0]),__t=Number(__b[1]),__r=Number(__b[2]),__bt=Number(__b[3]);var __cw=Math.max(.01,__r-__l),__ch=Math.max(.01,__bt-__t);"+varName+".resize("+w+"/__cw*100,"+h+"/__ch*100,AnchorPosition.MIDDLECENTER);",
+      "if("+rotation+"!==0)"+varName+".rotate("+rotation+",AnchorPosition.MIDDLECENTER);",
+      "var __b2="+varName+".bounds;var __cx=(Number(__b2[0])+Number(__b2[2]))/2,__cy=(Number(__b2[1])+Number(__b2[3]))/2;"+varName+".translate("+x+"-__cx,"+y+"-__cy);",
       "try{"+varName+".allLocked="+locked+";}catch(e){}"
     ].join("\n");
   }
@@ -160,6 +205,7 @@
       "doc.name="+jsString(doc.name||"Poster Editor")+";"
     ];
     for(const layer of ordered) {
+      chunks.push("app.echoToOE("+jsString("POSTER_PROGRESS:"+encodeURIComponent(layer.name||layer.id))+");");
       if(layer.type==="background") chunks.push(backgroundLayerScript(layer));
       else if(layer.type==="text") chunks.push(textLayerScript(layer));
       else chunks.push(imageLayerScript(layer));
@@ -169,28 +215,17 @@
     return chunks.join("\n");
   }
 
-  async function sendScript(script) {
-    await ensureLoaded();
-    const donePromise=new Promise((resolve,reject)=>{
-      commandWaiters.push({resolve,reject});
-      frame.contentWindow.postMessage(script,PP_ORIGIN);
-    });
-    return Promise.race([donePromise,timeoutPromise(30000,"Photopea не завершил создание слоёв.")]);
+  function sendScript(script) {
+    return command(checkedScript(script));
   }
 
   async function inspectActiveDocument() {
     await ensureLoaded();
-    const payloadPromise=new Promise((resolve,reject)=>{inspectWaiter={resolve,reject};});
     const script=[
       'if(!app.activeDocument){app.echoToOE("POSTER_INSPECT:"+encodeURIComponent(JSON.stringify({error:"no-document"})));}',
       'else{var __d=app.activeDocument;var __names=[];var __walk=function(__layers,__prefix){for(var __i=0;__i<__layers.length;__i++){var __ly=__layers[__i];var __name=(__prefix?__prefix+"/":"")+__ly.name;__names.push(__name);try{if(__ly.layers)__walk(__ly.layers,__name);}catch(e){}}};__walk(__d.layers,"");app.echoToOE("POSTER_INSPECT:"+encodeURIComponent(JSON.stringify({name:__d.name,width:Number(__d.width),height:Number(__d.height),layers:__names})));}'
     ].join("\n");
-    frame.contentWindow.postMessage(script,PP_ORIGIN);
-    try {
-      return await Promise.race([payloadPromise,timeoutPromise(20000,"Photopea не вернул структуру документа.")]);
-    } finally {
-      inspectWaiter=null;
-    }
+    return command(checkedScript(script),"inspect");
   }
 
   async function openLayeredDocument(model) {
@@ -198,6 +233,7 @@
     setStatus("Создаю многослойный документ в Photopea...");
     context={target:model.workspace,name:model.document.name,layeredModel:model,openedAt:Date.now(),composite:false};
     await sendScript(buildLayeredScript(model));
+    if(!context?.layeredReady) throw new Error("Photopea не подтвердила создание слоёв.");
     setStatus("Многослойный документ открыт: "+model.layers.length+" слоёв.","ok");
     return model;
   }
@@ -216,22 +252,31 @@
     return true;
   }
 
-  async function editCurrentPoster() {
+  function prepareEdit(workspace,builder,masterId) {
+    if(editJob) return editJob;
+    changeBusy(1);
+    context={target:workspace,loading:true};
+    setStatus("Создание документа...");
+    editJob=(async()=>{
+      await ensureLoaded();
+      if(await openStoredMaster(workspace,masterId)) return;
+      return await openLayeredDocument(await builder());
+    })().catch(error=>{setStatus(error.message,"error");throw error;})
+      .finally(()=>{editJob=null;changeBusy(-1);});
+    return editJob;
+  }
+
+  function editCurrentPoster() {
     const format=PosterApp.getActiveFormat();
-    if(await openStoredMaster(format,PosterApp.getPhotopeaMasterId?.(format))) return;
-    return openLayeredDocument(await PosterApp.buildPhotopeaModel(format));
+    return prepareEdit(format,()=>PosterApp.buildPhotopeaModel(format),PosterApp.getPhotopeaMasterId?.(format));
   }
 
-  async function editTrain() {
-    if(!window.TrainEditor?.buildPhotopeaModel) throw new Error("Layered-модель Паровозика недоступна.");
-    if(await openStoredMaster("train",TrainEditor.getPhotopeaMasterId?.())) return;
-    return openLayeredDocument(await TrainEditor.buildPhotopeaModel());
+  function editTrain() {
+    return prepareEdit("train",()=>TrainEditor.buildPhotopeaModel(),TrainEditor.getPhotopeaMasterId?.());
   }
 
-  async function editTop10() {
-    if(!window.Top10Editor?.buildPhotopeaModel) throw new Error("Layered-модель ТОП10 недоступна.");
-    if(await openStoredMaster("top10",Top10Editor.getPhotopeaMasterId?.())) return;
-    return openLayeredDocument(await Top10Editor.buildPhotopeaModel());
+  function editTop10() {
+    return prepareEdit("top10",()=>Top10Editor.buildPhotopeaModel(),Top10Editor.getPhotopeaMasterId?.());
   }
 
   function classifyDimensions(width,height) {
@@ -323,19 +368,13 @@
   }
 
   async function requestBinary(format) {
-    const bufferPromise=Promise.race([
-      new Promise((resolve,reject)=>{exportWaiter={resolve,reject};}),
-      timeoutPromise(30000,"Photopea не ответил при экспорте "+format+".")
-    ]);
-    frame.contentWindow.postMessage('if(!app.activeDocument){throw new Error("Нет активного документа");} app.activeDocument.saveToOE('+jsString(format)+');',PP_ORIGIN);
-    const buffer=await bufferPromise;
-    exportWaiter=null;
-    return buffer;
+    return command(checkedScript('if(!app.documents.length){throw new Error("Нет активного документа");} app.activeDocument.saveToOE('+jsString(format)+');'),"binary");
   }
 
   async function saveLayeredMaster(workspace) {
     if(!workspace||!window.SkoomaStore?.savePhotopeaMaster) return null;
     const buffer=await requestBinary("psd:true");
+    if(new Uint8Array(buffer,0,Math.min(4,buffer.byteLength)).join(",")!=="56,66,80,83") throw new Error("Photopea не вернула корректный PSD. Слои не сохранены; повторите передачу.");
     const masterId="photopea-master-"+workspace+"-"+Date.now();
     await SkoomaStore.savePhotopeaMaster({
       masterId,workspace,createdAt:Date.now(),name:context?.name||workspace,
@@ -348,14 +387,15 @@
   }
 
   async function sendBack(forcedTarget=null) {
-    setSendButtonsDisabled(true);
+    changeBusy(1);
     const targetLabel=forcedTarget==="vertical"?"вертикальный":forcedTarget==="horizontal"?"горизонтальный":forcedTarget==="train"?"паровозик":forcedTarget==="top10"?"ТОП10":"авто";
     setStatus("Сохраняю layered master и получаю preview → "+targetLabel+"...");
     try {
+      if(editJob) await editJob;
       await ensureLoaded();
       const masterWorkspace=forcedTarget||context?.target||null;
       if((context?.layeredModel||context?.layeredMasterId)&&masterWorkspace) {
-        try { await saveLayeredMaster(masterWorkspace); } catch(error) { console.warn("PSD master save failed",error); }
+        await saveLayeredMaster(masterWorkspace);
       }
       const buffer=await requestBinary("png");
       const blob=new Blob([buffer],{type:"image/png"});
@@ -365,37 +405,39 @@
     } catch(error) {
       setStatus(error.message||"Не удалось получить документ из Photopea.","error");
     } finally {
-      exportWaiter=null;
-      setSendButtonsDisabled(false);
+      changeBusy(-1);
     }
   }
 
   window.addEventListener("message",event=>{
-    if(event.source!==frame.contentWindow) return;
-    if(event.origin && event.origin!==PP_ORIGIN) return;
+    if(event.source!==frame.contentWindow || event.origin!==PP_ORIGIN) return;
     if(event.data==="done") {
-      if(!ready) {
+      if(!ready && !connectionError) {
         ready=true;
-        readyWaiters.splice(0).forEach(resolve=>resolve());
-        setStatus("Photopea готов.","ok");
-      } else {
-        const waiter=commandWaiters.shift();
-        if(waiter) waiter.resolve();
+        readyWaiters.splice(0).forEach(waiter=>waiter.resolve());
+        if(!busy) setStatus("Photopea готова.","ok");
+      } else if(pending) {
+        pending.done=true;
+        completeCommand();
       }
       return;
     }
-    if(typeof event.data==="string" && event.data.startsWith("POSTER_LAYERED_READY:")) {
-      if(context) context.layeredReady=event.data;
-      return;
-    }
-    if(typeof event.data==="string" && event.data.startsWith("POSTER_INSPECT:")) {
-      if(inspectWaiter) {
-        try { inspectWaiter.resolve(JSON.parse(decodeURIComponent(event.data.slice("POSTER_INSPECT:".length)))); }
-        catch(error) { inspectWaiter.reject(error); }
+    if(!pending) return;
+    if(typeof event.data==="string") {
+      if(event.data.startsWith("POSTER_ERROR:")) {
+        pending.error=new Error(decodeURIComponent(event.data.slice(13)));
+      } else if(event.data.startsWith("POSTER_LAYERED_READY:")) {
+        if(context) context.layeredReady=event.data;
+      } else if(event.data.startsWith("POSTER_PROGRESS:")) {
+        setStatus("Передача слоя: "+decodeURIComponent(event.data.slice(16)));
+      } else if(event.data.startsWith("POSTER_INSPECT:") && pending.kind==="inspect") {
+        try { pending.value=JSON.parse(decodeURIComponent(event.data.slice(15))); }
+        catch(error) { pending.error=error; }
       }
-      return;
+    } else if(event.data instanceof ArrayBuffer && pending.kind==="binary") {
+      pending.value=event.data;
     }
-    if(event.data instanceof ArrayBuffer && exportWaiter) exportWaiter.resolve(event.data);
+    completeCommand();
   });
 
   frame.addEventListener("load",()=>setStatus("Photopea загружается..."));
@@ -404,7 +446,14 @@
   $("sendPhotopeaTrainBtn").addEventListener("click",()=>sendBack("train"));
   $("sendPhotopeaTop10Btn").addEventListener("click",()=>sendBack("top10"));
   $("sendPhotopeaAutoBtn").addEventListener("click",()=>sendBack(null));
-  $("openPhotopeaBtn").addEventListener("click",()=>window.open("https://www.photopea.com/","_blank","noopener"));
+  $("openPhotopeaBtn").addEventListener("click",()=>ensureLoaded().catch(error=>setStatus(error.message,"error")));
+  $("reloadPhotopeaBtn")?.addEventListener("click",()=>{
+    if(context && !confirm("Перезагрузить Photopea? Несохранённые изменения внутри Photopea будут потеряны.")) return;
+    if(pending){clearTimeout(pending.timer);pending.reject(new Error("Photopea перезагружена."));pending=null;}
+    readyWaiters.splice(0).forEach(waiter=>{clearTimeout(waiter.timer);waiter.reject(new Error("Загрузка отменена."));});
+    ready=false;connectionError=null;context=null;frame.src=frame.dataset.src;
+    setStatus("Загрузка Photopea...");
+  });
 
   window.PhotopeaBridge={
     openAsset,

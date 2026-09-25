@@ -29,7 +29,7 @@ requireAll("workspace UI", html, [
   'data-workspace="horizontal"',
   'data-workspace="train"',
   'data-workspace="top10"',
-  "Найти исходник",
+  "Показать постеры",
   "ПОСТЕРЫ",
   "ГОРИЗОНТАЛЬНЫЕ",
   "КАДРЫ",
@@ -56,7 +56,7 @@ requireAll("poster state", app, [
   "/api/remove-background",
   "saveAutosave",
   "restoreProject",
-  "POSTER_BLEED = 0.035",
+  "EditorCore.cover",
   'EXPECTED_API_VERSION = "2026-09-23-runtime-v4"',
   "posterAssetId",
   "logoAssetId",
@@ -129,7 +129,7 @@ requireAll("worker routes", worker, [
 requireAll("Photopea round trip", photopea, [
   'PP_ORIGIN="https://www.photopea.com"',
   "ArrayBuffer","openLayeredDocument","openStoredMaster","restoredLayeredMaster","buildLayeredScript","inspectActiveDocument","POSTER_INSPECT:","POSTER_LAYERED_MODEL","psd:true","app.open(","null,true","app.activeDocument=doc",
-  "classifyDimensions","routeBlob","sendPhotopeaVerticalBtn","sendPhotopeaHorizontalBtn","sendPhotopeaTrainBtn","sendPhotopeaAutoBtn","Photopea не ответил",
+  "classifyDimensions","routeBlob","sendPhotopeaVerticalBtn","sendPhotopeaHorizontalBtn","sendPhotopeaTrainBtn","sendPhotopeaAutoBtn","Photopea не ответила",
   "applyPhotopeaComposite","getPhotopeaMasterId","difference<=0.03"
 ]);
 
@@ -142,7 +142,7 @@ requireAll("train", train, [
 
 for (const sticker of [
   "Без стикера","Премьера","Новые серии","Жаңа сериялар","Новый сезон","Жаңа маусым",
-  "Все серии","Барлық сериалдар","Новинка","Жаңа","Эксклюзив","Скоро...","Жуырда...",
+  "Все серии","Барлық сериялар","Новинка","Жаңа","Эксклюзив","Скоро…","Жуырда…",
   "Скоро уйдёт","Көріп үлгер"
 ]) {
   if (!html.includes(sticker)) throw new Error("Sticker missing: " + sticker);
@@ -215,8 +215,8 @@ requireAll("TOP10 Photopea routing", read("photopea-bridge.js"), [
 ]);
 
 
-if (/data-workspace="photopea"/.test(read("index.html"))) {
-  throw new Error("Top Photopea tab must stay removed while embedded Photopea dock/workspace is available");
+if (!/data-workspace="photopea"/.test(read("index.html"))) {
+  throw new Error("Embedded Photopea tab is required.");
 }
 
 
