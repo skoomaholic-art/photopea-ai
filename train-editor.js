@@ -57,6 +57,7 @@
     muted: false,
     restoring: false,
     displayZoom: 1,
+    viewZoom: null,
     autosaveTimer: null,
     mode: "canvas",
     photopeaMasterId: null
@@ -108,9 +109,11 @@
     const viewport = $("trainCanvasView");
     if (!viewport) return;
     const available = Math.max(320, viewport.clientWidth - 36);
-    const displayW = Math.min(MASTER_W, available);
+    const displayW = state.viewZoom === null ? Math.min(MASTER_W, available) : MASTER_W * state.viewZoom;
     const displayH = Math.round(displayW * MASTER_H / MASTER_W);
     state.displayZoom = displayW / MASTER_W;
+    $("trainViewZoom").value = String(Math.round(state.displayZoom*100));
+    $("trainViewZoomValue").textContent = Math.round(state.displayZoom*100)+"%";
 
     // Keep Fabric's backing store at the full 2952 × 366 master resolution.
     // Only CSS dimensions are reduced for the editor. This removes the blurry
@@ -162,12 +165,14 @@
     if (state.historyIndex <= 0) return;
     state.historyIndex--;
     await restoreSnapshot(state.history[state.historyIndex]);
+    syncStickerSelect();scheduleAutosave(false);
   }
 
   async function redo() {
     if (state.historyIndex >= state.history.length - 1) return;
     state.historyIndex++;
     await restoreSnapshot(state.history[state.historyIndex]);
+    syncStickerSelect();scheduleAutosave(false);
   }
 
   function updateUndoButtons() {
@@ -649,6 +654,7 @@
     select.value = [...select.options].some(option => option.value === label || option.textContent === label)
       ? label
       : "Без стикера";
+    $("stickerSummary").textContent = select.value;
   }
 
   async function setSticker(text) {
@@ -987,17 +993,31 @@
   window.addEventListener("resize", () => { if (!$("trainWorkspace").hidden) resizeDisplay(); });
 
   const catalog=$("stickerCatalog");
-  for(const [label,spec] of Object.entries(STICKER_ASSETS)) {
+  for(const [label,spec] of [["Без стикера",null],...Object.entries(STICKER_ASSETS)]) {
     const button=document.createElement("button"),preview=document.createElement("img"),title=document.createElement("span");
-    button.type="button";preview.src=spec.src;preview.alt="";title.textContent=label;
+    button.type="button";button.dataset.sticker=label;if(spec) preview.src=spec.src;else preview.hidden=true;preview.alt="";title.textContent=label;
     button.append(preview,title);button.addEventListener("click",()=>{void setSticker(label);catalog.closest("details").open=false;});catalog.append(button);
   }
+  function setViewZoom(value) {
+    state.viewZoom = value === null ? null : Math.max(.1,Math.min(2,Number(value)||1));
+    resizeDisplay();
+  }
+  $("trainViewZoom").addEventListener("input",e=>setViewZoom(+e.target.value/100));
+  $("trainViewFit").addEventListener("click",()=>setViewZoom(null));
+  $("trainViewActual").addEventListener("click",()=>setViewZoom(1));
+  $("trainCanvasView").addEventListener("wheel",e=>{
+    if(!e.ctrlKey && !e.metaKey)return;
+    e.preventDefault();e.stopImmediatePropagation();
+    setViewZoom(state.displayZoom * (e.deltaY>0?.9:1.1));
+  },{passive:false,capture:true});
   snapshot("Пустой холст");
   resizeDisplay();
   renderLayers();
 
   window.TrainEditor = {
-    activate, serialize, restore, resetWorkspace,
+    activate, serialize, restore, resetWorkspace, undo, redo, setViewZoom,
+    addImageFromFile,
+    getSelectedImageContext:()=>{const o=activeObject();return o instanceof F.FabricImage ? {src:o.getSrc(),name:objectName(o),layer:o.kind==="logo"?"logo":"poster"}:null;},
     exportAllSizes, exportSelectedSize, renderMasterBlob, buildPhotopeaModel, setBackgroundFromDataUrl, applyPhotopeaComposite, getPhotopeaMasterId,
     inspect: () => {
       const sticker = canvas.getObjects().find(obj => obj.sticker);

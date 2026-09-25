@@ -45,3 +45,38 @@ test('small screen switches all workspaces without console errors or changing ma
  for(let cycle=0;cycle<3;cycle++)for(const workspace of ['vertical','horizontal','train','top10','photopea']){await page.locator(`[data-workspace="${workspace}"]`).click();await expect(page.locator(`[data-workspace="${workspace}"]`)).toHaveAttribute('aria-selected','true');}
  const sizes=await page.evaluate(()=>({train:TrainEditor.inspect().masterSize,top:Top10Editor.inspect().backingSize}));expect(sizes.train).toEqual({width:2952,height:366});expect(sizes.top).toEqual({width:800,height:1400});expect(errors).toEqual([]);
 });
+
+test('train viewing zoom never changes master or export; sticker menu has previews',async({page})=>{
+ await start(page);await page.locator('[data-workspace="train"]').click();await page.locator('#trainViewActual').click();
+ await expect.poll(()=>page.evaluate(()=>TrainEditor.inspect().displayZoom)).toBe(1);
+ await page.locator('#trainViewZoom').fill('150');expect(await page.evaluate(()=>TrainEditor.inspect().masterSize)).toEqual({width:2952,height:366});
+ await page.locator('#stickerSummary').click();await page.getByRole('button',{name:'Жаңа сериялар',exact:true}).click();
+ await expect(page.locator('#stickerSummary')).toHaveText('Жаңа сериялар');
+ await page.locator('#trainViewFit').click();expect(await page.evaluate(()=>TrainEditor.inspect().displayZoom)).toBeLessThan(1);
+ await page.locator('#stickerSummary').click();await page.getByRole('button',{name:'Без стикера',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>TrainEditor.inspect().sticker)).toBeNull();
+});
+
+test('copy image between editors, global undo and template round trip',async({page})=>{
+ await start(page);await page.locator('.project-tools summary').click();
+ await upload(page,'logoFileInput',fixture(300,100,{logo:true}),'team.png');
+ await page.locator('#copyLayerTarget').selectOption('top10');await page.locator('#copyLayerBtn').click();
+ await expect.poll(()=>page.evaluate(()=>Top10Editor.getState().logoName)).toBe('team.png');
+ expect(await page.evaluate(()=>PosterApp.getState().vertical.logoName)).toBe('team.png');
+ await page.locator('[data-workspace="vertical"]').click();await page.locator('#layerScaleInput').fill('150');
+ await page.locator('#globalUndo').click();await expect(page.locator('#layerScaleInput')).toHaveValue('100');
+ await page.locator('#globalRedo').click();await expect(page.locator('#layerScaleInput')).toHaveValue('150');
+ await page.locator('#projectTitle').fill('Матч');await page.locator('#saveTemplateBtn').click();
+ await expect(page.locator('#projectTemplates option')).toHaveCount(2);
+ await page.locator('#layerScaleInput').fill('180');await page.locator('#projectTemplates').selectOption({label:'Матч'});await page.locator('#applyTemplateBtn').click();await page.locator('#resetConfirmOkBtn').click();
+ await expect.poll(()=>page.evaluate(()=>PosterApp.getState().vertical.logoScale)).toBe(150);
+ const project=JSON.parse(await download(page,'saveProjectBtn'));expect(project.title).toBe('Матч');expect(project.top10.logoName).toBe('team.png');
+});
+
+test('manual adaptation result is imported without replacing original or using AI',async({page})=>{
+ await start(page);await upload(page,'logoFileInput',fixture(300,100,{logo:true}),'original.png');
+ const original=await page.evaluate(()=>PosterApp.getState().vertical.logo);
+ await upload(page,'manualAiResult',fixture(300,100,{logo:true,color:'#ffffff'}),'result.png');await expect(page.locator('#aiResultPreview')).toBeVisible();
+ expect(await page.evaluate(()=>PosterApp.getState().vertical.logo)).toBe(original);
+ await page.locator('#moveResultBtn').click();await expect.poll(()=>page.evaluate(()=>PosterApp.getState().vertical.logo)).not.toBe(original);
+});

@@ -80,9 +80,9 @@
       const asset=await importAsset(item);
       const src=await AssetManager.dataUrl(asset,true);
       const layer=item.imageType==="logo"?"logo":"poster";
-      await PosterApp.setImageLayer(layer,src,item.title||item.source,{assetId:asset.id});
+      await WorkspaceTools.importImage(src,item.title||item.source,layer,{assetId:asset.id});
       close();
-      status("Добавлено в " + (PosterApp.getActiveFormat()==="vertical"?"вертикальный":"горизонтальный") + " редактор.","ok");
+      status("Изображение добавлено в активный редактор.","ok");
     } catch(error) { status(error.message||"Не удалось импортировать изображение.","error"); }
   }
 

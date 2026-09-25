@@ -598,6 +598,7 @@
 
   function scheduleAutosave(markDirty=true){
     if(markDirty && data.photopeaMasterId) data.photopeaMasterId=null;
+    if(markDirty) window.WorkHistory?.changed("top10");
     clearTimeout(runtime.autosaveTimer);
     runtime.autosaveTimer=setTimeout(async()=>{
       try{

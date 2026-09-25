@@ -471,7 +471,8 @@ test("SVG stickers still work and Parovozik exports exact 24 PNG", async ({ page
   await page.locator('[data-workspace="train"]').click();
   await page.waitForFunction(() => !!window.TrainEditor);
 
-  await page.locator("#stickerSelect").selectOption({ label: "Премьера" });
+  await page.locator("#stickerSummary").click();
+  await page.getByRole("button", {name:"Премьера",exact:true}).click();
   await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().sticker?.text)).toBe("Премьера");
   const inspect = await page.evaluate(() => window.TrainEditor.inspect());
   expect(inspect.sticker.asset).toContain("assets/stickers/premiere.svg");
@@ -494,7 +495,8 @@ test("autosave survives reload with asset-backed poster and sticker", async ({ p
   await page.goto("/");
   await page.locator("#posterFileInput").setInputFiles({ name: "remember.png", mimeType: "image/png", buffer: PNG });
   await page.locator('[data-workspace="train"]').click();
-  await page.locator("#stickerSelect").selectOption({ label: "Жаңа маусым" });
+  await page.locator("#stickerSummary").click();
+  await page.getByRole("button", {name:"Жаңа маусым",exact:true}).click();
   await page.waitForTimeout(1200);
 
   await page.reload();
@@ -833,7 +835,8 @@ test("Photopea layered Train keeps images logos and stickers independent", async
   await page.locator('[data-workspace="train"]').click();
   await page.locator("#trainImageInput").setInputFiles({name:"image.png",mimeType:"image/png",buffer:PNG});
   await page.locator("#trainLogoInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
-  await page.locator("#stickerSelect").selectOption("Премьера");
+  await page.locator("#stickerSummary").click();
+  await page.getByRole("button", {name:"Премьера",exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>window.TrainEditor.inspect().sticker?.text)).toBe("Премьера");
   await page.locator("#trainEditPhotopeaBtn").click();
   await expect.poll(()=>page.evaluate(()=>window.PhotopeaBridge.getContext()?.layeredReady)).toBeTruthy();

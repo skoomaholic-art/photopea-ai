@@ -158,6 +158,7 @@
           <label class="field">Дополнительные пожелания
             <textarea id="aiPrompt" rows="4">Адаптируй логотип на выбранный язык, сохрани стиль, композицию и цвета. Верни чистый логотип на прозрачном фоне.</textarea>
           </label>
+          <div class="button-row"><button id="copyAiPromptBtn">Скопировать промпт</button><button id="downloadAiSourceBtn">Скачать исходник</button><label class="file-button">Загрузить результат<input id="manualAiResult" type="file" accept="image/png,image/webp,image/jpeg"></label></div>
           <button id="generateBtn" class="primary wide" disabled>Адаптировать логотип</button>
           <div id="aiStatus" class="mini-status">Проверяю AI-сервер...</div>
           <div class="ai-comparison">
@@ -216,10 +217,10 @@
             <label>Прозрачность <input id="trainOpacityInput" type="range" min="0" max="1" step="0.05" value="1"></label>
           </div>
           <div class="crop-grid">
-            <label>Crop L %<input id="cropLeftInput" type="number" min="0" max="45" value="0"></label>
-            <label>Crop T %<input id="cropTopInput" type="number" min="0" max="45" value="0"></label>
-            <label>Crop R %<input id="cropRightInput" type="number" min="0" max="45" value="0"></label>
-            <label>Crop B %<input id="cropBottomInput" type="number" min="0" max="45" value="0"></label>
+            <label>Слева, %<input id="cropLeftInput" type="number" min="0" max="45" value="0"></label>
+            <label>Сверху, %<input id="cropTopInput" type="number" min="0" max="45" value="0"></label>
+            <label>Справа, %<input id="cropRightInput" type="number" min="0" max="45" value="0"></label>
+            <label>Снизу, %<input id="cropBottomInput" type="number" min="0" max="45" value="0"></label>
           </div>
           <button id="applyCropBtn" class="wide">Применить обрезку</button>
           <div class="button-row">
@@ -230,7 +231,7 @@
 
         <section>
           <h3>Стикер первого сегмента</h3>
-          <select id="stickerSelect">
+          <select id="stickerSelect" hidden aria-hidden="true" tabindex="-1">
             <option>Без стикера</option>
             <option>Премьера</option>
             <option>Новые серии</option>
@@ -247,11 +248,16 @@
             <option>Скоро уйдёт</option>
             <option>Көріп үлгер</option>
           </select>
-          <details class="sticker-catalog"><summary>Выбрать с превью</summary><div id="stickerCatalog"></div></details>
+          <details class="sticker-catalog"><summary id="stickerSummary">Без стикера</summary><div id="stickerCatalog"></div></details>
         </section>
       </aside>
 
       <section class="panel train-center">
+        <div class="train-view-tools">
+          <label>Масштаб просмотра <input id="trainViewZoom" type="range" min="10" max="200" value="100"><output id="trainViewZoomValue">100%</output></label>
+          <button id="trainViewFit">Вписать</button><button id="trainViewActual">100%</button>
+          <span>Прокрутка для перемещения; Ctrl + колесо для приближения</span>
+        </div>
         <div class="train-toolbar">
           <div class="segmented">
             <button id="trainCanvasModeBtn" class="active">Единый холст</button>

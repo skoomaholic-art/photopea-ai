@@ -47,3 +47,14 @@
 /* Keep the toolbar in normal flow above the embedded editor. */
 .photopea-workspace.active{display:flex;flex-direction:column}
 .photopea-workspace #photopeaFrame{flex:1 1 auto;min-height:360px;height:auto}
+
+.train-canvas-view{overflow:auto;max-height:65vh;overscroll-behavior:contain}
+.train-canvas-shell{min-width:0!important}
+.train-view-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.train-view-tools label{display:flex;align-items:center;gap:8px}.train-view-tools span{font-size:11px;color:var(--muted)}
+.sticker-catalog{position:relative}.sticker-catalog summary{border:1px solid var(--line);border-radius:8px;padding:10px}
+#stickerCatalog{max-height:360px;overflow:auto}
+.project-tools{padding:8px 16px;border-bottom:1px solid var(--line)}
+.project-tools summary{cursor:pointer}.project-tools small{color:var(--muted);margin-left:12px}
+.project-tools-body{display:flex;flex-wrap:wrap;align-items:end;gap:10px;padding:12px 0}.project-tools-body label{display:grid;gap:5px}
+#projectToolsStatus{flex-basis:100%;font-size:12px;color:var(--green)}

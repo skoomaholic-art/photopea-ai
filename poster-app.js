@@ -128,6 +128,7 @@
 
   function scheduleAutosave(markDirty = true) {
     if(markDirty && current()?.photopeaMasterId) current().photopeaMasterId=null;
+    if(markDirty) window.WorkHistory?.changed(state.activeFormat);
     clearTimeout(state.autosaveTimer);
     state.autosaveTimer = setTimeout(saveAutosave, 500);
   }
@@ -806,6 +807,7 @@
     return {
       version: 4,
       type: "poster-editor-project",
+      title: $("projectTitle")?.value.trim()||"",
       updatedAt: Date.now(),
       posters: JSON.parse(JSON.stringify(state.posters)),
       train: window.TrainEditor?.serialize?.() || null,
@@ -820,7 +822,7 @@
       project.id = "poster-editor-autosave";
       await SkoomaStore.saveProject(project);
     } catch (error) {
-      console.warn("Autosave failed", error);
+      showToast("Автосохранение не удалось. Скачайте проект, чтобы сохранить работу.","error");
     }
   }
 
@@ -857,6 +859,8 @@
     }
     if (window.Top10Editor?.restore) await window.Top10Editor.restore(project.top10 || null);
     else window.__pendingTop10Project = project.top10 || null;
+    if($("projectTitle")) $("projectTitle").value=project.title||"";
+    window.WorkHistory?.reset();
     syncAiPanel();
     showToast("Проект восстановлен.", "ok");
   }
@@ -1034,6 +1038,27 @@
       out.getContext("2d").drawImage(im,0,0);downloadBlob(await EditorCore.png(out),"adapted-logo.png");
       await window.WorkArchive?.captureWorkspace?.(state.activeFormat,"download-ai-result");
     } catch(error) { showToast(error.message||"Не удалось скачать PNG.","error"); }
+  });
+  $("copyAiPromptBtn").addEventListener("click",async()=>{
+    const title=$("aiTitle").value.trim();
+    if(!title)return setAiStatus("Введите точное название на выбранном языке","error");
+    const prompt=buildLogoPrompt(title,$("aiLanguage").value==="kk"?"казахский":"русский",$("aiPrompt").value);
+    try {await navigator.clipboard.writeText(prompt);setAiStatus("Промпт скопирован.","ok");}
+    catch {downloadBlob(new Blob([prompt],{type:"text/plain;charset=utf-8"}),"logo-prompt.txt");setAiStatus("Промпт сохранён в текстовый файл.","ok");}
+  });
+  $("downloadAiSourceBtn").addEventListener("click",async()=>{
+    try {const src=current().aiOriginal||current().logo;if(!src)throw new Error("Сначала загрузите логотип.");
+      downloadBlob(await AssetManager.dataUrlToBlob(src),"logo-source.png");
+    }catch(e){setAiStatus(e.message,"error");}
+  });
+  $("manualAiResult").addEventListener("change",async e=>{
+    const file=e.target.files?.[0];if(!file)return;const target=current();
+    try {const src=await AssetManager.blobToDataUrl(file);const im=await loadImage(src);
+      const c=EditorCore.canvas(im.naturalWidth,im.naturalHeight);c.getContext("2d").drawImage(im,0,0);
+      const result=c.toDataURL("image/png");target.aiResults=[...(target.aiResults||[]),result];target.aiSelected=result;
+      if(target===current()){syncAiPanel();setAiStatus("Результат загружен. Примените его кнопкой «Переместить на постер».","ok");}
+      scheduleAutosave(false);
+    }catch(error){setAiStatus(error.message,"error");}finally{e.target.value="";}
   });
   $("bgProviderSelect").addEventListener("change", updateBgAvailability);
   $("removeBackgroundBtn").addEventListener("click", removeBackground);

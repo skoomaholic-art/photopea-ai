@@ -65,6 +65,19 @@ jobs:
           REAL_PHOTOPEA: "1"
         run: npx playwright test tests/photopea-real.spec.mjs --workers=1 --retries=1
 
+      - name: Run real local background removal
+        id: background_live
+        continue-on-error: true
+        env:
+          REAL_BACKGROUND: "1"
+        run: npx playwright test tests/local-background.integration.spec.mjs --workers=1 --retries=0
+
+      - name: Report local model result
+        if: always() && steps.background_live.outcome == 'failure'
+        run: |
+          echo "::warning::Local ML integration failed; real background removal is not verified."
+          echo "### Local ML: NOT VERIFIED" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Report live Photopea result
         if: always() && steps.photopea_live.outcome == 'failure'
         run: |
@@ -73,7 +86,7 @@ jobs:
           echo "The live integration failed. See the Playwright report; do not treat the green mock suite as live verification." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Playwright report on failure
-        if: failure() || steps.photopea_live.outcome == 'failure'
+        if: failure() || steps.photopea_live.outcome == 'failure' || steps.background_live.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
