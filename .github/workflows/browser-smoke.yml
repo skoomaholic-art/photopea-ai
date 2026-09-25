@@ -59,13 +59,21 @@ jobs:
         run: npm run test:e2e
 
       - name: Run real Photopea layered integration
+        id: photopea_live
         continue-on-error: true
         env:
           REAL_PHOTOPEA: "1"
         run: npx playwright test tests/photopea-real.spec.mjs --workers=1 --retries=1
 
+      - name: Report live Photopea result
+        if: always() && steps.photopea_live.outcome == 'failure'
+        run: |
+          echo "::warning::Real Photopea integration failed. Mock browser tests do not verify the live editor."
+          echo "### Live Photopea: NOT VERIFIED" >> "$GITHUB_STEP_SUMMARY"
+          echo "The live integration failed. See the Playwright report; do not treat the green mock suite as live verification." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload Playwright report on failure
-        if: failure()
+        if: failure() || steps.photopea_live.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
