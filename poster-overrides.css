@@ -16,8 +16,8 @@
 .workspace-tab.active{background:var(--green);color:#071007}
 .workspace{display:none}.workspace.active{display:block}
 .photopea-workspace{max-width:1450px;height:calc(100vh - 100px);margin:0 auto 18px;padding:0 24px}
-.photopea-toolbar{height:54px;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-bottom:0;border-radius:16px 16px 0 0;background:#0e1711;padding:8px 12px}
-.photopea-toolbar div{display:flex;flex-direction:column}.photopea-toolbar small{color:var(--muted);font-size:10px}
+.photopea-toolbar{height:auto;min-height:54px;flex-wrap:wrap;display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-bottom:0;border-radius:16px 16px 0 0;background:#0e1711;padding:8px 12px}
+.photopea-toolbar .photopea-actions{display:flex;flex-direction:row;flex-wrap:wrap}.photopea-toolbar small{color:var(--muted);font-size:10px}
 #photopeaFrame{display:block;width:100%;height:calc(100% - 54px);border:1px solid var(--line);border-radius:0 0 16px 16px;background:#111}
 .ai-note{margin:-3px 0 10px;color:var(--muted);font-size:10px;line-height:1.35}
 #aiServerBadge{background:#2d2d2d;color:var(--muted)}
@@ -43,3 +43,7 @@
 .sticker-catalog summary{cursor:pointer;padding:10px 0}.sticker-catalog button{display:flex;align-items:center;width:100%;gap:10px;margin:5px 0;text-align:left}.sticker-catalog img{width:100px;height:35px;object-fit:contain}
 
 .layer-toggle input{left:0;top:0;width:100%;height:100%;z-index:1;cursor:pointer}
+
+/* Keep the toolbar in normal flow above the embedded editor. */
+.photopea-workspace.active{display:flex;flex-direction:column}
+.photopea-workspace #photopeaFrame{flex:1 1 auto;min-height:360px;height:auto}

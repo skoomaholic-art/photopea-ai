@@ -284,6 +284,7 @@
   }
 
   function switchWorkspace(name) {
+    window.scrollTo({top:0,left:0,behavior:"instant"});
     document.querySelectorAll(".workspace-tab").forEach(btn => {
       const active = btn.dataset.workspace === name;
       btn.classList.toggle("active", active);

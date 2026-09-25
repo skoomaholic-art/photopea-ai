@@ -282,12 +282,14 @@ test("vertical and horizontal states stay independent", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
   await page.locator("#posterFileInput").setInputFiles({ name: "vertical.png", mimeType: "image/png", buffer: PNG });
+  await page.locator("#posterLockInput").uncheck();
   await page.locator("#layerScaleInput").fill("135");
   await page.locator("#layerRotationInput").fill("17");
   await page.locator("#posterLayerUpBtn").click();
 
   await page.locator('[data-workspace="horizontal"]').click();
   await page.locator("#posterFileInput").setInputFiles({ name: "horizontal.png", mimeType: "image/png", buffer: PNG });
+  await page.locator("#posterLockInput").uncheck();
   await page.locator("#layerScaleInput").fill("165");
   await page.locator("#layerRotationInput").fill("-8");
 
@@ -328,6 +330,7 @@ test("TEST 5 Vertical Photopea return routes automatically Vertical", async ({ p
   await mockPhotopea(page);
   await page.goto("/");
   await page.locator("#posterFileInput").setInputFiles({ name: "vertical.png", mimeType: "image/png", buffer: PNG });
+  await page.locator("#posterLockInput").uncheck();
   await page.locator("#editPosterPhotopeaBtn").click();
   await expect(page.locator("#photopeaWorkspace")).toBeVisible();
   await expect(page.locator("#photopeaStatus")).toContainText(/Photopea готов|Документ передан|Многослойный документ открыт/);
@@ -347,6 +350,7 @@ test("TEST 6 Horizontal Photopea return routes automatically Horizontal", async 
   await page.goto("/");
   await page.locator('[data-workspace="horizontal"]').click();
   await page.locator("#posterFileInput").setInputFiles({ name: "horizontal.png", mimeType: "image/png", buffer: PNG });
+  await page.locator("#posterLockInput").uncheck();
   await page.locator("#editPosterPhotopeaBtn").click();
   await expect(page.locator("#photopeaWorkspace")).toBeVisible();
   await page.locator("#sendPhotopeaHorizontalBtn").click();
@@ -657,6 +661,8 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
 test("numeric range inputs stay synchronized and clamp values", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
+  await page.locator("#posterFileInput").setInputFiles({ name: "scale.png", mimeType: "image/png", buffer: PNG });
+  await page.locator("#posterLockInput").uncheck();
   const number = page.locator('[data-range-number-for="layerScaleInput"]');
   await expect(number).toBeVisible();
   await page.locator("#layerScaleInput").fill("120");
@@ -853,7 +859,8 @@ test("Photopea layered TOP10 keeps number logo darkening and background separate
   const names=ctx.layeredModel.layers.map(x=>x.name);
   expect(names).toEqual(expect.arrayContaining(["Canvas Background","Background Image","Bottom Darkening","Logo","TOP10 Number"]));
   const number=ctx.layeredModel.layers.find(x=>x.name==="TOP10 Number");
-  expect(number.sourceDataUrl).toContain("/7.svg");
+  expect(number.sourceDataUrl).toMatch(/^data:image\/svg\+xml;base64,/);
+  expect(Buffer.from(number.sourceDataUrl.split(",")[1], "base64").toString("utf8")).toContain('aria-label="7"');
   expect(number.locked).toBe(true);
   expect(ctx.layeredModel.layers.find(x=>x.name==="Bottom Darkening").locked).toBe(true);
 });
