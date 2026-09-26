@@ -171,7 +171,7 @@ export async function app(t) {
   for (const file of [
     "assets/fabric.js", "editor-core.js", "storage.js", "zip-store.js", "asset-manager.js",
     "local-background-removal.js", "image-filters.js", "poster-app.js", "train-editor.js",
-    "top10-editor.js", "filter-studio.js", "source-browser.js", "photopea-bridge.js",
+    "top10-editor.js", "filter-studio.js", "public-image-search.js", "source-browser.js", "photopea-bridge.js",
     "range-number-sync.js", "workspace-tools.js"
   ]) {
     try {w.eval(fs.readFileSync(new URL("../" + file, import.meta.url), "utf8"));}

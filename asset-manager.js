@@ -19,12 +19,12 @@
   }
 
   async function fetchImageBlob(url) {
-    const response = await fetch(url, { cache: "force-cache" });
+    const response = await fetch(url, { cache: "force-cache", signal: AbortSignal.timeout(20000) });
     if (!response.ok) {
       let message = "Оригинал изображения недоступен.";
       try {
         const data = await response.json();
-        if (data?.error) message = data.error;
+        if (data?.error && !/use post/i.test(String(data.error))) message = data.error;
       } catch {}
       throw new Error(message);
     }

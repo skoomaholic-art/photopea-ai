@@ -280,12 +280,12 @@ async function searchTVmaze(query, request) {
 
 async function searchTMDB(query, request, env) {
   if (!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY)) return [];
-  const response = await timedFetch("https://api.themoviedb.org/3/search/multi?include_adult=false&language=ru-RU&query=" + encodeURIComponent(query), {
-    headers: {
-      Authorization: `Bearer ${env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN}`,
-      Accept: "application/json"
-    }
-  });
+  const url=new URL("https://api.themoviedb.org/3/search/multi");
+  url.search=new URLSearchParams({include_adult:"false",language:"ru-RU",query});
+  const headers={Accept:"application/json"},token=env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN;
+  if(token) headers.Authorization="Bearer "+token;
+  else url.searchParams.set("api_key",env.TMDB_API_KEY);
+  const response = await timedFetch(url.href,{headers});
   const data = await response.json().catch(() => ({}));
   if (response.status === 429) throw new ApiError("TMDB: превышен лимит API.", 429, "rate_limit");
   if (!response.ok) throw providerError("TMDB", response, data);
@@ -414,6 +414,7 @@ async function removeBackground(env, provider, image) {
 
 export default {
   async fetch(request, env) {
+    env={...env,TMDB_ACCESS_TOKEN:env.TMDB_READ_ACCESS_TOKEN || env.TMDB_ACCESS_TOKEN};
     const origin = allowedOrigin(request, env);
     if (origin === "null") return json({ error: "Origin not allowed", code: "origin_denied" }, 403, "null");
     if (request.method === "OPTIONS") return new Response(null, {
