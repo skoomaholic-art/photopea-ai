@@ -58,36 +58,45 @@ jobs:
       - name: Run browser smoke
         run: npm run test:e2e
 
-      - name: Run real Photopea layered integration
-        id: photopea_live
-        continue-on-error: true
-        env:
-          REAL_PHOTOPEA: "1"
-        run: npx playwright test tests/photopea-real.spec.mjs --workers=1 --retries=1
-
-      - name: Run real local background removal
-        id: background_live
-        continue-on-error: true
-        env:
-          REAL_BACKGROUND: "1"
-        run: npx playwright test tests/local-background.integration.spec.mjs --workers=1 --retries=0
-
-      - name: Report local model result
-        if: always() && steps.background_live.outcome == 'failure'
-        run: |
-          echo "::warning::Local ML integration failed; real background removal is not verified."
-          echo "### Local ML: NOT VERIFIED" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Report live Photopea result
-        if: always() && steps.photopea_live.outcome == 'failure'
-        run: |
-          echo "::warning::Real Photopea integration failed. Mock browser tests do not verify the live editor."
-          echo "### Live Photopea: NOT VERIFIED" >> "$GITHUB_STEP_SUMMARY"
-          echo "The live integration failed. See the Playwright report; do not treat the green mock suite as live verification." >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload Playwright report on failure
-        if: failure() || steps.photopea_live.outcome == 'failure' || steps.background_live.outcome == 'failure'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-mock-report
+          path: playwright-report
+
+  live-integrations:
+    name: Live ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Photopea
+            test: tests/photopea-real.spec.mjs
+          - name: Local-ML
+            test: tests/local-background.integration.spec.mjs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci && npm run build:vendor
+      - run: npx playwright install --with-deps chromium
+      - name: Verify real integration without paid AI
+        env:
+          REAL_PHOTOPEA: ${{ matrix.name == 'Photopea' && '1' || '' }}
+          REAL_BACKGROUND: ${{ matrix.name == 'Local-ML' && '1' || '' }}
+          AI_REQUESTS_ENABLED: "false"
+        run: npx playwright test ${{ matrix.test }} --workers=1 --retries=0
+      - name: Record failed verification
+        if: failure()
+        run: |
+          echo "::error::Live ${{ matrix.name }} is NOT VERIFIED. Mock tests do not prove availability of this service."
+          echo "### Live ${{ matrix.name }}: NOT VERIFIED" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-live-${{ matrix.name }}
           path: playwright-report

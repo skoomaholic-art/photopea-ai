@@ -170,7 +170,7 @@
   }
 
   function currentNumberAsset() {
-    return TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"];
+    return (TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"])+"?v=20260926-reference";
   }
 
   async function refreshNumber(){

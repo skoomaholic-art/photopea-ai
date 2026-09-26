@@ -4,7 +4,7 @@
 
   function loadModule() {
     if (!modulePromise) {
-      modulePromise = import(MODULE_URL).catch(error => {
+      modulePromise = EditorCore.withTimeout(import(MODULE_URL),30000,"Загрузка модуля заняла слишком много времени. Проверьте доступ к CDN и повторите.").catch(error => {
         modulePromise = null;
         throw new Error("Не удалось загрузить локальную модель удаления фона: " + (error?.message || error));
       });
