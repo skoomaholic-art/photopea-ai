@@ -18,7 +18,7 @@
   <script defer src="image-filters.js?v=20260923b"></script>
   <script defer src="poster-app.js?v=20260926-repair"></script>
   <script defer src="train-editor.js?v=20260923-master-dirty"></script>
-  <script defer src="top10-editor.js?v=20260928-user-artwork-gradient"></script>
+  <script defer src="top10-editor.js?v=20260928-top10-vertical-and-interior-v2"></script>
   <script defer src="filter-studio.js?v=20260923top10a"></script>
   <script defer src="public-image-search.js?v=20260926"></script>
   <script defer src="source-browser.js?v=20260926-repair"></script>
@@ -358,10 +358,10 @@
           <div class="button-row"><button id="top10LogoUp">Слой выше</button><button id="top10LogoDown">Слой ниже</button></div>
         </section>
         <section data-top10-controls="darkening" data-top10-always>
-          <h3>Bottom Darkening</h3><label class="layer-toggle"><input id="top10darkeningLock" type="checkbox" checked role="switch" aria-label="Блокировка затемнения"><i aria-hidden="true"></i><span id="top10darkeningLockLabel">Заблокирован</span></label>
+          <h3>Вертикальный градиент</h3><label class="layer-toggle"><input id="top10darkeningLock" type="checkbox" checked role="switch" aria-label="Блокировка затемнения"><i aria-hidden="true"></i><span id="top10darkeningLockLabel">Заблокирован</span></label>
           <label class="field">Цвет <input id="top10DarkColor" type="color" value="#000000"></label>
           <label class="field">Интенсивность <input id="top10DarkIntensity" type="range" min="0" max="100" value="94"></label>
-          <label class="field">Начало градиента <input id="top10DarkStart" type="range" min="0" max="100" value="58"></label>
+          <p class="muted">0% - без затемнения; 100% - плавное затемнение по всей высоте, сильнее к низу.</p>
           <p class="muted">LOCK POSITION · LOCK SIZE · EDIT APPEARANCE</p>
         </section>
         <section data-top10-controls="number" data-top10-always>
@@ -370,21 +370,24 @@
             <span>Позиция в ТОП10</span>
             <div id="top10NumberPicker" class="top10-number-picker">
               <button id="top10NumberPickerButton" class="top10-number-picker-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="top10NumberPickerMenu">
-                <img id="top10NumberPickerImage" src="assets/top10/numbers/2.svg?v=20260928-user-artwork-v1" alt="">
-                <strong id="top10NumberPickerValue">Позиция 2</strong>
+                <img id="top10NumberPickerImage" src="assets/top10/numbers/1.svg?v=20260928-user-artwork-v1" alt="">
+                <strong id="top10NumberPickerValue">Позиция 1</strong>
                 <span class="top10-number-picker-action">Выбрать</span>
               </button>
               <div id="top10NumberPickerMenu" class="top10-number-picker-menu" role="listbox" aria-label="Позиция в ТОП10" hidden></div>
               <select id="top10PositionSelect" class="top10-number-native-select" tabindex="-1" aria-hidden="true">
-                <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
+                <option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
                 <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
               </select>
             </div>
           </div>
-          <label class="field">Масштаб номера <input id="top10NumberScale" type="range" min="10" max="300" value="100"></label>
+          <label class="field">Масштаб номера <input id="top10NumberScale" type="range" min="10" max="300" value="55"></label>
           <label class="field">Поворот номера <input id="top10NumberRotation" type="range" min="-180" max="180" value="0"></label>
           <div class="button-row"><button id="top10NumberCenter">Центрировать</button><button id="top10NumberReset">Сбросить</button></div>
-          <label class="field">Canvas Background <input id="top10CanvasBackground" type="color" value="#050505"></label>
+          <label class="field">Затемнение внутри цифры <input id="top10NumberInsideIntensity" type="range" min="0" max="100" value="65"></label>
+           <label class="field">Цвет внутри цифры <input id="top10NumberInsideColor" type="color" value="#000000"></label>
+           <p class="muted">Отдельный вертикальный градиент в прозрачных отверстиях цифры. Цветной контур остаётся нетронутым.</p>
+           <label class="field">Canvas Background <input id="top10CanvasBackground" type="color" value="#050505"></label>
         </section>
       </aside>
       <section class="panel top10-center">
