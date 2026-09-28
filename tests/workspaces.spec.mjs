@@ -59,7 +59,7 @@ test('poster edges contain image pixels; locks remain independent between format
 
 test('TOP10 unlock transform and portable project preserve independent state',async({page})=>{
  await start(page);await page.locator('[data-workspace="top10"]').click();await upload(page,'top10BackgroundInput',fixture(400,700),'top.png');
- await expect(page.locator('#top10NumberScale')).toBeDisabled();await page.locator('#top10numberLock').uncheck();await page.locator('#top10NumberScale').fill('80');await page.locator('#top10NumberRotation').fill('22');await page.locator('#top10PositionSelect').selectOption('10');
+ await expect(page.locator('#top10NumberScale')).toBeDisabled();await page.locator('#top10numberLock').uncheck();await page.locator('#top10NumberScale').fill('80');await page.locator('#top10NumberRotation').fill('22');await page.locator('#top10NumberPickerButton').click();await page.locator('#top10NumberPickerMenu [data-number="10"]').click();
  const json=await download(page,'saveProjectBtn');const project=JSON.parse(json);expect(project.top10.numberLocked).toBe(false);expect(project.top10.numberRotation).toBe(22);
  await page.evaluate(()=>Top10Editor.resetClassic());await page.locator('#projectFileInput').setInputFiles({name:'project.json',mimeType:'application/json',buffer:json});await expect.poll(()=>page.evaluate(()=>Top10Editor.getState().numberRotation)).toBe(22);
  const png=await download(page,'top10DownloadBtn');expect(png.readUInt32BE(16)).toBe(800);expect(png.readUInt32BE(20)).toBe(1400);

@@ -26,6 +26,11 @@ async function mockStatus(page, extra = {}) {
   }));
 }
 
+async function chooseTop10Number(page,value){
+  await page.locator("#top10NumberPickerButton").click();
+  await page.locator(`#top10NumberPickerMenu [data-number="${value}"]`).click();
+}
+
 function remoteItem(overrides = {}) {
   return {
     id: "tmdb-movie-238-poster",
@@ -576,13 +581,13 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   await expect.poll(() => page.evaluate(() => !!window.Top10Editor.getState().logo)).toBe(true);
 
   await page.locator(".top10-layer-row").filter({hasText:"TOP10 Number"}).click();
-  await page.locator("#top10PositionSelect").selectOption("2");
+  await chooseTop10Number(page,"2");
   let inspect = await page.evaluate(() => window.Top10Editor.inspect());
   expect(inspect.state.ranking).toBe("2");
   expect(inspect.number.bounds.top).toBeGreaterThanOrEqual(900);
   expect(inspect.number.bounds.bottom).toBeLessThanOrEqual(1400);
 
-  await page.locator("#top10PositionSelect").selectOption("10");
+  await chooseTop10Number(page,"10");
   inspect = await page.evaluate(() => window.Top10Editor.inspect());
   expect(inspect.state.ranking).toBe("10");
   expect(inspect.number.bounds.left).toBeGreaterThanOrEqual(0);
@@ -597,10 +602,10 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().darkeningColor)).toBe("#112233");
 
   await page.locator(".top10-layer-row").filter({hasText:"TOP10 Number"}).click();
-  await page.locator("#top10PositionSelect").selectOption("7");
-  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/7.svg");
-  await page.locator("#top10PositionSelect").selectOption("10");
-  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/10.svg");
+  await chooseTop10Number(page,"7");
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/7.png");
+  await chooseTop10Number(page,"10");
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/10.png");
 
   await page.locator(".top10-layer-row").filter({hasText:"Background Image"}).click();
   const unaffectedBefore = await page.evaluate(() => {
@@ -647,7 +652,7 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   }
 
   await page.locator(".top10-layer-row").filter({hasText:"TOP10 Number"}).click();
-  await page.locator("#top10PositionSelect").selectOption("7");
+  await chooseTop10Number(page,"7");
   await page.locator(".top10-layer-row").filter({hasText:"Bottom Darkening"}).click();
   await page.locator("#top10DarkIntensity").fill("81");
   await page.waitForTimeout(900);
@@ -762,7 +767,7 @@ test("Train and TOP10 reset buttons restore default state after confirmation", a
   await page.locator("#resetConfirmOkBtn").click();
   await expect.poll(() => page.evaluate(() => window.TrainEditor.inspect().objectCount)).toBe(0);
   await page.locator('[data-workspace="top10"]').click();
-  await page.locator("#top10PositionSelect").selectOption("9");
+  await chooseTop10Number(page,"9");
   await page.locator("#top10DarkIntensity").fill("53");
   await page.locator("#top10ResetClassicBtn").click();
   await page.locator("#resetConfirmOkBtn").click();
@@ -771,14 +776,16 @@ test("Train and TOP10 reset buttons restore default state after confirmation", a
 });
 
 
-test("TOP10 positions 1 through 10 use separate traced vector assets", async ({ page }) => {
+test("TOP10 image picker uses the exact supplied reference assets for positions 1 through 10", async ({ page }) => {
   await mockStatus(page);
   await page.goto("/");
   await page.locator('[data-workspace="top10"]').click();
   await page.waitForFunction(() => !!window.Top10Editor);
   for (let value=1; value<=10; value++) {
-    await page.locator("#top10PositionSelect").selectOption(String(value));
-    await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("/"+value+".svg");
+    await page.locator("#top10NumberPickerButton").click();
+    await page.locator(`#top10NumberPickerMenu [data-number="${value}"]`).click();
+    await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("/"+value+".png");
+    await expect(page.locator("#top10NumberPickerImage")).toHaveAttribute("src",new RegExp(`/reference-numbers/${value}\\.png`));
     const number=await page.evaluate(() => window.Top10Editor.inspect().number);
     expect(number.locked).toBe(true);
     expect(number.value).toBe(String(value));
@@ -853,7 +860,7 @@ test("Photopea layered TOP10 keeps number logo darkening and background separate
   await page.locator('[data-workspace="top10"]').click();
   await page.locator("#top10BackgroundInput").setInputFiles({name:"bg.png",mimeType:"image/png",buffer:PNG});
   await page.locator("#top10LogoInput").setInputFiles({name:"logo.png",mimeType:"image/png",buffer:PNG});
-  await page.locator("#top10PositionSelect").selectOption("7");
+  await chooseTop10Number(page,"7");
   await page.locator("#top10EditPhotopeaBtn").click();
   await expect.poll(() => page.evaluate(() => !!window.PhotopeaBridge.getContext()?.layeredModel)).toBe(true);
   await expect.poll(()=>page.evaluate(()=>window.PhotopeaBridge.getContext()?.layeredReady)).toBeTruthy();

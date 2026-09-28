@@ -139,8 +139,22 @@ body.modal-open{overflow:hidden}
 .top10-layer-row b{font-size:12px}
 .top10-tools section[data-top10-controls][hidden]{display:none}
 .top10-tools input[type=color]{height:36px}
+.top10-number-field>span{display:block;margin-bottom:6px}
+.top10-number-picker{position:relative}
+.top10-number-picker-button{width:100%;display:grid;grid-template-columns:72px 1fr auto;align-items:center;gap:10px;padding:7px 9px;text-align:left;background:#070b08;border-color:#35503b}
+.top10-number-picker-button img{display:block;width:72px;height:58px;object-fit:contain;background:#000;border-radius:7px}
+.top10-number-picker-button strong{color:var(--text);font-size:12px}
+.top10-number-picker-action{color:var(--green);font-size:9px;text-transform:uppercase;letter-spacing:.08em}
+.top10-number-picker-menu{position:absolute;z-index:90;left:0;top:calc(100% + 6px);width:100%;max-height:410px;overflow-y:auto;padding:8px;grid-template-columns:repeat(2,minmax(90px,1fr));gap:6px;border:1px solid #3c6146;border-radius:12px;background:#0b130e;box-shadow:0 20px 46px #000d}
+.top10-number-picker-menu:not([hidden]){display:grid}
+.top10-number-option{min-width:0;padding:6px;display:grid;gap:4px;justify-items:center;background:#030503;border-color:#263c2c}
+.top10-number-option img{display:block;width:100%;height:76px;object-fit:contain;background:#000;border-radius:6px}
+.top10-number-option span{font-size:10px;color:var(--muted)}
+.top10-number-option.selected{border-color:var(--green);box-shadow:inset 0 0 0 1px #8cf06b66;background:#101b13}
+.top10-number-option.selected span{color:var(--green2)}
+.top10-number-native-select{position:absolute!important;left:-10000px!important;top:auto!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}
 @media(max-width:1120px){.top10-layout{grid-template-columns:280px minmax(0,1fr)}.top10-layout>.sidebar:last-child{grid-column:1/-1;max-height:none}}
-@media(max-width:760px){.top10-layout{display:block;padding:9px}.top10-center{margin-bottom:10px}.top10-canvas-view{max-height:none;overflow:auto}.top10-canvas-shell{min-width:320px}}
+@media(max-width:760px){.top10-layout{display:block;padding:9px}.top10-center{margin-bottom:10px}.top10-canvas-view{max-height:none;overflow:auto}.top10-canvas-shell{min-width:320px}.top10-number-option img{height:92px}}
 
 
 /* Logo upload close controls */
