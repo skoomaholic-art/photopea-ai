@@ -67,3 +67,22 @@ test('Photopea script has separate layers and guarded transforms; no external wi
  assert.ok(script.includes('app.open('));assert.ok(script.includes(',null,true)'));assert.ok(script.includes('.rotate(23'));assert.ok(script.includes('Логотип'));assert.ok(!script.includes('flatten('));
  const f=fakePhotopea(a);let opened=false;a.w.open=()=>{opened=true;};await a.click('openPhotopeaBtn');assert.equal(opened,false);assert.equal(a.el('photopeaWorkspace').hidden,false);assert.deepEqual(a.errors,[]);
 });
+
+test('Photopea tab: missing handshake exits loading, preserves project and retry recovers',async t=>{
+ const a=await app(t),P=a.w.PosterApp,B=a.w.PhotopeaBridge;
+ await a.file('posterFileInput',fixture());const before=JSON.stringify(P.getState().vertical);
+ const frame=a.el('photopeaFrame');let src='about:blank';
+ Object.defineProperty(frame,'src',{configurable:true,get:()=>src,set:value=>{src=value;frame.dispatchEvent(new a.w.Event('load'));}});
+ const realTimeout=a.w.setTimeout.bind(a.w);a.w.setTimeout=(fn,ms,...rest)=>realTimeout(fn,ms===20000?20:ms,...rest);
+ P.switchWorkspace('photopea');
+ await assert.rejects(B.load(),/Photopea не ответила/);
+ assert.match(a.el('photopeaStatus').textContent,/Макеты сохранены/);
+ assert.equal(frame.getAttribute('aria-busy'),'false');
+ frame.dispatchEvent(new a.w.Event('load'));
+ assert.match(a.el('photopeaStatus').textContent,/не ответила/,'late load cannot restore eternal loading status');
+ assert.equal(JSON.stringify(P.getState().vertical),before);
+ fakePhotopea(a);await a.click('reloadPhotopeaBtn');await B.load();
+ frame.dispatchEvent(new a.w.Event('load'));
+ assert.match(a.el('photopeaStatus').textContent,/готова/,'load after done cannot regress ready status');
+ await B.editCurrentPoster();assert.ok(B.getContext().layeredReady);assert.deepEqual(a.errors,[]);
+});

@@ -84,7 +84,7 @@ async function cachedJson(key, ttlSeconds, loader) {
 }
 
 function tmdbConfigured(env) {
-  return !!(env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY);
+  return !!(env.TMDB_READ_ACCESS_TOKEN || env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN || env.TMDB_API_KEY);
 }
 
 async function tmdbJson(env, path, params = {}, ttlSeconds = 600) {
@@ -96,7 +96,7 @@ async function tmdbJson(env, path, params = {}, ttlSeconds = 600) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   }
   const headers = { Accept: "application/json" };
-  const bearer = env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN;
+  const bearer = env.TMDB_READ_ACCESS_TOKEN || env.TMDB_ACCESS_TOKEN || env.TMDB_BEARER_TOKEN;
   if (bearer) headers.Authorization = "Bearer " + bearer;
   else url.searchParams.set("api_key", env.TMDB_API_KEY);
 

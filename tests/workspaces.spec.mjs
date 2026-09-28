@@ -11,6 +11,31 @@ async function start(page){
 async function upload(page,id,buffer,name='test.png'){await page.locator('#'+id).setInputFiles({name,mimeType:'image/png',buffer});}
 async function download(page,id){const pending=page.waitForEvent('download');await page.locator('#'+id).click();const file=await pending;return readFile(await file.path());}
 
+test('legacy search fallback imports an official public image without a Worker key',async({page})=>{
+ await start(page);
+ await page.route('**/api/images/search?*',r=>r.fulfill({status:405,json:{error:'Use POST'}}));
+ await page.route('https://api.tvmaze.com/**',r=>r.fulfill({json:[{show:{id:1,name:'Test title',premiered:'2020-01-01',image:{original:'https://static.tvmaze.com/test.png'}}}]}));
+ await page.route('https://commons.wikimedia.org/**',r=>r.fulfill({json:{query:{pages:{}}}}));
+ await page.route('https://static.tvmaze.com/**',r=>r.fulfill({contentType:'image/png',body:fixture(600,900)}));
+ await page.locator('#posterSearchInput').fill('Test title');await page.locator('#posterSearchYear').fill('2020');await page.locator('#posterSearchBtn').click();
+ await expect(page.locator('#sourceSearchStatus')).toContainText('Резервный поиск');
+ await expect(page.locator('#sourceSearchStatus')).not.toContainText('Use POST');
+ await page.locator('#sourceGallery').getByRole('button',{name:'Использовать',exact:true}).click();
+ await expect(page.locator('#posterImage')).toBeVisible();
+ await expect.poll(()=>page.evaluate(()=>!!PosterApp.getState().vertical.poster)).toBe(true);
+});
+
+test('Photopea tab exits blocked loading and explicit retry restores readiness',async({page})=>{
+ await start(page);
+ await page.route('https://www.photopea.com/**',r=>r.fulfill({contentType:'text/html',body:'<!doctype html><p>Unavailable test editor</p>'}));
+ await page.locator('[data-workspace="photopea"]').click();
+ await expect(page.locator('#photopeaStatus')).toContainText('Photopea не ответила',{timeout:25000});
+ await page.route('https://www.photopea.com/**',r=>r.fulfill({contentType:'text/html',body:'<script>parent.postMessage("done","*")</script>'}));
+ await page.locator('#reloadPhotopeaBtn').click();
+ await expect(page.locator('#photopeaStatus')).toContainText('Photopea готова');
+ await expect(page.locator('#photopeaFrame')).toHaveAttribute('aria-busy','false');
+});
+
 test('exact-title validation, detailed prompt, comparison, explicit apply and credit recovery (API fake)',async({page})=>{
  await start(page);await upload(page,'logoFileInput',fixture(320,100,{logo:true}),'original.png');await expect(page.locator('#aiOriginalPreview')).toBeVisible();
  await page.locator('#aiProvider').selectOption('xai');
@@ -34,7 +59,7 @@ test('poster edges contain image pixels; locks remain independent between format
 
 test('TOP10 unlock transform and portable project preserve independent state',async({page})=>{
  await start(page);await page.locator('[data-workspace="top10"]').click();await upload(page,'top10BackgroundInput',fixture(400,700),'top.png');
- await expect(page.locator('#top10NumberScale')).toBeDisabled();await page.locator('#top10numberLock').uncheck();await page.locator('#top10NumberScale').fill('80');await page.locator('#top10NumberRotation').fill('22');await page.locator('#top10PositionSelect').selectOption('10');
+ await expect(page.locator('#top10NumberScale')).toBeDisabled();await page.locator('#top10numberLock').uncheck();await page.locator('#top10NumberScale').fill('80');await page.locator('#top10NumberRotation').fill('22');await page.locator('#top10NumberPickerButton').click();await page.locator('#top10NumberPickerMenu [data-number="10"]').click();
  const json=await download(page,'saveProjectBtn');const project=JSON.parse(json);expect(project.top10.numberLocked).toBe(false);expect(project.top10.numberRotation).toBe(22);
  await page.evaluate(()=>Top10Editor.resetClassic());await page.locator('#projectFileInput').setInputFiles({name:'project.json',mimeType:'application/json',buffer:json});await expect.poll(()=>page.evaluate(()=>Top10Editor.getState().numberRotation)).toBe(22);
  const png=await download(page,'top10DownloadBtn');expect(png.readUInt32BE(16)).toBe(800);expect(png.readUInt32BE(20)).toBe(1400);

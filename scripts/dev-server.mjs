@@ -48,7 +48,8 @@ export function createAppServer({
   publicRoot = root,
 } = {}) {
   const permittedFiles = new Set(publicFiles(root));
-  env={...env,TMDB_ACCESS_TOKEN:env.TMDB_READ_ACCESS_TOKEN||env.TMDB_ACCESS_TOKEN};
+  const tmdbToken=env.TMDB_READ_ACCESS_TOKEN||env.TMDB_ACCESS_TOKEN||env.TMDB_BEARER_TOKEN;
+  env={...env,TMDB_READ_ACCESS_TOKEN:tmdbToken,TMDB_ACCESS_TOKEN:tmdbToken};
   const timeoutMs = Number(env.API_TIMEOUT_MS) || 90000;
   const allowed = (env.ALLOWED_ORIGINS || "")
     .split(",")

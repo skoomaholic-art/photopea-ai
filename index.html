@@ -6,29 +6,30 @@
   <meta name="theme-color" content="#07100b">
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
-  <link rel="icon" type="image/png" href="assets/poster-markup-icon.png?v=20260925a">
+  <link rel="icon" type="image/png" href="assets/poster-markup-icon.png?v=20260928-white">
   <link rel="stylesheet" href="poster-app.css?v=20260923-transform-handles">
   <script defer src="assets/fabric.js"></script>
   <script defer src="editor-core.js?v=20260924"></script>
   <link rel="stylesheet" href="poster-overrides.css?v=20260924">
   <script defer src="storage.js?v=20260923-layered-model"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
-  <script defer src="asset-manager.js?v=20260923b"></script>
-  <script defer src="local-background-removal.js?v=20260923a"></script>
+  <script defer src="asset-manager.js?v=20260926-timeout"></script>
+  <script defer src="local-background-removal.js?v=20260926-timeout"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
-  <script defer src="poster-app.js?v=20260923-master-dirty"></script>
+  <script defer src="poster-app.js?v=20260926-repair"></script>
   <script defer src="train-editor.js?v=20260923-master-dirty"></script>
-  <script defer src="top10-editor.js?v=20260923-composite-export"></script>
+  <script defer src="top10-editor.js?v=20260928-exact-reference-numbers-2"></script>
   <script defer src="filter-studio.js?v=20260923top10a"></script>
-  <script defer src="source-browser.js?v=20260923b"></script>
-  <script defer src="photopea-bridge.js?v=20260923-roundtrip-master"></script>
+  <script defer src="public-image-search.js?v=20260926"></script>
+  <script defer src="source-browser.js?v=20260926-repair"></script>
+  <script defer src="photopea-bridge.js?v=20260926-repair"></script>
   <script defer src="range-number-sync.js?v=20260923-remaining-a"></script>
   <script defer src="workspace-tools.js?v=20260923-master-archive"></script>
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="#" aria-label="Poster Editor">
-      <img class="brand-icon" src="assets/poster-markup-icon.png?v=20260925a" alt="">
+      <img class="brand-icon" src="assets/poster-markup-icon.png?v=20260928-white" alt="">
       <span><small>FREEDOM TOOLKIT</small><strong>Poster Editor</strong></span>
     </a>
 
@@ -365,12 +366,21 @@
         </section>
         <section data-top10-controls="number" data-top10-always>
           <h3>TOP10 Number</h3><label class="layer-toggle"><input id="top10numberLock" type="checkbox" checked role="switch" aria-label="Блокировка номера"><i aria-hidden="true"></i><span id="top10numberLockLabel">Заблокирован</span></label>
-          <label class="field">Позиция в ТОП10
-            <select id="top10PositionSelect">
-              <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
-              <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
-            </select>
-          </label>
+          <div class="field top10-number-field">
+            <span>Позиция в ТОП10</span>
+            <div id="top10NumberPicker" class="top10-number-picker">
+              <button id="top10NumberPickerButton" class="top10-number-picker-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="top10NumberPickerMenu">
+                <img id="top10NumberPickerImage" src="assets/top10/reference-numbers/2.png?v=20260928-exact-reference" alt="">
+                <strong id="top10NumberPickerValue">Позиция 2</strong>
+                <span class="top10-number-picker-action">Выбрать</span>
+              </button>
+              <div id="top10NumberPickerMenu" class="top10-number-picker-menu" role="listbox" aria-label="Позиция в ТОП10" hidden></div>
+              <select id="top10PositionSelect" class="top10-number-native-select" tabindex="-1" aria-hidden="true">
+                <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
+                <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
+              </select>
+            </div>
+          </div>
           <label class="field">Масштаб номера <input id="top10NumberScale" type="range" min="10" max="300" value="100"></label>
           <label class="field">Поворот номера <input id="top10NumberRotation" type="range" min="-180" max="180" value="0"></label>
           <div class="button-row"><button id="top10NumberCenter">Центрировать</button><button id="top10NumberReset">Сбросить</button></div>

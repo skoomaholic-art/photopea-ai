@@ -305,7 +305,7 @@
     if (posterMode) setFormat(name);
     if (name === "train") window.TrainEditor?.activate();
     if (name === "top10") window.Top10Editor?.activate();
-    if (name === "photopea" && $("photopeaFrame").src === "about:blank") $("photopeaFrame").src = $("photopeaFrame").dataset.src;
+    if (name === "photopea") window.PhotopeaBridge?.load().catch(()=>{});
   }
 
   function removePosterLogo() {

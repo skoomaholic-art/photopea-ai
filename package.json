@@ -12,7 +12,7 @@
     "build:static": "node scripts/build-static.mjs",
     "check:syntax": "node scripts/check-syntax.mjs",
     "test:render": "node --test tests/render.test.mjs",
-    "test:unit": "node --test tests/server.test.mjs tests/image-sources.test.mjs tests/worker.test.mjs tests/render.test.mjs tests/messaging.test.mjs"
+    "test:unit": "node --test tests/server.test.mjs tests/image-sources.test.mjs tests/worker.test.mjs tests/render.test.mjs tests/messaging.test.mjs tests/top10-artwork.test.mjs tests/source-browser.test.mjs"
   },
   "devDependencies": {
     "@napi-rs/canvas": "0.1.100",

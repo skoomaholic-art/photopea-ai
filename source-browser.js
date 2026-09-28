@@ -2,6 +2,15 @@
   const $ = id => document.getElementById(id);
   const apiBase=(document.querySelector('meta[name="poster-api"]')?.content||"").replace(/\/$/,"");
   const state={items:[],references:[],identity:null,candidates:[],providers:{},shown:48,tab:"all"};
+  let activeSearch=null;
+
+  function searchError(error) {
+    if(error?.legacy) return "Сервер поиска устарел. Требуется обновить Cloudflare Worker.";
+    if(error?.status===429) return "Превышен лимит поиска. Повторите позже.";
+    if(error?.status===401 || error?.status===403) return "Нет доступа к серверу поиска. Проверьте его настройки.";
+    if(error?.name==="TimeoutError") return "Сервер поиска не ответил вовремя.";
+    return "Сервер поиска недоступен. Проверьте соединение и настройки сервера.";
+  }
 
   function status(message,kind="") {
     $("sourceSearchStatus").textContent=message;
@@ -119,7 +128,7 @@
       const info=state.providers?.[key]||null;
       const pill=document.createElement("span");
       pill.className="service-pill "+(info?.enabled?"ok":info?.configured?"error":"muted");
-      const stateText=info?.enabled?"ONLINE":info?.configured?"OFFLINE":"NOT CONFIGURED";
+      const stateText=info?.enabled?"Доступен":info?.configured?"Недоступен":"Не настроен";
       pill.textContent=label+" · "+stateText;
       if(info?.reason) pill.title=info.reason;
       root.appendChild(pill);
@@ -194,6 +203,7 @@
       img.src=item.thumbnailUrl||item.proxyUrl;
       img.alt=item.title||item.imageType||"Artwork";
       img.loading="lazy";
+      img.addEventListener("error",()=>{img.hidden=true;media.classList.add("preview-unavailable");badge.textContent="Превью недоступно";});
       const badge=document.createElement("span");
       badge.textContent=item.isTextless===true?"TEXTLESS":String(item.imageType||"IMAGE").toUpperCase();
       media.append(img,badge);
@@ -219,6 +229,12 @@
         const b=document.createElement("button"); b.type="button"; b.textContent=label; if(klass)b.className=klass; b.addEventListener("click",fn); actions.appendChild(b);
       }
       body.append(title,meta,actions);
+      if(item.license || item.attribution) {
+        const credit=document.createElement("small");
+        credit.className="source-credit";
+        credit.textContent=[item.attribution,item.license].filter(Boolean).join(" · ");
+        body.appendChild(credit);
+      }
       card.append(media,body);
       root.appendChild(card);
     }
@@ -239,6 +255,9 @@
     const q=$("sourceSearchQuery").value.trim();
     const year=$("sourceSearchYear").value.trim();
     if(q.length<2) return status("Введите название фильма или сериала.","error");
+    if(year && !/^\d{4}$/.test(year)) return status("Укажите год четырьмя цифрами.","error");
+    activeSearch?.abort();
+    const controller=new AbortController();activeSearch=controller;
     $("posterSearchInput").value=q; $("posterSearchYear").value=year;
     $("sourceSearchRun").disabled=true;
     status("Ищу TMDB / Fanart.tv / Commons / TVmaze...");
@@ -246,16 +265,29 @@
       const forcedId=forced?.tmdbId?String(forced.tmdbId):"";
       const forcedType=forced?.mediaType?String(forced.mediaType):"";
       const key="image-search:"+q.toLowerCase()+":"+year+":"+forcedType+":"+forcedId;
-      let data=await SkoomaStore?.getCache?.(key);
+      let data=await SkoomaStore?.getCache?.(key).catch(()=>null);
+      let fallbackReason="";
       if(!data) {
         const params=new URLSearchParams({q,year,source:"all"});
         if(forcedId) params.set("tmdbId",forcedId);
         if(forcedType) params.set("mediaType",forcedType);
-        const response=await fetch(apiBase+"/api/images/search?"+params.toString(),{cache:"no-store",signal:AbortSignal.timeout(30000)});
-        data=await response.json().catch(()=>({}));
-        if(!response.ok) throw new Error(data.error||"Источник временно недоступен.");
-        await SkoomaStore?.setCache?.(key,data,10*60*1000);
+        try {
+          const response=await fetch(apiBase+"/api/images/search?"+params.toString(),{cache:"no-store",signal:AbortSignal.any([controller.signal,AbortSignal.timeout(12000)])});
+          data=await response.json().catch(()=>({}));
+          if(!response.ok || !Array.isArray(data.results)) throw Object.assign(new Error("Search request failed"),{
+            status:response.status,legacy:[404,405].includes(response.status)||/use post/i.test(String(data.error||""))||response.ok
+          });
+          await SkoomaStore?.setCache?.(key,data,10*60*1000).catch(()=>{});
+        } catch(error) {
+          if(controller.signal.aborted)throw error;
+          // Never retry a denied/rate-limited request or switch to a paid provider.
+          if([401,403,429].includes(error.status) || !window.PublicImageSearch)throw error;
+          fallbackReason=searchError(error);
+          status(fallbackReason+" Ищу в открытых источниках...");
+          data=await PublicImageSearch.search(q,year,controller.signal);
+        }
       }
+      if(controller!==activeSearch)return;
       state.items=Array.isArray(data.results)?data.results:[];
       state.references=Array.isArray(data.references)?data.references:[];
       state.identity=data.identity||null;
@@ -265,12 +297,14 @@
       render();
       const problems=(data.errors||[]).map(x=>x.message).filter(Boolean);
       const identity=data.identity?[data.identity.title,data.identity.year].filter(Boolean).join(" · "):q;
-      status(identity+": "+state.items.length+" изображений."+(problems.length?" "+problems.join(" "):""),state.items.length?"ok":(problems.length?"error":""));
+      const fallback=data.fallback?fallbackReason+" Резервный поиск: TVmaze (сериалы) и Commons (свободные изображения). Покрытие тайтлов ограничено. ":"";
+      status(fallback+identity+": "+state.items.length+" изображений."+(problems.length?" "+problems.join(" "):""),state.items.length?"ok":(problems.length?"error":""));
     } catch(error) {
+      if(controller!==activeSearch || controller.signal.aborted)return;
       state.items=[]; state.references=[]; state.identity=null; state.candidates=[]; state.providers={}; render();
-      status(error.message||"Источник временно недоступен.","error");
+      status(searchError(error),"error");
     } finally {
-      $("sourceSearchRun").disabled=false;
+      if(controller===activeSearch)$("sourceSearchRun").disabled=false;
     }
   }
 

@@ -9,11 +9,14 @@
     sharpen:0, grain:0, vignette:0
   };
   const TOP10_NUMBER_ASSETS = Object.freeze({
-    "1":"assets/top10/numbers/1.svg","2":"assets/top10/numbers/2.svg","3":"assets/top10/numbers/3.svg",
-    "4":"assets/top10/numbers/4.svg","5":"assets/top10/numbers/5.svg","6":"assets/top10/numbers/6.svg",
-    "7":"assets/top10/numbers/7.svg","8":"assets/top10/numbers/8.svg","9":"assets/top10/numbers/9.svg",
-    "10":"assets/top10/numbers/10.svg"
+    "1":"assets/top10/numbers/1.png","2":"assets/top10/numbers/2.png","3":"assets/top10/numbers/3.png",
+    "4":"assets/top10/numbers/4.png","5":"assets/top10/numbers/5.png","6":"assets/top10/numbers/6.png",
+    "7":"assets/top10/numbers/7.png","8":"assets/top10/numbers/8.png","9":"assets/top10/numbers/9.png",
+    "10":"assets/top10/numbers/10.png"
   });
+  const TOP10_NUMBER_PREVIEWS = Object.freeze(Object.fromEntries(
+    Object.keys(TOP10_NUMBER_ASSETS).map(value=>[value,`assets/top10/reference-numbers/${value}.png`])
+  ));
   const NUMBER_X = 400;
   const NUMBER_Y = 1150;
   const NUMBER_SIZE = 500;
@@ -170,7 +173,82 @@
   }
 
   function currentNumberAsset() {
-    return TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"];
+    return (TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"])+"?v=20260928-exact-reference";
+  }
+
+  function currentNumberPreview(value=data.ranking) {
+    return (TOP10_NUMBER_PREVIEWS[String(value || "2")] || TOP10_NUMBER_PREVIEWS["2"])+"?v=20260928-exact-reference";
+  }
+
+  function setNumberPickerOpen(open) {
+    const button=$("top10NumberPickerButton"),menu=$("top10NumberPickerMenu");
+    if(!button||!menu) return;
+    menu.hidden=!open;
+    button.setAttribute("aria-expanded",String(open));
+    if(open) menu.querySelector(`[data-number="${data.ranking}"]`)?.focus();
+  }
+
+  function syncNumberPicker() {
+    const value=String(data.ranking||"2");
+    const image=$("top10NumberPickerImage"),label=$("top10NumberPickerValue"),menu=$("top10NumberPickerMenu");
+    if(image) image.src=currentNumberPreview(value);
+    if(label) label.textContent=`Позиция ${value}`;
+    menu?.querySelectorAll("[data-number]").forEach(option=>{
+      const selected=option.dataset.number===value;
+      option.classList.toggle("selected",selected);
+      option.setAttribute("aria-selected",String(selected));
+    });
+  }
+
+  function setupNumberPicker() {
+    const button=$("top10NumberPickerButton"),menu=$("top10NumberPickerMenu"),select=$("top10PositionSelect");
+    if(!button||!menu||!select) return;
+    menu.replaceChildren();
+    for(const value of Object.keys(TOP10_NUMBER_ASSETS)){
+      const option=document.createElement("button");
+      option.type="button";
+      option.className="top10-number-option";
+      option.dataset.number=value;
+      option.setAttribute("role","option");
+      const image=document.createElement("img");
+      image.src=currentNumberPreview(value);
+      image.alt="";
+      const text=document.createElement("span");
+      text.textContent=value;
+      option.append(image,text);
+      option.addEventListener("click",()=>{
+        select.value=value;
+        select.dispatchEvent(new Event("change",{bubbles:true}));
+        setNumberPickerOpen(false);
+        button.focus();
+      });
+      menu.append(option);
+    }
+    button.addEventListener("click",()=>setNumberPickerOpen(menu.hidden));
+    button.addEventListener("keydown",event=>{
+      if(["ArrowDown","Enter"," "].includes(event.key)){
+        event.preventDefault();setNumberPickerOpen(true);
+      }
+    });
+    menu.addEventListener("keydown",event=>{
+      const options=[...menu.querySelectorAll("[data-number]")];
+      const current=Math.max(0,options.indexOf(document.activeElement));
+      if(event.key==="Escape"){event.preventDefault();setNumberPickerOpen(false);button.focus();return;}
+      if(!["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].includes(event.key)) return;
+      event.preventDefault();
+      let next=current;
+      if(event.key==="Home") next=0;
+      else if(event.key==="End") next=options.length-1;
+      else if(event.key==="ArrowLeft") next=Math.max(0,current-1);
+      else if(event.key==="ArrowRight") next=Math.min(options.length-1,current+1);
+      else if(event.key==="ArrowUp") next=Math.max(0,current-2);
+      else if(event.key==="ArrowDown") next=Math.min(options.length-1,current+2);
+      options[next]?.focus();
+    });
+    document.addEventListener("click",event=>{
+      if(!$("top10NumberPicker")?.contains(event.target)) setNumberPickerOpen(false);
+    });
+    syncNumberPicker();
   }
 
   async function refreshNumber(){
@@ -328,6 +406,7 @@
     $("top10LogoScale").value=String(Math.round(data.logoScale));
     $("top10LogoRotation").value=String(Math.round(data.logoRotation));
     $("top10PositionSelect").value=String(data.ranking);
+    syncNumberPicker();
     $("top10DarkColor").value=data.darkeningColor;
     $("top10DarkIntensity").value=String(data.darkeningIntensity);
     $("top10DarkStart").value=String(data.darkeningStart);
@@ -751,13 +830,13 @@
   $("top10DownloadBtn").addEventListener("click",download);
   window.addEventListener("resize",()=>{if(!$("top10Workspace").hidden) resizeDisplay();});
 
-  refreshDarkening();void refreshNumber();resizeDisplay();renderLayers();syncControls();
+  setupNumberPicker();refreshDarkening();void refreshNumber();resizeDisplay();renderLayers();syncControls();
 
   window.Top10Editor={
     activate,serialize,restore,resetClassic,renderCanvas,renderBlob,buildPhotopeaModel,download,
     setBackgroundFromDataUrl,setLogoFromDataUrl,applyPhotopeaComposite,getPhotopeaMasterId,openFilters,inspect,
     getState:()=>clone(data),getSelectedLayer:()=>runtime.selectedLayer,
-    numberAssets:TOP10_NUMBER_ASSETS,
+    numberAssets:TOP10_NUMBER_ASSETS,numberPreviews:TOP10_NUMBER_PREVIEWS,
     constants:{MASTER_W,MASTER_H}
   };
 

@@ -7,6 +7,9 @@
   let pending=null;
   let commandQueue=Promise.resolve();
   let connectionError=null;
+  let connecting=false;
+  let connectionTimer=null;
+  let connectionGeneration=0;
   let editJob=null;
   let busy=0;
   let context=null;
@@ -21,37 +24,55 @@
     if(connectionError) return Promise.reject(connectionError);
     if(ready) return Promise.resolve();
     return new Promise((resolve,reject)=>{
-      const waiter={resolve:()=>{clearTimeout(waiter.timer);resolve();},reject};
-      waiter.timer=setTimeout(()=>{
-        readyWaiters=readyWaiters.filter(item=>item!==waiter);
-        reject(new Error("Photopea не ответила. Проверьте соединение и повторите загрузку."));
-      },20000);
-      readyWaiters.push(waiter);
+      readyWaiters.push({resolve,reject});
     });
+  }
+
+  function failConnection(error) {
+    clearTimeout(connectionTimer);connectionTimer=null;
+    connecting=false;ready=false;connectionError=error;
+    frame.setAttribute("aria-busy","false");
+    readyWaiters.splice(0).forEach(waiter=>waiter.reject(error));
+    if(pending){clearTimeout(pending.timer);pending.reject(error);pending=null;}
+    setStatus(error.message,"error");
+  }
+
+  // All entry points (tab, open, retry and transfers) share the same handshake.
+  // An iframe load event alone is not proof that the editor is available.
+  function load() {
+    if(connectionError) return Promise.reject(connectionError);
+    if(ready) return Promise.resolve();
+    const result=waitReady();
+    if(!connecting) {
+      connecting=true;
+      setStatus("Загрузка Photopea...");frame.setAttribute("aria-busy","true");
+      connectionTimer=setTimeout(()=>failConnection(new Error(
+        "Photopea не ответила. Встроенный редактор недоступен или его загрузка заблокирована. Макеты сохранены в приложении. Нажмите «Перезагрузить Photopea», чтобы повторить."
+      )),20000);
+      frame.src=frame.dataset.src;
+    }
+    return result;
   }
 
   function ensureLoaded() {
     PosterApp.switchWorkspace("photopea");
-    if(frame.src==="about:blank" || !frame.src) {
-      setStatus("Загрузка Photopea...");
-      frame.src=frame.dataset.src;
-    }
-    return waitReady();
+    return load();
   }
 
   // A command is complete only after its payload AND the official done ACK.
   // After a timeout late messages cannot be assigned to the next command.
   function command(payload, kind="script") {
+    const generation=connectionGeneration;
     const task=commandQueue.then(async()=>{
+      if(generation!==connectionGeneration) throw new Error("Операция отменена при перезагрузке Photopea.");
       await ensureLoaded();
+      if(generation!==connectionGeneration) throw new Error("Операция отменена при перезагрузке Photopea.");
       if(connectionError) throw connectionError;
       return new Promise((resolve,reject)=>{
         const job={kind,resolve,reject,done:false,value:null,error:null};
         job.timer=setTimeout(()=>{
           if(pending!==job) return;
-          pending=null;
-          connectionError=new Error("Photopea не завершила операцию. Перезагрузите Photopea перед повтором.");
-          reject(connectionError);
+          failConnection(new Error("Photopea не завершила операцию. Перезагрузите Photopea перед повтором."));
         },30000);
         pending=job;
         frame.contentWindow.postMessage(payload,PP_ORIGIN);
@@ -413,7 +434,8 @@
     if(event.source!==frame.contentWindow || event.origin!==PP_ORIGIN) return;
     if(event.data==="done") {
       if(!ready && !connectionError) {
-        ready=true;
+        clearTimeout(connectionTimer);connectionTimer=null;
+        ready=true;connecting=false;frame.setAttribute("aria-busy","false");
         readyWaiters.splice(0).forEach(waiter=>waiter.resolve());
         if(!busy) setStatus("Photopea готова.","ok");
       } else if(pending) {
@@ -440,7 +462,12 @@
     completeCommand();
   });
 
-  frame.addEventListener("load",()=>setStatus("Photopea загружается..."));
+  frame.addEventListener("load",()=>{
+    if(connecting && !ready && !connectionError) setStatus("Загрузка Photopea: ожидаю готовность редактора...");
+  });
+  frame.addEventListener("error",()=>{
+    if(connecting || ready) failConnection(new Error("Не удалось загрузить Photopea. Проверьте соединение и нажмите «Перезагрузить Photopea». Макеты в приложении сохранены."));
+  });
   $("sendPhotopeaVerticalBtn").addEventListener("click",()=>sendBack("vertical"));
   $("sendPhotopeaHorizontalBtn").addEventListener("click",()=>sendBack("horizontal"));
   $("sendPhotopeaTrainBtn").addEventListener("click",()=>sendBack("train"));
@@ -449,13 +476,14 @@
   $("openPhotopeaBtn").addEventListener("click",()=>ensureLoaded().catch(error=>setStatus(error.message,"error")));
   $("reloadPhotopeaBtn")?.addEventListener("click",()=>{
     if(context && !confirm("Перезагрузить Photopea? Несохранённые изменения внутри Photopea будут потеряны.")) return;
-    if(pending){clearTimeout(pending.timer);pending.reject(new Error("Photopea перезагружена."));pending=null;}
-    readyWaiters.splice(0).forEach(waiter=>{clearTimeout(waiter.timer);waiter.reject(new Error("Загрузка отменена."));});
-    ready=false;connectionError=null;context=null;frame.src=frame.dataset.src;
-    setStatus("Загрузка Photopea...");
+    connectionGeneration++;
+    failConnection(new Error("Загрузка отменена при перезагрузке Photopea."));
+    commandQueue=Promise.resolve();connectionError=null;context=null;
+    load().catch(()=>{});
   });
 
   window.PhotopeaBridge={
+    load,
     openAsset,
     openBlob,
     openLayeredDocument,

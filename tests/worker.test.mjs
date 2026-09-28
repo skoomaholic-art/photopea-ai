@@ -40,3 +40,9 @@ test('Worker timeout is recoverable and unknown endpoint returns 404',async t=>{
  const r=await worker.fetch(request('/api/generate',payload),{AI_REQUESTS_ENABLED:'true',OPENROUTER_API_KEY:'fake'});assert.equal(r.status,504);assert.match((await r.json()).error,/не ответил вовремя/);
  assert.equal((await worker.fetch(request('/api/absent'),{})).status,404);
 });
+
+test('Worker recognizes documented TMDB_READ_ACCESS_TOKEN without exposing it',async t=>{
+ mockFetch(t);
+ const r=await worker.fetch(request('/api/config'),{TMDB_READ_ACCESS_TOKEN:'test-private-token',TMDB_COMMERCIAL_APPROVED:'true'});
+ const body=await r.json();assert.equal(body.posters.tmdb,true);assert.ok(!JSON.stringify(body).includes('test-private-token'));
+});

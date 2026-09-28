@@ -46,6 +46,17 @@ test("config/health disclose booleans, not secrets, and do not contact providers
     assert.ok(!JSON.stringify(data).includes("test-secret"));
   }
 });
+test("TMDB token aliases work consistently in configuration and legacy search",async t=>{
+ for(const name of ['TMDB_READ_ACCESS_TOKEN','TMDB_ACCESS_TOKEN','TMDB_BEARER_TOKEN']){
+   let calls=0;
+   const get=await serve(t,{[name]:'test-tmdb-token'},async(url,options)=>{
+     calls++;assert.equal(options.headers.Authorization,'Bearer test-tmdb-token');
+     return new Response(JSON.stringify({results:[]}));
+   });
+   const config=await (await get('/api/config')).json();assert.equal(config.tmdbConfigured,true);
+   assert.equal((await get('/api/posters?query=Title&type=movie')).status,200);assert.equal(calls,1);
+ }
+});
 test("server cannot serve env, Git data, server source, or traversal", async (t) => {
   const get = await serve(t);
   for (const path of [
