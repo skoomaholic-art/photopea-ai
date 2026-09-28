@@ -221,7 +221,8 @@ if (!/data-workspace="photopea"/.test(read("index.html"))) {
 
 
 for (let i=1;i<=10;i++) {
-  if (!fs.existsSync("assets/top10/numbers/"+i+".png")) throw new Error("TOP10 number asset missing: "+i);
+  if (!fs.existsSync("assets/top10/numbers/"+i+".svg")) throw new Error("New TOP10 artwork missing: "+i);
+  if (!fs.existsSync("assets/top10/numbers/"+i+".png")) throw new Error("Legacy TOP10 number PNG missing: "+i);
   if (!fs.existsSync("assets/top10/reference-numbers/"+i+".png")) throw new Error("TOP10 reference preview missing: "+i);
 }
 requireAll("TOP10 reference image picker", html, ["top10NumberPickerButton","top10NumberPickerMenu","top10NumberPickerImage"]);

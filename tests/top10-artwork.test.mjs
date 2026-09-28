@@ -14,7 +14,7 @@ function pixels(image,width=image.width,height=image.height){
   return canvas.getContext('2d').getImageData(0,0,width,height).data;
 }
 
-test('TOP10 uses exact transparent PNG cutouts from the supplied 1-10 references', async t => {
+test('legacy TOP10 PNG artwork remains intact for older documents', async t => {
   const heights=[];
   for(const item of manifest){
     await t.test(`number ${item.number}`,async()=>{
@@ -65,4 +65,32 @@ test('application mark keeps its black background and uses white artwork', async
   assert.ok(black>500000,'black background remains');
   assert.ok(white>40000,'white foreground artwork remains readable');
   assert.equal(other,0,'no red or tinted foreground pixels remain');
+});
+
+test('TOP10 uses the ten clean transparent user-number assets in the active editor',async()=>{
+  const script=await fs.readFile(new URL('../top10-editor.js',import.meta.url),'utf8');
+  assert.ok(script.includes('assets/top10/numbers/${value}.svg'));
+  assert.ok(script.includes('TOP10_NUMBER_PREVIEWS = TOP10_NUMBER_ASSETS'));
+  for(let n=1;n<=10;n++){
+    const src=await fs.readFile(new URL(`../assets/top10/numbers/${n}.svg`,import.meta.url),'utf8');
+    assert.ok(src.startsWith('<svg ')&&src.includes('width="500" height="500"'));
+    assert.ok(src.includes('fill="url(#g)" fill-rule="evenodd"'));
+    assert.ok(!src.includes('<image')&&!src.includes('<rect'),'no opaque background or external images');
+  }
+});
+
+test('TOP10 darkening slider is transparent at 0 and covers full height at 100',async()=>{
+  const script=await fs.readFile(new URL('../top10-editor.js',import.meta.url),'utf8');
+  const a=script.indexOf('  function darkeningStops(){');
+  const b=script.indexOf('  function drawDarkening(ctx){',a);
+  assert.ok(a>=0&&b>a,'shared gradient stops used by preview and export');
+  const stopFunction=script.slice(a,b);
+  const evaluate=intensity=>new Function('data','rgba',stopFunction+';return darkeningStops();')(
+    {darkeningStart:58,darkeningIntensity:intensity,darkeningColor:'#000000'},
+    (color,alpha)=>alpha
+  ).map(stop=>stop.color);
+  assert.deepEqual(evaluate(0),[0,0,0,0,0]);
+  assert.deepEqual(evaluate(100),[1,1,1,1,1]);
+  const middle=evaluate(50);
+  assert.ok(middle[0]<middle[4]&&Math.abs(middle[4]-.5)<1e-8,'intermediate strength is vertically graduated');
 });

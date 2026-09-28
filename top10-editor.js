@@ -8,15 +8,12 @@
     highlights:0, shadows:0, whites:0, blacks:0, hue:0, blur:0,
     sharpen:0, grain:0, vignette:0
   };
-  const TOP10_NUMBER_ASSETS = Object.freeze({
-    "1":"assets/top10/numbers/1.png","2":"assets/top10/numbers/2.png","3":"assets/top10/numbers/3.png",
-    "4":"assets/top10/numbers/4.png","5":"assets/top10/numbers/5.png","6":"assets/top10/numbers/6.png",
-    "7":"assets/top10/numbers/7.png","8":"assets/top10/numbers/8.png","9":"assets/top10/numbers/9.png",
-    "10":"assets/top10/numbers/10.png"
-  });
-  const TOP10_NUMBER_PREVIEWS = Object.freeze(Object.fromEntries(
-    Object.keys(TOP10_NUMBER_ASSETS).map(value=>[value,`assets/top10/reference-numbers/${value}.png`])
+  // Clean, transparent versions traced from the ten supplied number images.
+  const TOP10_NUMBER_ASSETS = Object.freeze(Object.fromEntries(
+    Array.from({length:10},(_,index)=>String(index+1))
+      .map(value=>[value,`assets/top10/numbers/${value}.svg`])
   ));
+  const TOP10_NUMBER_PREVIEWS = TOP10_NUMBER_ASSETS;
   const NUMBER_X = 400;
   const NUMBER_Y = 1150;
   const NUMBER_SIZE = 500;
@@ -121,47 +118,53 @@
     return obj;
   }
 
-  function drawDarkening(ctx){
+  // One stop model for Fabric preview, PNG export and Photopea gradient layer.
+  // A value of 0 is completely transparent; at 100 the entire vertical
+  // image is darkened, including the top above the user-selected ramp start.
+  function darkeningStops(){
     const start=Math.max(0,Math.min(1,Number(data.darkeningStart||0)/100));
     const intensity=Math.max(0,Math.min(1,Number(data.darkeningIntensity||0)/100));
-    const middle=start+(1-start)*.54;
-    const strong=start+(1-start)*.82;
-    const gradient=ctx.createLinearGradient(0,0,0,MASTER_H);
-    gradient.addColorStop(0,rgba(data.darkeningColor,0));
-    gradient.addColorStop(start,rgba(data.darkeningColor,0));
-    gradient.addColorStop(middle,rgba(data.darkeningColor,intensity*.34));
-    gradient.addColorStop(strong,rgba(data.darkeningColor,intensity*.72));
-    gradient.addColorStop(1,rgba(data.darkeningColor,intensity));
-    ctx.save();ctx.translate(data.darkeningX,data.darkeningY);ctx.rotate(data.darkeningRotation*Math.PI/180);ctx.scale(data.darkeningScale/100,data.darkeningScale/100);
-    // Construct in layer coordinates so moving/rotating the layer moves its gradient too.
+    const topOpacity=Math.pow(intensity,20);
+    const colorAt=progress=>rgba(data.darkeningColor,topOpacity+(intensity-topOpacity)*progress);
+    return [
+      {offset:0,color:colorAt(0)},
+      {offset:start,color:colorAt(0)},
+      {offset:start+(1-start)*.54,color:colorAt(.34)},
+      {offset:start+(1-start)*.82,color:colorAt(.72)},
+      {offset:1,color:colorAt(1)}
+    ];
+  }
+
+  function drawDarkening(ctx){
+    ctx.save();
+    ctx.translate(data.darkeningX,data.darkeningY);
+    ctx.rotate(data.darkeningRotation*Math.PI/180);
+    ctx.scale(data.darkeningScale/100,data.darkeningScale/100);
     const local=ctx.createLinearGradient(0,-MASTER_H/2,0,MASTER_H/2);
-    local.addColorStop(0,rgba(data.darkeningColor,0));local.addColorStop(start,rgba(data.darkeningColor,0));local.addColorStop(middle,rgba(data.darkeningColor,intensity*.34));local.addColorStop(strong,rgba(data.darkeningColor,intensity*.72));local.addColorStop(1,rgba(data.darkeningColor,intensity));
-    ctx.fillStyle=local;ctx.fillRect(-MASTER_W/2,-MASTER_H/2,MASTER_W,MASTER_H);ctx.restore();
+    for(const stop of darkeningStops()) local.addColorStop(stop.offset,stop.color);
+    ctx.fillStyle=local;
+    ctx.fillRect(-MASTER_W/2,-MASTER_H/2,MASTER_W,MASTER_H);
+    ctx.restore();
   }
 
   function refreshDarkening(){
-    if(objects.darkening){ canvas.remove(objects.darkening); objects.darkening=null; }
-    if(data.photopeaComposite){ applyStacking(); return; }
-    const start=Math.max(0,Math.min(1,Number(data.darkeningStart||0)/100));
-    const intensity=Math.max(0,Math.min(1,Number(data.darkeningIntensity||0)/100));
-    const middle=start+(1-start)*.54;
-    const strong=start+(1-start)*.82;
+    if(objects.darkening){canvas.remove(objects.darkening);objects.darkening=null;}
+    if(data.photopeaComposite){applyStacking();return;}
     const gradient=new F.Gradient({
       type:"linear",coords:{x1:0,y1:0,x2:0,y2:MASTER_H},
-      colorStops:[
-        {offset:0,color:rgba(data.darkeningColor,0)},
-        {offset:start,color:rgba(data.darkeningColor,0)},
-        {offset:middle,color:rgba(data.darkeningColor,intensity*.34)},
-        {offset:strong,color:rgba(data.darkeningColor,intensity*.72)},
-        {offset:1,color:rgba(data.darkeningColor,intensity)}
-      ]
+      colorStops:darkeningStops()
     });
     objects.darkening=lockedObject(new F.Rect({
-      left:0,top:0,originX:"left",originY:"top",width:MASTER_W,height:MASTER_H,fill:gradient,strokeWidth:0
+      left:0,top:0,originX:"left",originY:"top",
+      width:MASTER_W,height:MASTER_H,fill:gradient,strokeWidth:0
     }),"darkening");
-    objects.darkening.set({left:data.darkeningX,top:data.darkeningY,originX:"center",originY:"center",angle:data.darkeningRotation,scaleX:data.darkeningScale/100,scaleY:data.darkeningScale/100});
+    objects.darkening.set({
+      left:data.darkeningX,top:data.darkeningY,originX:"center",originY:"center",
+      angle:data.darkeningRotation,scaleX:data.darkeningScale/100,scaleY:data.darkeningScale/100
+    });
     objects.darkening.top10BaseScale=1;
-    applyLock("darkening");canvas.add(objects.darkening);
+    applyLock("darkening");
+    canvas.add(objects.darkening);
     applyStacking();
   }
 
@@ -173,11 +176,11 @@
   }
 
   function currentNumberAsset() {
-    return (TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"])+"?v=20260928-exact-reference";
+    return (TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"])+"?v=20260928-user-artwork-v1";
   }
 
   function currentNumberPreview(value=data.ranking) {
-    return (TOP10_NUMBER_PREVIEWS[String(value || "2")] || TOP10_NUMBER_PREVIEWS["2"])+"?v=20260928-exact-reference";
+    return (TOP10_NUMBER_PREVIEWS[String(value || "2")] || TOP10_NUMBER_PREVIEWS["2"])+"?v=20260928-user-artwork-v1";
   }
 
   function setNumberPickerOpen(open) {
@@ -637,7 +640,12 @@
         x:Number(data.logoX),y:Number(data.logoY),width:size.width*base,height:size.height*base,scaleX:1,scaleY:1,
         rotation:Number(data.logoRotation||0),opacity:1,visible:true,locked:false};
     }
-    const numberLayer={id:"top10-number",name:"TOP10 Number",type:"image",sourceDataUrl:await AssetManager.blobToDataUrl(await (await fetch(new URL(currentNumberAsset(),document.baseURI).href)).blob()),
+    // Photopea receives a raster PNG image layer, not an external SVG document.
+    const numberImage=await imageFromSource(new URL(currentNumberAsset(),document.baseURI).href);
+    const numberCanvas=document.createElement("canvas");
+    numberCanvas.width=NUMBER_SIZE;numberCanvas.height=NUMBER_SIZE;
+    numberCanvas.getContext("2d").drawImage(numberImage,0,0,NUMBER_SIZE,NUMBER_SIZE);
+    const numberLayer={id:"top10-number",name:"TOP10 Number",type:"image",sourceDataUrl:numberCanvas.toDataURL("image/png"),
       x:data.numberX,y:data.numberY,width:NUMBER_SIZE*data.numberScale/100,height:NUMBER_SIZE*data.numberScale/100,scaleX:1,scaleY:1,rotation:data.numberRotation,opacity:1,visible:true,locked:data.numberLocked,
       value:String(data.ranking),asset:data.numberAsset||currentNumberAsset()};
     const blank=document.createElement("canvas");blank.width=MASTER_W;blank.height=MASTER_H;
