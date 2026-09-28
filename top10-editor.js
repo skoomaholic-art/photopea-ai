@@ -122,15 +122,18 @@
     return obj;
   }
 
-  // Fixed full-height ramp: intensity changes opacity, never gradient geometry.
-  // Preview, downloaded PNG and the Photopea layer use these same four stops.
+  // Full-height, gradual darkening: strength affects alpha only, never the ramp geometry.
+  // All three renderers (Fabric, PNG and Photopea) use these same stops.
   function darkeningStops(){
     const strength=Math.max(0,Math.min(1,Number(data.darkeningIntensity||0)/100));
     return [
-      {offset:0,color:rgba(data.darkeningColor,.12*strength)},
-      {offset:.35,color:rgba(data.darkeningColor,.26*strength)},
-      {offset:.65,color:rgba(data.darkeningColor,.68*strength)},
-      {offset:1,color:rgba(data.darkeningColor,.99*strength)}
+      {offset:0,color:rgba(data.darkeningColor,.02*strength)},
+      {offset:.18,color:rgba(data.darkeningColor,.04*strength)},
+      {offset:.36,color:rgba(data.darkeningColor,.09*strength)},
+      {offset:.53,color:rgba(data.darkeningColor,.20*strength)},
+      {offset:.69,color:rgba(data.darkeningColor,.40*strength)},
+      {offset:.83,color:rgba(data.darkeningColor,.66*strength)},
+      {offset:1,color:rgba(data.darkeningColor,strength)}
     ];
   }
 
@@ -294,7 +297,11 @@
     const ctx=out.getContext("2d");
     const result=ctx.createImageData(side,side);
     for(let y=0;y<side;y++){
-      const a=Math.round(255*strength*(.18+.82*Math.pow(y/(side-1),1.12)));
+      // At 100% EVERY enclosed pixel is fully opaque, even at the very top.
+      // At 96% the entire interior is nearly black, with a subtle vertical ramp.
+      const v=y/(side-1),smooth=v*v*(3-2*v);
+      const alpha=strength*(1-(1-strength)*.65*(1-smooth));
+      const a=Math.round(255*alpha);
       for(let x=0;x<side;x++){
         const i=y*side+x;
         if(!mask[i])continue;
