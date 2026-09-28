@@ -44,16 +44,16 @@ test('active poster locks, layer model, original alpha and exact title prompt',a
  assert.deepEqual(a.errors,[]);
 });
 
-test('active TOP10: five layers, unlock number, exact master, filters isolated and portable project',async t=>{
+test('active TOP10: six layers, unlock number, exact master, filters isolated and portable project',async t=>{
  const a=await app(t),P=a.w.PosterApp,T=a.w.Top10Editor;
  P.switchWorkspace('top10');await a.file('top10BackgroundInput',fixture(500,700),'top-bg.png');await a.file('top10LogoInput',fixture(300,100,{logo:true}),'top-logo.png');
  assert.equal(a.el('top10Canvas').width,800);assert.equal(a.el('top10Canvas').height,1400);assert.equal(a.el('top10NumberScale').disabled,true);
  await a.input('top10numberLock',false,'change');await a.input('top10NumberScale',80);await a.input('top10NumberRotation',22);await a.click('top10NumberCenter');
  await a.input('top10PositionSelect','10','change');
- let model=await T.buildPhotopeaModel();assert.deepEqual(Array.from(model.layers,l=>l.name),['Canvas Background','Background Image','Bottom Darkening','Logo','TOP10 Number']);
- assert.equal(model.layers[4].rotation,22);assert.equal(model.layers[4].width,400);assert.equal(model.layers[4].locked,false);assert.equal(model.layers[4].y,700);
+ let model=await T.buildPhotopeaModel();assert.deepEqual(Array.from(model.layers,l=>l.name),['Canvas Background','Background Image','Bottom Darkening','Logo','Digit Interior Gradient','TOP10 Number']);
+ assert.equal(model.layers[5].rotation,22);assert.equal(model.layers[5].width,400);assert.equal(model.layers[5].locked,false);assert.equal(model.layers[5].y,700);assert.equal(model.layers[4].locked,true);
  const original=plain(T.getState()),changed=plain(original);changed.backgroundFilters.brightness=25;await T.restore(changed);
- model=await T.buildPhotopeaModel();assert.equal(model.layers[4].rotation,22);assert.equal(T.getState().logo,original.logo);assert.equal(T.getState().darkeningIntensity,original.darkeningIntensity);
+ model=await T.buildPhotopeaModel();assert.equal(model.layers[5].rotation,22);assert.equal(T.getState().logo,original.logo);assert.equal(T.getState().darkeningIntensity,original.darkeningIntensity);
  const saved=await a.take('saveProjectBtn'),project=JSON.parse(saved.bytes);await T.resetClassic();assert.equal(T.getState().numberLocked,true);
  await P.restore(project);assert.equal(T.getState().numberRotation,22);assert.equal(T.getState().numberLocked,false);assert.equal(T.getState().ranking,'10');
  const out=await pixels(await T.renderBlob());assert.equal(out.im.width,800);assert.equal(out.im.height,1400);

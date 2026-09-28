@@ -351,7 +351,8 @@
     applyLock("number");
     objects.number.numberAsset=asset;
     objects.number.numberValue=String(data.ranking);
-    runtime.numberMetrics={left:NUMBER_X-NUMBER_SIZE/2,top:NUMBER_Y-NUMBER_SIZE/2,width:NUMBER_SIZE,height:NUMBER_SIZE,bottom:NUMBER_Y+NUMBER_SIZE/2,asset};
+    const bounds=objects.number.getBoundingRect();
+    runtime.numberMetrics={...bounds,bottom:bounds.top+bounds.height,asset};
     canvas.add(objects.number);
     await refreshNumberInside(image.getElement());
     applyStacking();
@@ -724,7 +725,7 @@
         x:Number(data.backgroundX),y:Number(data.backgroundY),width:size.width*base,height:size.height*base,scaleX:1,scaleY:1,
         rotation:Number(data.backgroundRotation||0),opacity:1,visible:true,locked:false};
     }
-    const darkeningLayer={id:"top10-darkening",name:"Vertical Darkening",type:"gradient",sourceDataUrl:await darkeningDataUrl(),
+    const darkeningLayer={id:"top10-darkening",name:"Bottom Darkening",type:"gradient",sourceDataUrl:await darkeningDataUrl(),
       x:data.darkeningX,y:data.darkeningY,width:MASTER_W*data.darkeningScale/100,height:MASTER_H*data.darkeningScale/100,scaleX:1,scaleY:1,rotation:data.darkeningRotation,opacity:1,visible:true,locked:data.darkeningLocked,
       gradient:{color:data.darkeningColor,intensity:data.darkeningIntensity},originalTransform:{x:data.darkeningX,y:data.darkeningY,scale:data.darkeningScale,rotation:data.darkeningRotation}};
     if(data.logo){

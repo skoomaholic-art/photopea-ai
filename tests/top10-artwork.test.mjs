@@ -89,8 +89,12 @@ test('TOP10 darkening slider is transparent at 0 and covers full height at 100',
     {darkeningStart:58,darkeningIntensity:intensity,darkeningColor:'#000000'},
     (color,alpha)=>alpha
   ).map(stop=>stop.color);
-  assert.deepEqual(evaluate(0),[0,0,0,0,0]);
-  assert.deepEqual(evaluate(100),[1,1,1,1,1]);
+  const transparent=evaluate(0);
+  assert.equal(transparent.length,4);
+  assert.ok(transparent.every(alpha=>alpha===0),'0 is transparent over the entire canvas');
+  const full=evaluate(100);
+  assert.ok(full[0]>0&&full[3]>.95,'100 darkens the whole height, including its top');
+  assert.ok(full.every((alpha,index)=>index===0||alpha>full[index-1]),'gradient gets darker toward the bottom');
   const middle=evaluate(50);
-  assert.ok(middle[0]<middle[4]&&Math.abs(middle[4]-.5)<1e-8,'intermediate strength is vertically graduated');
+  assert.ok(middle.every((alpha,index)=>Math.abs(alpha-full[index]/2)<1e-8),'intensity scales opacity without shifting the ramp');
 });

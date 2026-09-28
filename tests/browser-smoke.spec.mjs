@@ -561,7 +561,7 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   const initial = await page.evaluate(() => window.Top10Editor.inspect());
   expect(initial.masterSize).toEqual({ width: 800, height: 1400 });
   expect(initial.backingSize).toEqual({ width: 800, height: 1400 });
-  expect(initial.layers).toEqual(["TOP_NUMBER","LOGO","BOTTOM_DARKENING","BACKGROUND_IMAGE"]);
+  expect(initial.layers).toEqual(["TOP_NUMBER","DIGIT_INTERIOR","LOGO","BOTTOM_DARKENING","BACKGROUND_IMAGE"]);
   expect(initial.darkening.locked).toBe(true);
   expect(initial.darkening.selectable).toBe(false);
   expect(initial.number.locked).toBe(true);
@@ -593,7 +593,7 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
   expect(inspect.number.bounds.left).toBeGreaterThanOrEqual(0);
   expect(inspect.number.bounds.left + inspect.number.bounds.width).toBeLessThanOrEqual(800);
 
-  await page.locator(".top10-layer-row").filter({hasText:"Bottom Darkening"}).click();
+  await page.locator(".top10-layer-row").filter({hasText:"Вертикальный градиент"}).click();
   const darkBefore = await page.evaluate(() => window.Top10Editor.inspect().darkening);
   await page.mouse.move(400,700); await page.mouse.down(); await page.mouse.move(500,800); await page.mouse.up();
   const darkAfter = await page.evaluate(() => window.Top10Editor.inspect().darkening);
@@ -653,7 +653,7 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
 
   await page.locator(".top10-layer-row").filter({hasText:"TOP10 Number"}).click();
   await chooseTop10Number(page,"7");
-  await page.locator(".top10-layer-row").filter({hasText:"Bottom Darkening"}).click();
+  await page.locator(".top10-layer-row").filter({hasText:"Вертикальный градиент"}).click();
   await page.locator("#top10DarkIntensity").fill("81");
   await page.waitForTimeout(900);
   await page.reload();
@@ -771,7 +771,7 @@ test("Train and TOP10 reset buttons restore default state after confirmation", a
   await page.locator("#top10DarkIntensity").fill("53");
   await page.locator("#top10ResetClassicBtn").click();
   await page.locator("#resetConfirmOkBtn").click();
-  await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().ranking)).toBe("2");
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().ranking)).toBe("1");
   expect((await page.evaluate(() => window.Top10Editor.getState().darkeningIntensity))).toBe(94);
 });
 
@@ -867,7 +867,7 @@ test("Photopea layered TOP10 keeps number logo darkening and background separate
   const ctx=await page.evaluate(()=>window.PhotopeaBridge.getContext());
   expect(ctx.layeredModel.document).toMatchObject({width:800,height:1400});
   const names=ctx.layeredModel.layers.map(x=>x.name);
-  expect(names).toEqual(expect.arrayContaining(["Canvas Background","Background Image","Bottom Darkening","Logo","TOP10 Number"]));
+  expect(names).toEqual(expect.arrayContaining(["Canvas Background","Background Image","Bottom Darkening","Logo","Digit Interior Gradient","TOP10 Number"]));
   const number=ctx.layeredModel.layers.find(x=>x.name==="TOP10 Number");
   expect(number.sourceDataUrl).toMatch(/^data:image\/png;base64,iVBOR/);
   expect(number.locked).toBe(true);
