@@ -48,7 +48,7 @@
     numberInsideIntensity:96,numberInsideColor:"#000000",
     darkeningX:400,darkeningY:700,darkeningScale:100,darkeningRotation:0,darkeningLocked:true,canvasBackground:"#050505",
     ranking:"1", numberAsset:TOP10_NUMBER_ASSETS["1"],
-    darkeningColor:"#000000", darkeningIntensity:94,
+    darkeningColor:"#000000", darkeningIntensity:100,
     photopeaMasterId:null, photopeaComposite:false
   });
 
@@ -122,17 +122,19 @@
     return obj;
   }
 
-  // Full-height, gradual darkening: strength affects alpha only, never the ramp geometry.
-  // All three renderers (Fabric, PNG and Photopea) use these same stops.
+  // The platform reference has a continuous image-to-black fade above the
+  // number and an opaque black lower area. Keep seven fixed full-height stops
+  // and multiply ONLY opacity by the user-selected intensity.
+  // Fabric preview, PNG export and Photopea all use this shared model.
   function darkeningStops(){
     const strength=Math.max(0,Math.min(1,Number(data.darkeningIntensity||0)/100));
     return [
       {offset:0,color:rgba(data.darkeningColor,.02*strength)},
-      {offset:.18,color:rgba(data.darkeningColor,.04*strength)},
-      {offset:.36,color:rgba(data.darkeningColor,.09*strength)},
-      {offset:.53,color:rgba(data.darkeningColor,.20*strength)},
-      {offset:.69,color:rgba(data.darkeningColor,.40*strength)},
-      {offset:.83,color:rgba(data.darkeningColor,.66*strength)},
+      {offset:.30,color:rgba(data.darkeningColor,.025*strength)},
+      {offset:.50,color:rgba(data.darkeningColor,.075*strength)},
+      {offset:.60,color:rgba(data.darkeningColor,.25*strength)},
+      {offset:.69,color:rgba(data.darkeningColor,.63*strength)},
+      {offset:.79,color:rgba(data.darkeningColor,strength)},
       {offset:1,color:rgba(data.darkeningColor,strength)}
     ];
   }
