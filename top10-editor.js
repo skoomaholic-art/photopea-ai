@@ -17,7 +17,7 @@
   const NUMBER_X = 400;
   const NUMBER_Y = 1150;
   const NUMBER_SIZE = 500;
-  const DEFAULT_NUMBER_SCALE = 55;
+  const DEFAULT_NUMBER_SCALE = 60;
   const numberHoleCache = new Map();
   let insideLoadToken = 0;
   let numberLoadToken = 0;
@@ -45,7 +45,7 @@
     logo:null, logoName:"", logoAssetId:null,
     logoX:400, logoY:895, logoScale:100, logoRotation:0, logoAboveDarkening:true,
     numberX:NUMBER_X,numberY:NUMBER_Y,numberScale:DEFAULT_NUMBER_SCALE,numberRotation:0,numberLocked:true,
-    numberInsideIntensity:65,numberInsideColor:"#000000",
+    numberInsideIntensity:96,numberInsideColor:"#000000",
     darkeningX:400,darkeningY:700,darkeningScale:100,darkeningRotation:0,darkeningLocked:true,canvasBackground:"#050505",
     ranking:"1", numberAsset:TOP10_NUMBER_ASSETS["1"],
     darkeningColor:"#000000", darkeningIntensity:94,
