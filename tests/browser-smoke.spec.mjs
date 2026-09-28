@@ -772,7 +772,7 @@ test("Train and TOP10 reset buttons restore default state after confirmation", a
   await page.locator("#top10ResetClassicBtn").click();
   await page.locator("#resetConfirmOkBtn").click();
   await expect.poll(() => page.evaluate(() => window.Top10Editor.getState().ranking)).toBe("1");
-  expect((await page.evaluate(() => window.Top10Editor.getState().darkeningIntensity))).toBe(94);
+  expect((await page.evaluate(() => window.Top10Editor.getState().darkeningIntensity))).toBe(100);
 });
 
 
