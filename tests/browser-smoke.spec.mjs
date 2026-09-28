@@ -869,8 +869,7 @@ test("Photopea layered TOP10 keeps number logo darkening and background separate
   const names=ctx.layeredModel.layers.map(x=>x.name);
   expect(names).toEqual(expect.arrayContaining(["Canvas Background","Background Image","Bottom Darkening","Logo","TOP10 Number"]));
   const number=ctx.layeredModel.layers.find(x=>x.name==="TOP10 Number");
-  expect(number.sourceDataUrl).toMatch(/^data:image\/svg\+xml;base64,/);
-  expect(Buffer.from(number.sourceDataUrl.split(",")[1], "base64").toString("utf8")).toContain('aria-label="7"');
+  expect(number.sourceDataUrl).toMatch(/^data:image\/png;base64,iVBOR/);
   expect(number.locked).toBe(true);
   expect(ctx.layeredModel.layers.find(x=>x.name==="Bottom Darkening").locked).toBe(true);
 });
