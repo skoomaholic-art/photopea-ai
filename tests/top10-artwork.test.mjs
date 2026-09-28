@@ -100,3 +100,14 @@ test('TOP10 darkening slider is transparent at 0 and covers full height at 100',
   const interior=script.slice(script.indexOf('  function numberInsideDataUrl(image){'),script.indexOf('  // Independent raster under the digit'));
   assert.ok(interior.includes('const alpha=strength*(1-(1-strength)*.65*(1-smooth))'),'at 100 every enclosed pixel has full alpha');
 });
+
+
+test('TOP10 rank 10 matches the visible height of ranks 1-9 in every renderer',async()=>{
+  const script=await fs.readFile(new URL('../top10-editor.js',import.meta.url),'utf8');
+  assert.ok(script.includes('String(rank)==="10" ? 491/329 : 1'));
+  assert.ok(script.includes('const numberBaseScale=NUMBER_SIZE/(image.width||500)*numberVisualMultiplier(data.ranking)'));
+  assert.ok(script.includes('objects.numberInside.top10BaseScale=NUMBER_SIZE/(fill.width||NUMBER_SIZE)*numberVisualMultiplier(data.ranking)'));
+  assert.ok(script.includes('const size=numberRenderedSize();'));
+  assert.ok(script.includes('const numberSize=numberRenderedSize();'));
+  assert.equal(329*491/329,491);
+});

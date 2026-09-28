@@ -51,7 +51,7 @@ test('active TOP10: six layers, unlock number, exact master, filters isolated an
  await a.input('top10numberLock',false,'change');await a.input('top10NumberScale',80);await a.input('top10NumberRotation',22);await a.click('top10NumberCenter');
  await a.input('top10PositionSelect','10','change');
  let model=await T.buildPhotopeaModel();assert.deepEqual(Array.from(model.layers,l=>l.name),['Canvas Background','Background Image','Bottom Darkening','Logo','Digit Interior Gradient','TOP10 Number']);
- assert.equal(model.layers[5].rotation,22);assert.equal(model.layers[5].width,400);assert.equal(model.layers[5].locked,false);assert.equal(model.layers[5].y,700);assert.equal(model.layers[4].locked,true);
+ assert.equal(model.layers[5].rotation,22);assert.ok(Math.abs(model.layers[5].width-400*491/329)<1e-8);assert.equal(model.layers[5].width,model.layers[4].width);assert.equal(model.layers[5].locked,false);assert.equal(model.layers[5].y,700);assert.equal(model.layers[4].locked,true);
  const original=plain(T.getState()),changed=plain(original);changed.backgroundFilters.brightness=25;await T.restore(changed);
  model=await T.buildPhotopeaModel();assert.equal(model.layers[5].rotation,22);assert.equal(T.getState().logo,original.logo);assert.equal(T.getState().darkeningIntensity,original.darkeningIntensity);
  const saved=await a.take('saveProjectBtn'),project=JSON.parse(saved.bytes);await T.resetClassic();assert.equal(T.getState().numberLocked,true);

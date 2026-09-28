@@ -18,6 +18,11 @@
   const NUMBER_Y = 1150;
   const NUMBER_SIZE = 500;
   const DEFAULT_NUMBER_SCALE = 60;
+  // Visible bounds of the supplied 10.svg are y=85..414 (329px).
+  // Other digits occupy 491px vertically. Normalize visual height only
+  // for 10, while keeping its center and the user's scale percentage.
+  const numberVisualMultiplier = rank => String(rank)==="10" ? 491/329 : 1;
+  const numberRenderedSize = () => NUMBER_SIZE*data.numberScale/100*numberVisualMultiplier(data.ranking);
   const numberHoleCache = new Map();
   let insideLoadToken = 0;
   let numberLoadToken = 0;
@@ -329,7 +334,7 @@
     const fill=await F.FabricImage.fromURL(source);
     if(token!==insideLoadToken)return;
     objects.numberInside=lockedObject(fill,"numberInside");
-    objects.numberInside.top10BaseScale=NUMBER_SIZE/(fill.width||NUMBER_SIZE);
+    objects.numberInside.top10BaseScale=NUMBER_SIZE/(fill.width||NUMBER_SIZE)*numberVisualMultiplier(data.ranking);
     const base=objects.numberInside.top10BaseScale*data.numberScale/100;
     objects.numberInside.set({left:data.numberX,top:data.numberY,
       angle:data.numberRotation,originX:"center",originY:"center",
@@ -351,12 +356,13 @@
     const image=await F.FabricImage.fromURL(url);
     if(token!==numberLoadToken) return;
     objects.number=lockedObject(image,"number");
+    const numberBaseScale=NUMBER_SIZE/(image.width||500)*numberVisualMultiplier(data.ranking);
     objects.number.set({
       left:data.numberX,top:data.numberY,angle:data.numberRotation,originX:"center",originY:"center",
-      scaleX:NUMBER_SIZE/(image.width||500)*data.numberScale/100,scaleY:NUMBER_SIZE/(image.height||500)*data.numberScale/100,
+      scaleX:numberBaseScale*data.numberScale/100,scaleY:numberBaseScale*data.numberScale/100,
       objectCaching:false
     });
-    objects.number.top10BaseScale=NUMBER_SIZE/(image.width||500);
+    objects.number.top10BaseScale=numberBaseScale;
     applyLock("number");
     objects.number.numberAsset=asset;
     objects.number.numberValue=String(data.ranking);
@@ -371,7 +377,8 @@
     const asset=currentNumberAsset();
     data.numberAsset=asset;
     const image=await imageFromSource(new URL(asset,document.baseURI).href);
-    const transform={x:data.numberX,y:data.numberY,w:NUMBER_SIZE*data.numberScale/100,h:NUMBER_SIZE*data.numberScale/100,rotation:data.numberRotation};
+    const size=numberRenderedSize();
+    const transform={x:data.numberX,y:data.numberY,w:size,h:size,rotation:data.numberRotation};
     const inside=numberInsideDataUrl(image);
     if(inside)EditorCore.draw(ctx,await imageFromSource(inside),transform);
     EditorCore.draw(ctx,image,transform);
@@ -750,12 +757,13 @@
     numberCanvas.width=NUMBER_SIZE;numberCanvas.height=NUMBER_SIZE;
     numberCanvas.getContext("2d").drawImage(numberImage,0,0,NUMBER_SIZE,NUMBER_SIZE);
     const numberInside=numberInsideDataUrl(numberImage);
+    const numberSize=numberRenderedSize();
     const numberInsideLayer={id:"top10-number-inside",name:"Digit Interior Gradient",type:"image",
       sourceDataUrl:numberInside||document.createElement("canvas").toDataURL("image/png"),
-      x:data.numberX,y:data.numberY,width:NUMBER_SIZE*data.numberScale/100,height:NUMBER_SIZE*data.numberScale/100,
+      x:data.numberX,y:data.numberY,width:numberSize,height:numberSize,
       scaleX:1,scaleY:1,rotation:data.numberRotation,opacity:1,visible:!!numberInside,locked:true};
     const numberLayer={id:"top10-number",name:"TOP10 Number",type:"image",sourceDataUrl:numberCanvas.toDataURL("image/png"),
-      x:data.numberX,y:data.numberY,width:NUMBER_SIZE*data.numberScale/100,height:NUMBER_SIZE*data.numberScale/100,scaleX:1,scaleY:1,rotation:data.numberRotation,opacity:1,visible:true,locked:data.numberLocked,
+      x:data.numberX,y:data.numberY,width:numberSize,height:numberSize,scaleX:1,scaleY:1,rotation:data.numberRotation,opacity:1,visible:true,locked:data.numberLocked,
       value:String(data.ranking),asset:data.numberAsset||currentNumberAsset()};
     const blank=document.createElement("canvas");blank.width=MASTER_W;blank.height=MASTER_H;
     const empty=(id,name)=>({id,name,type:"image",sourceDataUrl:blank.toDataURL("image/png"),x:400,y:700,width:800,height:1400,opacity:1,visible:true,locked:false});
