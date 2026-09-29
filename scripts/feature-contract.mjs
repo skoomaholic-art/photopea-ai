@@ -8,6 +8,7 @@ const train = read("train-editor.js");
 const worker = read("worker/ai-worker.js");
 const sources = read("worker/image-sources.js");
 const assets = read("asset-manager.js");
+const logoArchive = read("logo-archive.js");
 const filters = read("image-filters.js");
 const filterStudio = read("filter-studio.js");
 const sourceBrowser = read("source-browser.js");
@@ -70,6 +71,15 @@ requireAll("asset manager", assets, [
   "sourceId","sourceUrl","originalUrl","thumbnailUrl","imageType","aspectRatio","isTextless",
   "originalAsset","editedAsset","filters","createdAt","updatedAt",
   "importRemote","updateEdited","ensureContextAsset"
+]);
+
+requireAll("logo archive", logoArchive, [
+  "rememberDataUrl","rememberFile","archiveKind","fingerprint",
+  "SHA-256","data-logo-archive-target","PosterApp.setImageLayer","Top10Editor.setLogoFromDataUrl","TrainEditor.addImageFromFile"
+]);
+requireAll("logo archive UI", html, [
+  "PNG LOGO ARCHIVE","logoArchiveModal","logoArchiveList","logoArchiveSearch",
+  'data-logo-archive-target="poster"','data-logo-archive-target="train"','data-logo-archive-target="top10"'
 ]);
 
 requireAll("indexeddb assets", storage, [
@@ -221,8 +231,7 @@ if (!/data-workspace="photopea"/.test(read("index.html"))) {
 
 
 for (let i=1;i<=10;i++) {
-  if (!fs.existsSync("assets/top10/numbers/"+i+".svg")) throw new Error("New TOP10 artwork missing: "+i);
-  if (!fs.existsSync("assets/top10/numbers/"+i+".png")) throw new Error("Legacy TOP10 number PNG missing: "+i);
+  if (!fs.existsSync("assets/top10/numbers/"+i+".png")) throw new Error("Clean TOP10 PNG cutout missing: "+i);
   if (!fs.existsSync("assets/top10/reference-numbers/"+i+".png")) throw new Error("TOP10 reference preview missing: "+i);
 }
 requireAll("TOP10 reference image picker", html, ["top10NumberPickerButton","top10NumberPickerMenu","top10NumberPickerImage"]);

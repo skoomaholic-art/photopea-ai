@@ -169,7 +169,7 @@ export async function app(t) {
       .replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, ""),
   );
   for (const file of [
-    "assets/fabric.js", "editor-core.js", "storage.js", "zip-store.js", "asset-manager.js",
+    "assets/fabric.js", "editor-core.js", "storage.js", "zip-store.js", "asset-manager.js", "logo-archive.js",
     "local-background-removal.js", "image-filters.js", "poster-app.js", "train-editor.js",
     "top10-editor.js", "filter-studio.js", "public-image-search.js", "source-browser.js", "photopea-bridge.js",
     "range-number-sync.js", "workspace-tools.js"

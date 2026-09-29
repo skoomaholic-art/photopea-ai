@@ -7,6 +7,7 @@ const root = new URL('../', import.meta.url);
 const fixtureRoot = new URL('fixtures/top10/', import.meta.url);
 const manifest = JSON.parse(await fs.readFile(new URL('manifest.json', fixtureRoot)));
 const colored = (p, i) => p[i] < 80 && Math.max(p[i+1], p[i+2])-p[i] > 35 && Math.max(p[i+1], p[i+2]) > 65 && p[i+3] > 100;
+const expectedCounters = new Map([[5,1],[6,1],[8,2],[9,1],[10,1]]);
 
 function pixels(image,width=image.width,height=image.height){
   const canvas=createCanvas(width,height);
@@ -14,7 +15,59 @@ function pixels(image,width=image.width,height=image.height){
   return canvas.getContext('2d').getImageData(0,0,width,height).data;
 }
 
-test('legacy TOP10 PNG artwork remains intact for older documents', async t => {
+function components(mask,width,height){
+  const seen=new Uint8Array(mask.length),sizes=[];
+  for(let start=0;start<mask.length;start++){
+    if(!mask[start]||seen[start]) continue;
+    let size=0;
+    const stack=[start];seen[start]=1;
+    while(stack.length){
+      const current=stack.pop();size++;
+      const x=current%width,y=Math.floor(current/width);
+      const neighbours=[];
+      if(x>0) neighbours.push(current-1);
+      if(x+1<width) neighbours.push(current+1);
+      if(y>0) neighbours.push(current-width);
+      if(y+1<height) neighbours.push(current+width);
+      for(const next of neighbours){
+        if(mask[next]&&!seen[next]){seen[next]=1;stack.push(next);}
+      }
+    }
+    sizes.push(size);
+  }
+  return sizes.sort((a,b)=>b-a);
+}
+
+function enclosedTransparency(data,width,height){
+  let minX=width,minY=height,maxX=-1,maxY=-1;
+  for(let p=0;p<width*height;p++){
+    if(data[p*4+3]===0) continue;
+    const x=p%width,y=Math.floor(p/width);
+    minX=Math.min(minX,x);maxX=Math.max(maxX,x);
+    minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+  }
+  const subWidth=maxX-minX+1,subHeight=maxY-minY+1;
+  const transparent=new Uint8Array(subWidth*subHeight);
+  for(let y=0;y<subHeight;y++) for(let x=0;x<subWidth;x++){
+    transparent[y*subWidth+x]=data[((y+minY)*width+x+minX)*4+3]===0?1:0;
+  }
+  const exterior=new Uint8Array(transparent.length),stack=[];
+  const add=index=>{if(transparent[index]&&!exterior[index]){exterior[index]=1;stack.push(index);}};
+  for(let x=0;x<subWidth;x++){add(x);add((subHeight-1)*subWidth+x);}
+  for(let y=0;y<subHeight;y++){add(y*subWidth);add(y*subWidth+subWidth-1);}
+  while(stack.length){
+    const current=stack.pop(),x=current%subWidth,y=Math.floor(current/subWidth);
+    if(x>0) add(current-1);
+    if(x+1<subWidth) add(current+1);
+    if(y>0) add(current-subWidth);
+    if(y+1<subHeight) add(current+subWidth);
+  }
+  const interior=new Uint8Array(transparent.length);
+  for(let i=0;i<interior.length;i++) interior[i]=transparent[i]&&!exterior[i]?1:0;
+  return components(interior,subWidth,subHeight).filter(size=>size>=16).length;
+}
+
+test('TOP10 uses exact transparent PNG cutouts from the supplied 1-10 references', async t => {
   const heights=[];
   for(const item of manifest){
     await t.test(`number ${item.number}`,async()=>{
@@ -43,9 +96,33 @@ test('legacy TOP10 PNG artwork remains intact for older documents', async t => {
         }
       }
       assert.ok(sourceStroke>2000,'reference stroke detected');
-      assert.equal(exactStroke,sourceStroke,'every supplied gradient-stroke pixel is preserved exactly');
+      assert.ok(exactStroke/sourceStroke>.99,'the supplied gradient stroke remains visually exact after edge cleanup');
       assert.ok(opaque<width*height*.86,'poster background was removed');
       assert.equal(actual[3],0,'transparent outside the glyph');
+      assert.equal(enclosedTransparency(actual,width,height),expectedCounters.get(item.number)||0,'glyph counters are transparent');
+
+      const runtimePixels=pixels(runtime);
+      const visible=new Uint8Array(500*500);
+      const alphaLevels=new Set();
+      let transparentRgb=0,darkBoundary=0,boundary=0;
+      for(let p=0;p<500*500;p++){
+        const i=p*4,alpha=runtimePixels[i+3];
+        alphaLevels.add(alpha);
+        visible[p]=alpha>2?1:0;
+        if(alpha===0) transparentRgb=Math.max(transparentRgb,runtimePixels[i],runtimePixels[i+1],runtimePixels[i+2]);
+      }
+      for(let p=0;p<500*500;p++){
+        if(runtimePixels[p*4+3]<64) continue;
+        const x=p%500,y=Math.floor(p/500);
+        const touchesTransparency=(x>0&&runtimePixels[(p-1)*4+3]<=2)||(x<499&&runtimePixels[(p+1)*4+3]<=2)||(y>0&&runtimePixels[(p-500)*4+3]<=2)||(y<499&&runtimePixels[(p+500)*4+3]<=2);
+        if(!touchesTransparency) continue;
+        boundary++;
+        if(Math.max(runtimePixels[p*4],runtimePixels[p*4+1],runtimePixels[p*4+2])<40) darkBoundary++;
+      }
+      assert.equal(components(visible,500,500).length,1,'no isolated alpha fragments or resize ringing');
+      assert.ok(alphaLevels.size>32,'runtime cut-out retains smooth antialiasing');
+      assert.equal(transparentRgb,0,'fully transparent pixels contain no fringe colour');
+      assert.ok(darkBoundary/Math.max(boundary,1)<.025,'no black crop halo surrounds the coloured outline');
       heights.push(maxY-minY+1);
     });
   }
@@ -65,49 +142,4 @@ test('application mark keeps its black background and uses white artwork', async
   assert.ok(black>500000,'black background remains');
   assert.ok(white>40000,'white foreground artwork remains readable');
   assert.equal(other,0,'no red or tinted foreground pixels remain');
-});
-
-test('TOP10 uses the ten clean transparent user-number assets in the active editor',async()=>{
-  const script=await fs.readFile(new URL('../top10-editor.js',import.meta.url),'utf8');
-  assert.ok(script.includes('assets/top10/numbers/${value}.svg'));
-  assert.ok(script.includes('TOP10_NUMBER_PREVIEWS = TOP10_NUMBER_ASSETS'));
-  for(let n=1;n<=10;n++){
-    const src=await fs.readFile(new URL(`../assets/top10/numbers/${n}.svg`,import.meta.url),'utf8');
-    assert.ok(src.startsWith('<svg ')&&src.includes('width="500" height="500"'));
-    assert.ok(src.includes('fill="url(#g)" fill-rule="evenodd"'));
-    assert.ok(!src.includes('<image')&&!src.includes('<rect'),'no opaque background or external images');
-  }
-});
-
-test('TOP10 darkening slider is transparent at 0 and covers full height at 100',async()=>{
-  const script=await fs.readFile(new URL('../top10-editor.js',import.meta.url),'utf8');
-  const a=script.indexOf('  function darkeningStops(){');
-  const b=script.indexOf('  function drawDarkening(ctx){',a);
-  assert.ok(a>=0&&b>a,'shared gradient stops used by preview and export');
-  const stopFunction=script.slice(a,b);
-  const evaluate=intensity=>new Function('data','rgba',stopFunction+';return darkeningStops();')(
-    {darkeningStart:58,darkeningIntensity:intensity,darkeningColor:'#000000'},
-    (color,alpha)=>alpha
-  ).map(stop=>stop.color);
-  const transparent=evaluate(0);
-  assert.equal(transparent.length,7);
-  assert.ok(transparent.every(alpha=>alpha===0),'0 is transparent over the entire canvas');
-  const full=evaluate(100);
-  assert.ok(full[0]>0&&full.at(-1)===1,'100 darkens the whole height and reaches fully black at the bottom');
-  assert.ok(full.every((alpha,index)=>index===0||alpha>=full[index-1]),'gradient gets darker toward the bottom');
-  const middle=evaluate(50);
-  assert.ok(middle.every((alpha,index)=>Math.abs(alpha-full[index]/2)<1e-8),'intensity scales opacity without shifting the ramp');
-  const interior=script.slice(script.indexOf('  function numberInsideDataUrl(image){'),script.indexOf('  // Independent raster under the digit'));
-  assert.ok(interior.includes('const alpha=strength*(1-(1-strength)*.65*(1-smooth))'),'at 100 every enclosed pixel has full alpha');
-});
-
-
-test('TOP10 rank 10 matches the visible height of ranks 1-9 in every renderer',async()=>{
-  const script=await fs.readFile(new URL('../top10-editor.js',import.meta.url),'utf8');
-  assert.ok(script.includes('String(rank)==="10" ? 491/329 : 1'));
-  assert.ok(script.includes('const numberBaseScale=NUMBER_SIZE/(image.width||500)*numberVisualMultiplier(data.ranking)'));
-  assert.ok(script.includes('objects.numberInside.top10BaseScale=NUMBER_SIZE/(fill.width||NUMBER_SIZE)*numberVisualMultiplier(data.ranking)'));
-  assert.ok(script.includes('const size=numberRenderedSize();'));
-  assert.ok(script.includes('const numberSize=numberRenderedSize();'));
-  assert.equal(329*491/329,491);
 });

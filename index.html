@@ -14,11 +14,12 @@
   <script defer src="storage.js?v=20260923-layered-model"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
   <script defer src="asset-manager.js?v=20260926-timeout"></script>
+  <script defer src="logo-archive.js?v=20260929"></script>
   <script defer src="local-background-removal.js?v=20260926-timeout"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
   <script defer src="poster-app.js?v=20260926-repair"></script>
   <script defer src="train-editor.js?v=20260923-master-dirty"></script>
-  <script defer src="top10-editor.js?v=20260928-number10-height-v6"></script>
+  <script defer src="top10-editor.js?v=20260928-clean-cutouts"></script>
   <script defer src="filter-studio.js?v=20260923top10a"></script>
   <script defer src="public-image-search.js?v=20260926"></script>
   <script defer src="source-browser.js?v=20260926-repair"></script>
@@ -68,6 +69,7 @@
             <label class="upload-card">Логотип<input id="logoFileInput" type="file" accept="image/png,image/webp"></label>
             <button id="removePosterLogoBtn" class="asset-clear-btn" type="button" aria-label="Удалить логотип" title="Удалить логотип" disabled>×</button>
           </div>
+          <button class="logo-archive-open wide" type="button" data-logo-archive-target="poster">Выбрать из архива</button>
         </section>
 
         <section>
@@ -210,6 +212,7 @@
             <label class="upload-card">Добавить логотип<input id="trainLogoInput" type="file" accept="image/*"></label>
             <button id="removeTrainLogoBtn" class="asset-clear-btn" type="button" aria-label="Удалить логотип Паровозика" title="Удалить выбранный / последний логотип" disabled>×</button>
           </div>
+          <button class="logo-archive-open wide" type="button" data-logo-archive-target="train">Выбрать из архива</button>
           <div class="search-row">
             <input id="trainTextInput" value="Новый текст" aria-label="Текст">
             <button id="trainAddTextBtn">+ Текст</button>
@@ -335,6 +338,7 @@
             <label class="upload-card">Загрузить логотип<input id="top10LogoInput" type="file" accept="image/png,image/webp,image/svg+xml"></label>
             <button id="removeTop10LogoBtn" class="asset-clear-btn" type="button" aria-label="Удалить логотип ТОП10" title="Удалить логотип" disabled>×</button>
           </div>
+          <button class="logo-archive-open wide" type="button" data-logo-archive-target="top10">Выбрать из архива</button>
           <h3>Цветокор</h3>
           <button id="top10FilterBtn" class="wide">Фильтры / Цветокор</button>
           <p class="muted">Live preview. Фильтры применяются только к BACKGROUND_IMAGE.</p>
@@ -358,10 +362,10 @@
           <div class="button-row"><button id="top10LogoUp">Слой выше</button><button id="top10LogoDown">Слой ниже</button></div>
         </section>
         <section data-top10-controls="darkening" data-top10-always>
-          <h3>Вертикальный градиент</h3><label class="layer-toggle"><input id="top10darkeningLock" type="checkbox" checked role="switch" aria-label="Блокировка затемнения"><i aria-hidden="true"></i><span id="top10darkeningLockLabel">Заблокирован</span></label>
+          <h3>Bottom Darkening</h3><label class="layer-toggle"><input id="top10darkeningLock" type="checkbox" checked role="switch" aria-label="Блокировка затемнения"><i aria-hidden="true"></i><span id="top10darkeningLockLabel">Заблокирован</span></label>
           <label class="field">Цвет <input id="top10DarkColor" type="color" value="#000000"></label>
-          <label class="field">Интенсивность <input id="top10DarkIntensity" type="range" min="0" max="100" value="100"></label>
-          <p class="muted">0% - без затемнения; 100% - плавное затемнение по всей высоте, сильнее к низу.</p>
+          <label class="field">Интенсивность <input id="top10DarkIntensity" type="range" min="0" max="100" value="94"></label>
+          <label class="field">Начало градиента <input id="top10DarkStart" type="range" min="0" max="100" value="58"></label>
           <p class="muted">LOCK POSITION · LOCK SIZE · EDIT APPEARANCE</p>
         </section>
         <section data-top10-controls="number" data-top10-always>
@@ -370,24 +374,21 @@
             <span>Позиция в ТОП10</span>
             <div id="top10NumberPicker" class="top10-number-picker">
               <button id="top10NumberPickerButton" class="top10-number-picker-button" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="top10NumberPickerMenu">
-                <img id="top10NumberPickerImage" src="assets/top10/numbers/1.svg?v=20260928-user-artwork-v1" alt="">
-                <strong id="top10NumberPickerValue">Позиция 1</strong>
+                <img id="top10NumberPickerImage" src="assets/top10/reference-numbers/2.png?v=20260928-clean-cutout" alt="">
+                <strong id="top10NumberPickerValue">Позиция 2</strong>
                 <span class="top10-number-picker-action">Выбрать</span>
               </button>
               <div id="top10NumberPickerMenu" class="top10-number-picker-menu" role="listbox" aria-label="Позиция в ТОП10" hidden></div>
               <select id="top10PositionSelect" class="top10-number-native-select" tabindex="-1" aria-hidden="true">
-                <option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option>
+                <option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option>
                 <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option>
               </select>
             </div>
           </div>
-          <label class="field">Масштаб номера <input id="top10NumberScale" type="range" min="10" max="300" value="60"></label>
+          <label class="field">Масштаб номера <input id="top10NumberScale" type="range" min="10" max="300" value="100"></label>
           <label class="field">Поворот номера <input id="top10NumberRotation" type="range" min="-180" max="180" value="0"></label>
           <div class="button-row"><button id="top10NumberCenter">Центрировать</button><button id="top10NumberReset">Сбросить</button></div>
-          <label class="field">Затемнение внутри цифры <input id="top10NumberInsideIntensity" type="range" min="0" max="100" value="96"></label>
-           <label class="field">Цвет внутри цифры <input id="top10NumberInsideColor" type="color" value="#000000"></label>
-           <p class="muted">Отдельный вертикальный градиент в прозрачных отверстиях цифры. Цветной контур остаётся нетронутым.</p>
-           <label class="field">Canvas Background <input id="top10CanvasBackground" type="color" value="#050505"></label>
+          <label class="field">Canvas Background <input id="top10CanvasBackground" type="color" value="#050505"></label>
         </section>
       </aside>
       <section class="panel top10-center">
@@ -510,6 +511,22 @@
       </header>
       <div id="archiveStatus" class="mini-status">Загрузка архива...</div>
       <div id="archiveList" class="archive-list"></div>
+    </section>
+  </div>
+
+  <div id="logoArchiveModal" class="modal-backdrop" hidden>
+    <section class="modal-card logo-archive-card" role="dialog" aria-modal="true" aria-labelledby="logoArchiveTitle">
+      <header class="modal-head">
+        <div><small>PNG LOGO ARCHIVE</small><h2 id="logoArchiveTitle">Архив логотипов</h2></div>
+        <button id="logoArchiveCloseBtn" type="button" aria-label="Закрыть архив логотипов">×</button>
+      </header>
+      <p class="muted logo-archive-note">Здесь автоматически сохраняются PNG-копии всех использованных логотипов. Архив доступен в этом браузере.</p>
+      <div class="logo-archive-toolbar">
+        <input id="logoArchiveSearch" type="search" placeholder="Найти логотип по названию" aria-label="Поиск в архиве логотипов">
+        <span id="logoArchiveCount" class="mini-status"></span>
+      </div>
+      <div id="logoArchiveStatus" class="mini-status" role="status">Загрузка архива...</div>
+      <div id="logoArchiveList" class="logo-archive-list"></div>
     </section>
   </div>
 

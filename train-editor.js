@@ -42,7 +42,7 @@
   }
 
   const existingProps = F.FabricObject.customProperties || [];
-  F.FabricObject.customProperties = [...new Set([...existingProps, "name", "kind", "sticker", "stickerText", "badgeText", "source", "rawWidth", "rawHeight", "stickerAsset", "uiBaseScaleX", "uiBaseScaleY"])] ;
+  F.FabricObject.customProperties = [...new Set([...existingProps, "name", "kind", "sticker", "stickerText", "badgeText", "source", "rawWidth", "rawHeight", "stickerAsset", "uiBaseScaleX", "uiBaseScaleY", "archiveAssetId"])] ;
 
   const canvas = new F.Canvas("trainCanvas", {
     preserveObjectStacking: true,
@@ -185,7 +185,7 @@
     return "#101010";
   }
 
-  async function addImageFromFile(file, kind = "image") {
+  async function addImageFromFile(file, kind = "image", options = {}) {
     const src = await fileToDataUrl(file);
     const image = await F.FabricImage.fromURL(src);
     const rawW = image.width || image.getElement()?.naturalWidth || 1;
@@ -219,8 +219,18 @@
       canvas.add(image);
       canvas.setActiveObject(image);
     }
+    if(kind==="logo"&&window.LogoArchive&&!options.skipLogoArchive){
+      try{
+        const archived=await LogoArchive.rememberFile(file,{title:file.name,source:"train",sourceAssetId:options.assetId||null});
+        image.archiveAssetId=archived.id;
+        setStatus("Логотип добавлен и сохранён в архив.","ok");
+      }catch(error){
+        setStatus("Логотип добавлен, но не сохранён в архив: "+(error.message||"ошибка хранилища"),"error");
+      }
+    }
     canvas.requestRenderAll();
     if(rawW < image.getScaledWidth() || rawH < image.getScaledHeight()) setStatus("Исходник мал для выбранного масштаба. Детали могут потерять чёткость; экспорт доступен.");
+    return image;
   }
 
   async function applyPhotopeaComposite(src, name = "Photopea result", masterId = null) {

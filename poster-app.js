@@ -335,6 +335,14 @@
       if(!options.keepAiOriginal) {s.aiOriginal=src;s.aiResults=[];s.aiSelected=null;}
       s.logo = src; s.logoName = name; s.logoAssetId = options.assetId || null;
       s.logoX = 50; s.logoY = 50; s.logoScale = 100; s.logoRotation = 0;
+      if(window.LogoArchive && !options.skipLogoArchive){
+        try{
+          const archived=await LogoArchive.rememberDataUrl(src,{title:name,source:"poster",sourceAssetId:options.assetId||null});
+          s.logoAssetId=archived.id;
+        }catch(error){
+          showToast("Логотип добавлен, но не сохранён в архив: "+(error.message||"ошибка хранилища"),"error");
+        }
+      }
     } else {
       s.poster = src; s.posterName = name; s.posterAssetId = options.assetId || null;
       s.posterX = 50; s.posterY = 50; s.posterScale = 100; s.posterRotation = 0; s.posterMode = "cover";
