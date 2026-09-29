@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 export const runtimeFiles = [
-  "index.html", "app-icon.svg", "editor-core.js", "storage.js", "zip-store.js", "asset-manager.js",
+  "index.html", "app-icon.svg", "editor-core.js", "storage.js", "zip-store.js", "asset-manager.js", "logo-archive.js",
   "local-background-removal.js", "image-filters.js", "poster-app.js", "train-editor.js", "top10-editor.js",
   "filter-studio.js", "public-image-search.js", "source-browser.js", "photopea-bridge.js", "range-number-sync.js", "workspace-tools.js",
   "poster-app.css", "poster-overrides.css", "train-app.css",

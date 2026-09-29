@@ -2,14 +2,14 @@
 
 ## Result
 
-`passed`
+`passed for assets and static checks; browser rerun pending CI`
 
 The checked scope is the TOP10 number picker, the TOP10 canvas number layer, and the white-on-black application mark requested on 28 September 2026.
 
 ## Visual truth and evidence
 
-- Source strip 1-5: `/workspace/scratch/1c3b11c49cc1/upload/2026-09-23_13-53-32.png`, 1800 × 151.
-- Source strip 6-10: `/workspace/scratch/1c3b11c49cc1/upload/2026-09-23_13-53-40(1).png`, 1845 × 193.
+- Source strip 1-5: `/workspace/scratch/1c3b11c49cc1/upload/2026-09-23_13-53-32(1).png`, 1800 × 151.
+- Source strip 6-10: `/workspace/scratch/1c3b11c49cc1/upload/2026-09-23_13-53-40(1)(1).png`, 1845 × 193.
 - White logo request: `/workspace/scratch/1c3b11c49cc1/upload/image(20260928-105230).png`, 285 × 75.
 - Full browser capture with the picker open: `/workspace/scratch/top10-picker-browser-20260928-v2.png`, 1348 × 926.
 - Browser capture after selecting position 10: `/workspace/scratch/top10-number-10-browser-20260928.png`, 1348 × 926.
@@ -42,17 +42,16 @@ Browser viewport: 1363 × 936, device pixel ratio 1. State: TOP10 workspace, num
 - Application console errors on `http://terminal.local:4173`: none.
 - Browser extension metadata errors were present only under `chrome-extension://` and are not application errors.
 
-## Automated checks
+## Current automated checks
 
-- `npm run test:unit`: 43 passed, 0 failed. This includes 10 per-number pixel tests and a white-on-black icon test.
-- `npm run check:syntax`: passed for 47 files.
+- `npm run test:unit`: 45 passed, 0 failed. This includes 10 per-number pixel tests, clean-alpha and halo checks, logo archive tests, and a white-on-black icon test.
+- `npm run check:syntax`: passed for 49 files.
 - `npm run smoke`: passed.
-- `npm run build:static`: passed with 65 allowlisted files.
-- `git diff --check`: passed before the final documentation update and must be repeated before commit.
-- Local Playwright suite could not start because its Chromium executable is absent from the environment. The relevant interaction was instead exercised in the connected Chrome browser and is not reported as a Playwright pass.
+- `npm run build:static`: passed with 66 allowlisted files, including `logo-archive.js`.
+- Local Playwright suite could not start because its Chromium executable is absent from this environment. It failed before loading the application and is not reported as a browser pass. The new browser scenario remains to be run by CI after publication.
 
 ## Remaining severity items
 
 - P0: none.
-- P1: none in the checked scope.
+- P1: CI browser confirmation for the logo archive modal and reload persistence.
 - P2: none in the checked scope.

@@ -105,3 +105,20 @@ test('manual adaptation result is imported without replacing original or using A
  expect(await page.evaluate(()=>PosterApp.getState().vertical.logo)).toBe(original);
  await page.locator('#moveResultBtn').click();await expect.poll(()=>page.evaluate(()=>PosterApp.getState().vertical.logo)).not.toBe(original);
 });
+
+test('PNG logo archive survives reload, deduplicates and inserts into TOP10',async({page})=>{
+ await start(page);const logo=fixture(360,120,{logo:true,color:'#ffffff'});
+ await upload(page,'logoFileInput',logo,'archive-logo.png');
+ await page.locator('[data-logo-archive-target="poster"]').click();
+ await expect(page.locator('#logoArchiveList .logo-archive-item')).toHaveCount(1);
+ await expect(page.locator('#logoArchiveList')).toContainText('archive-logo.png');
+ await page.locator('#logoArchiveCloseBtn').click();
+ await upload(page,'logoFileInput',logo,'same-logo.png');
+ await page.reload();await page.waitForFunction(()=>window.PosterApp&&window.TrainEditor&&window.Top10Editor&&window.LogoArchive);
+ await page.locator('[data-workspace="top10"]').click();
+ await page.locator('[data-logo-archive-target="top10"]').click();
+ await expect(page.locator('#logoArchiveList .logo-archive-item')).toHaveCount(1);
+ await page.locator('#logoArchiveList .logo-archive-actions .primary').click();
+ await expect.poll(()=>page.evaluate(()=>Top10Editor.getState().logoName)).toBe('same-logo.png');
+ await expect(page.locator('#logoArchiveModal')).toBeHidden();
+});
