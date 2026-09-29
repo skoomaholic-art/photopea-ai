@@ -26,6 +26,9 @@ test("PNG logo archive saves automatically, deduplicates and restores into every
   items=await a.w.LogoArchive.list();
   assert.equal(items.length,1,"the same PNG pixels must not create a second archive card");
   assert.ok(items[0].useCount>=2);
+  await a.w.LogoArchive.rememberDataUrl(a.w.PosterApp.getState().vertical.logo,{title:"stale-autosave-name.png",countUse:false});
+  items=await a.w.LogoArchive.list();
+  assert.equal(items[0].title,"same-pixels.png","restoring an older autosave must not rename the latest archive entry");
 
   await a.w.LogoArchive.open("top10");
   assert.equal(a.el("logoArchiveModal").hidden,false);

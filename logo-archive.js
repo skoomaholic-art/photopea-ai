@@ -119,7 +119,7 @@
       id: match?.id || "asset-logo-archive-" + hash.slice(0, 32),
       source: match?.source || options.source || "logo-archive",
       sourceId: match?.sourceId || options.sourceId || null,
-      title: pngName(options.title || match?.title),
+      title: pngName(options.countUse === false && match?.title ? match.title : options.title || match?.title),
       imageType: "logo",
       mimeType: "image/png",
       originalAsset: png,
