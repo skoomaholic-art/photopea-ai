@@ -1,0 +1,32 @@
+name: Deploy Poster Editor to App Engine Standard (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: poster-editor-appengine
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # Never enable without explicit acknowledgement of possible billable overages.
+    if: ${{ vars.GCP_APPENGINE_DEPLOY_ENABLED == 'true' && vars.GCP_PROJECT_ID != '' && vars.GCP_WIF_PROVIDER != '' && vars.GCP_DEPLOY_SA != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: google-auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy F1 single-instance app
+        run: |
+          gcloud app deploy app.yaml \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --quiet
+          gcloud app browse --project="${{ vars.GCP_PROJECT_ID }}" --no-launch-browser
