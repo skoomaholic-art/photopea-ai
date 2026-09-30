@@ -62,6 +62,7 @@
         </div>
       </div>
       <button id="saveProjectBtn" class="ghost">Сохранить проект</button>
+      <button id="saveProjectAsBtn" class="ghost" title="Создать отдельную сохранённую версию проекта">Сохранить как...</button>
       <label class="ghost file-button">Открыть проект<input id="projectFileInput" type="file" accept="application/json"></label>
     </div>
   </header>
@@ -82,6 +83,7 @@
         <select id="projectTemplates" aria-label="Шаблоны проекта"><option value="">Выберите шаблон</option></select>
         <button id="saveTemplateBtn" type="button">Сохранить шаблон</button>
         <button id="applyTemplateBtn" type="button">Применить</button>
+        <button id="renameTemplateBtn" type="button">Переименовать</button>
         <button id="deleteTemplateBtn" type="button">Удалить шаблон</button>
       </div>
       <span id="projectToolsStatus" role="status"></span>
@@ -147,11 +149,8 @@
 
         <section>
           <div class="section-head"><h3>Удаление фона</h3><span id="bgProviderBadge">проверка</span></div>
-          <label class="field">Провайдер
-            <select id="bgProviderSelect">
-              <option value="local">Локально (без API и оплаты)</option>
-            </select>
-          </label>
+          <p class="muted">Удаление выполняется на вашем устройстве. При первом запуске браузер скачает модель и сохранит её в кэше.</p>
+          <select id="bgProviderSelect" hidden><option value="local">Локально (без API и оплаты)</option></select>
           <button id="removeBackgroundBtn" class="wide" disabled>Удалить фон выбранного изображения</button>
           <div id="bgRemoveStatus" class="mini-status">Проверяю сервер...</div>
         </section>
