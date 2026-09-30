@@ -549,7 +549,16 @@
         <button type="button" data-library-go="posters" class="">Постеры</button>
       </nav>
       <button class="library-export-inline" type="button" data-library-export="works">Скачать архив работ (ZIP)</button>
-      <input id="archiveSearch" type="search" placeholder="Поиск сохранённой версии по названию" aria-label="Поиск в архиве работ">
+      <div class="work-archive-filters">
+        <label>Рабочая область <select id="archiveWorkspaceFilter">
+          <option value="all">Все работы</option>
+          <option value="vertical">Вертикальные</option>
+          <option value="horizontal">Горизонтальные</option>
+          <option value="train">Паровозик</option>
+          <option value="top10">ТОП10</option>
+        </select></label>
+        <label>Поиск по названию <input id="archiveSearch" type="search" placeholder="Название сохранённой версии" aria-label="Поиск в архиве работ"></label>
+      </div>
       <div id="archiveStatus" class="mini-status">Загрузка архива...</div>
       <div id="archiveList" class="archive-list"></div>
     </section>
