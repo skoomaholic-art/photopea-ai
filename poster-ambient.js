@@ -127,6 +127,63 @@
     return sync;
   }
 
+  function buildOverlay(container, wide) {
+    if(!container)return null;
+    const layer=document.createElement("div");
+    layer.className="pixel-stage-overlay"+(wide?" pixel-stage-wide":"");
+    layer.setAttribute("aria-hidden","true");
+    const ambient=document.createElement("div");
+    ambient.className="godfather-pixel";
+    const canvas=document.createElement("canvas");
+    canvas.className="pixel-canvas";
+    canvas.width=wide?320:160;
+    canvas.height=wide?180:240;
+    const label=document.createElement("span");
+    label.className="pixel-caption";label.textContent="AN OFFER YOU CAN CREATE";
+    const caption=document.createElement("span");
+    caption.className="pixel-overlay-note";caption.textContent="Добавьте изображение";
+    ambient.append(canvas,label);layer.append(ambient,caption);
+    container.append(layer);
+    const sync=createScene(canvas);
+    sync();
+    return {layer,sync};
+  }
+
+  // The wide train canvas and TOP10 have their own export renderers.
+  // These overlays live in the UI only, not inside Fabric or export layers.
+  function mountOtherWorkspaces() {
+    const train=buildOverlay($("trainCanvasShell"),true);
+    const top10=buildOverlay($("top10CanvasShell"),false);
+    const update=()=>{
+      if(train) {
+        try {
+          const serialized=window.TrainEditor?.serialize?.();
+          const objects=serialized?.canvas?.objects||[];
+          const hasImages=objects.some(obj=>obj.kind==="logo" || obj.kind==="image" ||
+            obj.kind==="poster" || obj.type==="image");
+          const populated=hasImages||Boolean(serialized?.photopeaMasterId);
+          train.layer.hidden=populated;
+          train.sync();
+        } catch {train.layer.hidden=true;train.sync();}
+      }
+      if(top10) {
+        try {
+          const state=window.Top10Editor?.getState?.();
+          top10.layer.hidden=Boolean(state?.background || state?.logo || state?.photopeaComposite);
+          top10.sync();
+        } catch {top10.layer.hidden=true;top10.sync();}
+      }
+    };
+    update();
+    document.querySelectorAll(".workspace-tab").forEach(tab=>tab.addEventListener("click",()=>{
+      requestAnimationFrame(update);
+    }));
+    document.querySelectorAll("#trainLogoInput,#trainImageInput,#top10BackgroundInput,#top10LogoInput").forEach(
+      input=>input.addEventListener("change",()=>setTimeout(update,250))
+    );
+    setInterval(()=>{if(!document.hidden)update();},850);
+  }
+
   function init() {
     const poster=$("posterEmpty");
     if(!poster)return;
@@ -158,6 +215,7 @@
       document.querySelectorAll(".library-menu[open]").forEach(d=>{if(!d.contains(event.target))d.open=false;});
     });
     sync();
+    mountOtherWorkspaces();
   }
 
   // Poster shelf reuses the existing IndexedDB assets, without modifying images or old projects.
