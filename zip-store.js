@@ -43,7 +43,9 @@
   async function bytesOf(value) {
     if (value instanceof Uint8Array) return value;
     if (value instanceof ArrayBuffer) return new Uint8Array(value);
-    if (value instanceof Blob) return new Uint8Array(await value.arrayBuffer());
+    // Accept Blob/File objects from another browser realm or iframe, too.
+    if (value && typeof value.arrayBuffer === "function" && Number.isFinite(value.size))
+      return new Uint8Array(await value.arrayBuffer());
     if (typeof value === "string") return encoder.encode(value);
     throw new TypeError("Unsupported ZIP entry payload");
   }
