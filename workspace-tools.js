@@ -183,8 +183,12 @@
 
   async function renderArchive() {
     const root=$("archiveList"); root.innerHTML=""; $("archiveStatus").textContent="Загрузка...";
-    const entries=await SkoomaStore.listArchiveEntries(archiveWorkspace);
-    $("archiveStatus").textContent=entries.length ? entries.length + " версий" : "Архив пока пуст.";
+    const all=await SkoomaStore.listArchiveEntries(archiveWorkspace);
+    const query=String($("archiveSearch")?.value||"").trim().toLocaleLowerCase("ru");
+    const entries=all.filter(item=>!query || String(item.title||"").toLocaleLowerCase("ru").includes(query));
+    $("archiveStatus").textContent=entries.length
+      ? (query ? entries.length+" из "+all.length+" версий" : entries.length+" версий")
+      : all.length ? "По запросу ничего не найдено." : "Архив пока пуст.";
     for (const entry of entries) {
       const card=document.createElement("article"); card.className="archive-item";
       const preview=document.createElement("img"); preview.src=entry.preview || ""; preview.alt="";
@@ -206,12 +210,14 @@
   async function openArchive(workspace) {
     archiveWorkspace=workspace;
     $("archiveTitle").textContent="Архив - "+LABELS[workspace];
+    if($("archiveSearch")) $("archiveSearch").value="";
     $("archiveModal").hidden=false; document.body.classList.add("modal-open");
     await renderArchive();
   }
   function closeArchive(){ $("archiveModal").hidden=true; document.body.classList.remove("modal-open"); }
 
   $("archiveCloseBtn").addEventListener("click",closeArchive);
+  $("archiveSearch")?.addEventListener("input",()=>{void renderArchive();});
   $("archiveModal").addEventListener("click",e=>{if(e.target===$("archiveModal")) closeArchive();});
   $("archiveList").addEventListener("click",async e=>{
     const button=e.target.closest("[data-archive-action]"); if(!button) return;
