@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  issues: write
 
 concurrency:
   group: poster-editor-gcp
@@ -28,6 +29,7 @@ jobs:
           service_account: ${{ vars.GCP_DEPLOY_SA }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: Deploy existing UI and same-origin API
+        id: deploy
         run: |
           gcloud run deploy poster-editor \
             --project="${{ vars.GCP_PROJECT_ID }}" \
@@ -45,7 +47,35 @@ jobs:
             --cpu-throttling \
             --set-env-vars=AI_REQUESTS_ENABLED=false \
             --quiet
-          gcloud run services describe poster-editor \
+          URL=$(gcloud run services describe poster-editor \
             --project="${{ vars.GCP_PROJECT_ID }}" \
             --region="${{ vars.GCP_REGION || 'me-central1' }}" \
-            --format='value(status.url)'
+            --format='value(status.url)')
+          test -n "$URL"
+          echo "Deployed URL: $URL"
+          for attempt in 1 2 3 4 5; do
+            if curl -fsS --max-time 15 "$URL/api/status" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then
+              curl -fsS -o /dev/null --max-time 15 "$URL/"
+              echo "url=$URL" >> "$GITHUB_OUTPUT"
+              echo "Verified: homepage 200 and API ok=true"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Cloud Run did not return healthy /api/status"
+          exit 1
+
+      - name: Post verified Cloud Run URL
+        if: ${{ steps.deploy.outcome == 'success' }}
+        uses: actions/github-script@v7
+        env:
+          DEPLOYED_URL: ${{ steps.deploy.outputs.url }}
+        with:
+          script: |
+            const url = process.env.DEPLOYED_URL;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 16,
+              body: '✅ Poster Editor 3.0 deployed to the existing Google Cloud Run service. Homepage and /api/status returned 200.\n\nURL: ' + url + '\nCommit: ' + context.sha
+            });
