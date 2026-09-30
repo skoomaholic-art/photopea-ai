@@ -1,0 +1,50 @@
+name: Deploy Poster Editor to Google Cloud Run (manual)
+
+# First deploy on a specifically named merge commit. Subsequent deploys stay manual/gated.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: poster-editor-gcp
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # One-time initial deploy via the precisely named merge commit. Later deploys require owner-controlled flag.
+    if: ${{ ((github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Deploy Poster Editor to Google Cloud Run')) || (github.event_name == 'workflow_dispatch' && vars.GCP_DEPLOY_ENABLED == 'true')) && vars.GCP_PROJECT_ID != '' && vars.GCP_WIF_PROVIDER != '' && vars.GCP_DEPLOY_SA != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: google-auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Deploy existing UI and same-origin API
+        run: |
+          gcloud run deploy poster-editor \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_REGION || 'me-central1' }}" \
+            --source=. \
+            --service-account="poster-editor-runtime@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --build-service-account="projects/${{ vars.GCP_PROJECT_ID }}/serviceAccounts/poster-editor-builder@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --allow-unauthenticated \
+            --min-instances=0 \
+            --max-instances=1 \
+            --cpu=1 \
+            --memory=512Mi \
+            --concurrency=80 \
+            --cpu-throttling \
+            --set-env-vars=AI_REQUESTS_ENABLED=false \
+            --quiet
+          gcloud run services describe poster-editor \
+            --project="${{ vars.GCP_PROJECT_ID }}" \
+            --region="${{ vars.GCP_REGION || 'me-central1' }}" \
+            --format='value(status.url)'
