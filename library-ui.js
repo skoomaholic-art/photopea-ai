@@ -45,6 +45,14 @@
   document.addEventListener("keydown",event=>{
     if(event.key==="Escape" && !menu.hidden){event.preventDefault();closeMenu();toggle.focus();}
   });
+  document.addEventListener("click",event=>{
+    const btn=event.target.closest("[data-library-export]");
+    if(!btn)return;
+    btn.disabled=true;
+    void LibraryTransfer.exportLibrary(btn.dataset.libraryExport).catch(error=>{
+      const toast=$("toast");toast.textContent=error.message||"Не удалось экспортировать архив.";toast.className="toast error";toast.hidden=false;
+    }).finally(()=>{btn.disabled=false;});
+  });
   $("libraryExportBtn")?.addEventListener("click", async()=>{
     closeMenu();
     try{await LibraryTransfer.exportLibrary();}
