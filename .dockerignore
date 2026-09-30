@@ -1,0 +1,17 @@
+# Keep credentials and unnecessary local artifacts out of Google Cloud Build.
+.git
+.github
+.env
+.env.*
+**/.env
+**/.env.*
+node_modules
+dist
+test-results
+playwright-report
+coverage
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
