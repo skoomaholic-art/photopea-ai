@@ -203,7 +203,7 @@
     logoImage.style.height = "auto";
     logoImage.style.transform = `translate(-50%,-50%) rotate(${s.logoRotation}deg) scale(${s.logoScale / 100})`;
 
-    $("posterEmpty").hidden = !!s.poster;
+    $("posterEmpty").hidden = Boolean(s.poster || s.logo);
     selectLayer(state.selectedLayer);
     requestAnimationFrame(updateTransformOverlay);
   }
@@ -464,6 +464,12 @@
   }
 
   function updateAiAvailability() {
+    // Paid and quota-limited image generation is intentionally disabled.
+    $("generateBtn").disabled = true;
+    $("aiServerBadge").textContent = "без платных AI";
+    $("aiServerBadge").className = "ok";
+    setAiStatus("Бесплатный режим: скопируйте промпт и импортируйте результат. Платные запросы отключены.", "ok");
+    return;
     const provider = $("aiProvider").value;
     const ready = !!state.aiProviders[provider];
     $("generateBtn").disabled = !ready;
@@ -520,6 +526,9 @@
     renderAiResults(s.aiResults||[],s.aiSelected);
   }
   async function generateAi() {
+    // Defensive guard: no hidden or programmatic event can invoke a billable endpoint.
+    setAiStatus("Платная генерация отключена. Используйте копирование промпта и ручной импорт.", "ok");
+    return;
     const provider=$("aiProvider").value, s=current(), source=s.aiOriginal||s.logo;
     const title=$("aiTitle").value.trim(), language=$("aiLanguage").value==="kk"?"казахский":"русский";
     if(!title) return setAiStatus(language==="казахский"?"Введите точное название на казахском языке":"Введите точное название на русском языке","error");
