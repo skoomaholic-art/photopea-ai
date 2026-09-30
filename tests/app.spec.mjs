@@ -1,15 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-test("poster editor exposes AI adaptation controls", async ({ page }) => {
-  await page.route("**/api/health", route => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ ok: true, apiVersion: "2026-09-23-runtime-v4", providers: { cloudflare: true, xai: true, openai: true }, background: { local: true, carve: false, removal: false } })
-  }));
+test("poster editor exposes the free-only image workflow", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("#aiProvider")).toHaveValue("cloudflare");
+  await expect(page.locator("#aiProvider")).toHaveValue("local");
+  await expect(page.locator("#generateBtn")).toBeDisabled();
   await expect(page.locator("#aiLanguage")).toHaveValue("kk");
-  await expect(page.locator("#generateBtn")).toHaveText("Адаптировать логотип");
-  await expect(page.locator("#generateBtn")).toBeEnabled();
-  await expect(page.locator("#moveResultBtn")).toBeDisabled();
+  await expect(page.locator("#copyAiPromptBtn")).toBeVisible();
+  await expect(page.locator("#manualAiResult")).toHaveCount(1);
+  await expect(page.locator("#libraryBtn")).toBeVisible();
+  await expect(page.locator("#removeBackgroundBtn")).toBeEnabled();
 });
