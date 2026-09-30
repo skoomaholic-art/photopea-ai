@@ -38,12 +38,21 @@
     }
     return {projects,assets,workArchives,masters};
   }
-  async function exportLibrary(){
+  async function exportLibrary(scope="all"){
     if(!window.ZipStore?.build)throw new Error("Модуль ZIP недоступен.");
     toast("Подготавливаю переносимый ZIP с библиотекой...");
     const data=await collect();
+    if(scope==="logos"){
+      data.projects=[];data.workArchives=[];data.masters=[];
+      data.assets=data.assets.filter(a=>a.imageType==="logo" || a.imageType==="logo-deletion-marker");
+    }else if(scope==="posters"){
+      data.projects=[];data.workArchives=[];data.masters=[];
+      data.assets=data.assets.filter(a=>["poster","backdrop","still","image"].includes(a.imageType)&&!a.hiddenFromPosterArchive);
+    }else if(scope!=="works"&&scope!=="all"){
+      throw new Error("Неизвестный раздел библиотеки.");
+    }
     const archive=[], manifest={
-      format:"poster-editor-portable-library",version:1,exportedAt:new Date().toISOString(),
+      format:"poster-editor-portable-library",version:1,scope,exportedAt:new Date().toISOString(),
       projects:data.projects,workArchives:data.workArchives,assets:[],photopeaMasters:[]
     };
     for(const asset of data.assets){
@@ -61,7 +70,7 @@
     archive.unshift({name:PREFIX+"manifest.json",data:JSON.stringify(manifest)});
     const zip=await ZipStore.build(archive);
     const stamp=new Date().toISOString().slice(0,10);
-    ZipStore.download(zip,"poster-editor-library-"+stamp+".zip");
+    ZipStore.download(zip,"poster-editor-"+scope+"-archive-"+stamp+".zip");
     toast("Библиотека сохранена. Перенесите ZIP на новый адрес и импортируйте его.");
     return {projects:data.projects.length,assets:data.assets.length,workArchives:data.workArchives.length,
       photopeaMasters:data.masters.length};
