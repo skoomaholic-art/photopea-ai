@@ -1,6 +1,10 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const apiBase = (document.querySelector('meta[name="poster-api"]')?.content || "").replace(/\/$/, "");
+  const configuredApi = (document.querySelector('meta[name="poster-api"]')?.content || "").replace(/\/$/, "");
+  // The actual Google Cloud Run instance must use its own first-party Node API.
+  // GitHub Pages keeps the legacy Worker fallback without a server.
+  const apiBase = location.hostname.endsWith(".run.app") ||
+    ["localhost", "127.0.0.1"].includes(location.hostname) ? location.origin : configuredApi;
   const formats = {
     vertical: { w: 800, h: 1200, label: "Вертикальный" },
     horizontal: { w: 1920, h: 1080, label: "Горизонтальный" }
