@@ -13,7 +13,7 @@
     skyline:"#090d13", glass:"#344745", amber:"#d5a361", soft:"#92704b",
     suit:"#171c1c", litSuit:"#323936", skin:"#947963", dark:"#070b0c",
     desk:"#352821", deskTop:"#57402b", rose:"#ad3432", roseLight:"#da5549",
-    moon:"#c6bb9a", smoke:"#69716b"
+    moon:"#c6bb9a", smoke:"#69716b", glass:"#71826f"
   };
   const px=(c,x,y,w,h,col)=>{c.fillStyle=col;c.fillRect(Math.round(x),Math.round(y),Math.ceil(w),Math.ceil(h));};
   const pixLine=(c,x,y,w,h,col)=>px(c,x,y,Math.max(1,w),Math.max(1,h),col);
@@ -128,8 +128,17 @@
       const empty=item.setting.empty();
       if(item.shown===empty)continue;
       item.shown=empty;
-      item.layer.hidden=!empty;
-      if(empty){item.first=true;draw(item.canvas,item.setting.kind,-1);}
+      if(empty){
+        item.layer.hidden=false;
+        item.layer.classList.remove("pixel-idle-leaving");
+        item.first=true;
+        draw(item.canvas,item.setting.kind,-1);
+      } else {
+        item.layer.classList.add("pixel-idle-leaving");
+        window.setTimeout(()=>{
+          if(!item.shown){item.layer.hidden=true;item.layer.classList.remove("pixel-idle-leaving");}
+        },300);
+      }
     }
   }
   sync();
