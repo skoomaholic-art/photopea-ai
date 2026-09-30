@@ -46,7 +46,8 @@
     if(state.tab==="still" && item.imageType!=="still") return false;
     if(state.tab==="textless" && item.isTextless!==true) return false;
     if(state.tab==="logo" && item.imageType!=="logo") return false;
-    if(source!=="all" && String(item.source).toLowerCase().replace(/\s+/g,"")!==source) return false;
+    const actualSource=String(item.source||"").toLowerCase().replace(/\s+/g,"");
+    if(source!=="all" && !(source==="wikimediacommons" ? ["wikimedia","wikimediacommons"].includes(actualSource) : actualSource===source)) return false;
     if(format!=="all" && item.shape!==format) return false;
     if(text==="textless" && item.isTextless!==true) return false;
     if(text==="text" && item.isTextless!==false) return false;
