@@ -45,5 +45,17 @@
   document.addEventListener("keydown",event=>{
     if(event.key==="Escape" && !menu.hidden){event.preventDefault();closeMenu();toggle.focus();}
   });
+  $("libraryExportBtn")?.addEventListener("click", async()=>{
+    closeMenu();
+    try{await LibraryTransfer.exportLibrary();}
+    catch(error){const toast=$("toast");toast.textContent=error.message||"Не удалось экспортировать библиотеку.";toast.className="toast error";toast.hidden=false;}
+  });
+  $("libraryImportFile")?.addEventListener("change",async event=>{
+    const file=event.target.files?.[0];if(!file)return;
+    closeMenu();
+    try{await LibraryTransfer.importLibrary(file);}
+    catch(error){const toast=$("toast");toast.textContent=error.message||"Не удалось импортировать библиотеку.";toast.className="toast error";toast.hidden=false;}
+    finally{event.target.value="";}
+  });
   window.EditorLibrary={navigate};
 })();
