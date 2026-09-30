@@ -7,7 +7,7 @@
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
   <title>Poster Editor</title>
   <link rel="icon" type="image/png" href="assets/poster-markup-icon.png?v=20260928-white">
-  <link rel="stylesheet" href="poster-app.css?v=20260930-archive-actions">
+  <link rel="stylesheet" href="poster-app.css?v=20260930-ui-foundation">
   <script defer src="assets/fabric.js"></script>
   <script defer src="editor-core.js?v=20260924"></script>
   <link rel="stylesheet" href="poster-overrides.css?v=20260924">
@@ -26,6 +26,7 @@
   <script defer src="photopea-bridge.js?v=20260926-repair"></script>
   <script defer src="range-number-sync.js?v=20260923-remaining-a"></script>
   <script defer src="workspace-tools.js?v=20260923-master-archive"></script>
+  <script defer src="poster-ambient.js?v=20260930"></script>
 </head>
 <body>
   <header class="topbar">
@@ -43,11 +44,20 @@
     </nav>
 
     <div class="header-actions">
+      <details class="library-menu">
+        <summary aria-label="Открыть библиотеку">Библиотека</summary>
+        <div class="library-menu-panel">
+          <strong>Ваши материалы</strong>
+          <button type="button" data-library-open="works">Архив работ <small>Версии и макеты</small></button>
+          <button type="button" data-library-open="logos">Архив логотипов <small>PNG с поиском</small></button>
+          <button type="button" data-library-open="posters">Архив постеров <small>Исходные изображения</small></button>
+        </div>
+      </details>
       <button id="saveProjectBtn" class="ghost">Сохранить проект</button>
       <label class="ghost file-button">Открыть проект<input id="projectFileInput" type="file" accept="application/json"></label>
     </div>
   </header>
-  <details class="project-tools"><summary>Проект и инструменты <small>Сборка 2026.09.25</small></summary>
+  <details class="project-tools"><summary>Дополнительные инструменты <small>История, перенос и шаблоны</small></summary>
     <div class="project-tools-body">
       <label>Название проекта <input id="projectTitle" placeholder="Название тайтла или события"></label>
       <button id="globalUndo">Отменить</button><button id="globalRedo">Повторить</button>
@@ -138,7 +148,7 @@
           <span id="stageMeta">Вертикальный · 800 × 1200</span>
         </div>
         <div id="stage" class="poster-stage">
-          <div id="posterEmpty" class="empty-state">Загрузите или найдите постер</div>
+          <div id="posterEmpty" class="empty-state"><div class="godfather-pixel" aria-hidden="true"><canvas class="pixel-canvas" width="160" height="240"></canvas><div class="pixel-caption">AN OFFER YOU CAN CREATE</div></div><div class="empty-instruction"><strong>Ваша следующая история начинается здесь</strong><span>Загрузите постер или логотип</span></div></div>
           <img id="posterImage" class="poster-image" alt="Постер" hidden>
           <img id="logoImage" class="logo-image" alt="Логотип" hidden>
           <div id="posterTransformOverlay" class="poster-transform-overlay" hidden aria-hidden="true">
@@ -157,9 +167,9 @@
       <aside class="panel sidebar">
         <section>
           <div class="section-head"><h3>AI / IMAGE EDIT</h3><span id="aiServerBadge">проверка</span></div>
-          <p class="muted">Ключи хранятся только на сервере. Генерация расходует лимит выбранного сервиса.</p>
+          <p class="muted">Платная генерация отключена. Скопируйте промпт и загрузите готовый результат, чтобы продолжить работу без API-расходов.</p>
           <label class="field">Провайдер
-            <select id="aiProvider">
+            <select id="aiProvider" disabled aria-label="Платные AI-провайдеры отключены">
               <option value="cloudflare">FLUX.2 Klein (лимиты Cloudflare)</option>
               <option value="xai">Grok Imagine (платный)</option>
               <option value="openai">GPT Image (платный)</option>
@@ -173,7 +183,7 @@
             <textarea id="aiPrompt" rows="4">Адаптируй логотип на выбранный язык, сохрани стиль, композицию и цвета. Верни чистый логотип на прозрачном фоне.</textarea>
           </label>
           <div class="button-row"><button id="copyAiPromptBtn">Скопировать промпт</button><button id="downloadAiSourceBtn">Скачать исходник</button><label class="file-button">Загрузить результат<input id="manualAiResult" type="file" accept="image/png,image/webp,image/jpeg"></label></div>
-          <button id="generateBtn" class="primary wide" disabled>Адаптировать логотип</button>
+          <button id="generateBtn" class="primary wide" disabled title="Платная генерация отключена">Генерация недоступна без бесплатной локальной модели</button>
           <div id="aiStatus" class="mini-status">Проверяю AI-сервер...</div>
           <div class="ai-comparison">
             <figure><figcaption>Загруженный исходник</figcaption><img id="aiOriginalPreview" alt="Исходный логотип" hidden></figure>
