@@ -526,6 +526,9 @@
     renderAiResults(s.aiResults||[],s.aiSelected);
   }
   async function generateAi() {
+    // Defensive guard: no hidden or programmatic event can invoke a billable endpoint.
+    setAiStatus("Платная генерация отключена. Используйте копирование промпта и ручной импорт.", "ok");
+    return;
     const provider=$("aiProvider").value, s=current(), source=s.aiOriginal||s.logo;
     const title=$("aiTitle").value.trim(), language=$("aiLanguage").value==="kk"?"казахский":"русский";
     if(!title) return setAiStatus(language==="казахский"?"Введите точное название на казахском языке":"Введите точное название на русском языке","error");
