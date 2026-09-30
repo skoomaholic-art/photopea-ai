@@ -94,7 +94,7 @@
           title:item.title||"Логотип.png",
           source:item.source,
           sourceAssetId:asset.id,
-          countUse:false
+          countUse:true
         });
         status("Логотип сохранён в PNG-архиве. Найти его можно через «Библиотека».","ok");
       }else{
