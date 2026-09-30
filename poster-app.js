@@ -433,20 +433,12 @@
         updateBgAvailability();
         return;
       }
-      state.aiProviders = {
-        cloudflare: !!data.providers?.cloudflare,
-        xai: !!data.providers?.xai,
-        openai: !!data.providers?.openai
-      };
-      state.backgroundProviders = {
-        local: localBackgroundReady(),
-        carve: !!data.background?.carve,
-        removal: !!data.background?.removal
-      };
+      state.aiProviders = { cloudflare:false, xai:false, openai:false };
+      state.backgroundProviders = {local: localBackgroundReady(), carve:false, removal:false};
       const aiCount = Object.values(state.aiProviders).filter(Boolean).length;
       const bgCount = Object.values(state.backgroundProviders).filter(Boolean).length;
-      $("aiServerBadge").textContent = aiCount ? aiCount + "/3 настроено" : "не настроен";
-      $("aiServerBadge").className = aiCount ? "ok" : "error";
+      $("aiServerBadge").textContent = "без платных API";
+      $("aiServerBadge").className = "ok";
       $("bgProviderBadge").textContent = bgCount ? bgCount + "/3 настроено" : "не настроен";
       $("bgProviderBadge").className = bgCount ? "ok" : "error";
       updateAiAvailability();
@@ -458,39 +450,32 @@
       $("aiServerBadge").className = "error";
       $("bgProviderBadge").textContent = state.backgroundProviders.local ? "local online" : "offline";
       $("bgProviderBadge").className = state.backgroundProviders.local ? "ok" : "error";
-      setAiStatus("Worker недоступен: " + (error.message || "ошибка сети") + ".", "error");
+      updateAiAvailability();
       updateBgAvailability();
     }
   }
 
   function updateAiAvailability() {
-    const provider = $("aiProvider").value;
-    const ready = !!state.aiProviders[provider];
-    $("generateBtn").disabled = !ready;
-    if (ready) {
-      const message = provider === "cloudflare"
-        ? "Workers AI FLUX.2 Klein готов. Использует дневную free allocation Cloudflare, затем действуют тарифы аккаунта."
-        : "Провайдер настроен на сервере. Генерация платная; доступность проверяется при запросе.";
-      setAiStatus(message, "ok");
-    } else {
-      setAiStatus(providerStatusMessage(state.aiProviderDetails?.[provider]), "error");
-    }
+    // No paid, metered, free-trial or server-side generation is available in the UI.
+    // Keep the legacy controls as inactive compatibility elements for old projects.
+    state.aiProviders = { cloudflare: false, xai: false, openai: false };
+    $("generateBtn").disabled = true;
+    $("aiServerBadge").textContent = "без платных API";
+    $("aiServerBadge").className = "ok";
+    setAiStatus("Генерация через сервер отключена. Скопируйте промпт, обработайте изображение самостоятельно и загрузите результат. Локальное удаление фона доступно отдельно.", "ok");
   }
 
   function updateBgAvailability() {
-    state.backgroundProviders.local = localBackgroundReady();
-    const provider = $("bgProviderSelect").value;
-    const ready = provider === "auto"
-      ? Object.values(state.backgroundProviders).some(Boolean)
-      : !!state.backgroundProviders[provider];
+    state.backgroundProviders = { local: localBackgroundReady(), carve: false, removal: false };
+    // Paid remote providers are deliberately inaccessible even if the Worker has keys.
+    $("bgProviderSelect").value = "local";
+    const ready = state.backgroundProviders.local;
     $("removeBackgroundBtn").disabled = !ready;
-    if (!ready) {
-      setBgStatus(provider === "auto" ? "Ни один способ удаления фона недоступен." : "Выбранный провайдер не настроен.", "error");
-    } else if (provider === "local" || (provider === "auto" && state.backgroundProviders.local)) {
-      setBgStatus("Локальное удаление фона готово. Первый запуск загрузит модель и сохранит её в кэше браузера.", "ok");
-    } else {
-      setBgStatus("Удаление фона готово через серверный API.", "ok");
-    }
+    $("bgProviderBadge").textContent = ready ? "локально" : "недоступно";
+    $("bgProviderBadge").className = ready ? "ok" : "error";
+    setBgStatus(ready
+      ? "Бесплатное удаление фона работает на вашем устройстве. При первом запуске загрузится локальная модель."
+      : "Локальная модель пока недоступна. Проверьте поддержку браузера и соединение.", ready ? "ok" : "error");
   }
 
   const creditMessage="На аккаунте Puter/Grok закончились доступные кредиты или исчерпан лимит генерации. Попробуйте другой AI-провайдер или повторите позже";
@@ -520,29 +505,9 @@
     renderAiResults(s.aiResults||[],s.aiSelected);
   }
   async function generateAi() {
-    const provider=$("aiProvider").value, s=current(), source=s.aiOriginal||s.logo;
-    const title=$("aiTitle").value.trim(), language=$("aiLanguage").value==="kk"?"казахский":"русский";
-    if(!title) return setAiStatus(language==="казахский"?"Введите точное название на казахском языке":"Введите точное название на русском языке","error");
-    if(!source) return setAiStatus("Сначала добавьте логотип.","error");
-    if(!state.aiProviders[provider]) return updateAiAvailability();
-    const button=$("generateBtn"); button.disabled=true;
-    s.aiOriginal=source;s.aiTitle=title;s.aiLanguage=$("aiLanguage").value;
-    setAiStatus("Генерация трёх вариантов...");
-    try {
-      const image=provider==="cloudflare"?await resizeDataUrlForAi(source,510):await sourceToDataUrl(source);
-      const prompt=buildLogoPrompt(title,language,$("aiPrompt").value.trim());
-      const response=await fetch(apiBase+"/api/generate",{
-        method:"POST",headers:{"Content-Type":"application/json"},signal:AbortSignal.timeout(120000),
-        body:JSON.stringify({provider,prompt,image,count:3})
-      });
-      const data=await response.json().catch(()=>({}));
-      if(!response.ok) throw new Error(typeof data.error==="string"?data.error:data.message||data.error?.message||"Ошибка AI (HTTP "+response.status+").");
-      if(!Array.isArray(data.images)||!data.images.length) throw new Error("API не вернул изображения.");
-      s.aiResults=data.images; s.aiSelected=data.images[0];
-      if(s===current()) { syncAiPanel(); setAiStatus("Готово. Выберите вариант и нажмите «Переместить на постер».","ok"); }
-      scheduleAutosave(false);
-    } catch(error) {setAiStatus(aiError(error),"error");}
-    finally {button.disabled=!state.aiProviders[$("aiProvider").value];}
+    // Defensive block: never send AI-generative requests to any billable endpoint.
+    $("generateBtn").disabled = true;
+    setAiStatus("Серверная генерация отключена. Используйте копирование промпта и ручную загрузку результата.", "error");
   }
 
   function renderAiResults(images,selected=images[0]) {
@@ -589,10 +554,7 @@
     setBgStatus("Удаляю фон...");
     try {
       const image = await sourceToDataUrl(src);
-      const requested = $("bgProviderSelect").value;
-      const provider = requested === "auto"
-        ? (state.backgroundProviders.local ? "local" : state.backgroundProviders.carve ? "carve" : state.backgroundProviders.removal ? "removal" : null)
-        : requested;
+      const provider = localBackgroundReady() ? "local" : null;
       if (!provider) throw new Error("Нет доступного провайдера удаления фона.");
 
       let data;
@@ -604,13 +566,7 @@
           provider: "Local @imgly/background-removal"
         };
       } else {
-        const response = await fetch(apiBase + "/api/remove-background", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ provider, image })
-        });
-        data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "Не удалось удалить фон.");
+        throw new Error("Удаление фона через платный API отключено.");
       }
 
       if (!data.image) throw new Error("Провайдер не вернул прозрачное изображение.");
@@ -642,10 +598,7 @@
     } catch (error) {
       setBgStatus(error.message || "Ошибка удаления фона.", "error");
     } finally {
-      const selectedProvider = $("bgProviderSelect").value;
-      $("removeBackgroundBtn").disabled = selectedProvider === "auto"
-        ? !Object.values(state.backgroundProviders).some(Boolean)
-        : !state.backgroundProviders[selectedProvider];
+      $("removeBackgroundBtn").disabled = !localBackgroundReady();
     }
   }
 
@@ -1069,6 +1022,15 @@
     }catch(error){setAiStatus(error.message,"error");}finally{e.target.value="";}
   });
   $("bgProviderSelect").addEventListener("change", updateBgAvailability);
+  $("goLocalBackgroundBtn")?.addEventListener("click", () => {
+    const s = current();
+    if (!s.logo && !s.poster) return setAiStatus("Сначала добавьте логотип или постер.", "error");
+    selectLayer(s.logo ? "logo" : "poster");
+    $("bgProviderSelect").value = "local";
+    updateBgAvailability();
+    $("bgProviderSelect").closest("section")?.scrollIntoView({behavior:"smooth",block:"center"});
+    setBgStatus("Выбран локальный режим. Нажмите «Удалить фон выбранного изображения».","ok");
+  });
   $("removeBackgroundBtn").addEventListener("click", removeBackground);
   $("filterSelectedBtn").addEventListener("click", () => window.FilterStudio?.openSelected?.().catch(error => showToast(error.message, "error")));
   $("editSelectedPhotopeaBtn").addEventListener("click", () => window.PhotopeaBridge?.editSelected?.().catch(error => showToast(error.message, "error")));
