@@ -16,7 +16,7 @@
     const workspace=destination();
     if(target==="works"){
       if(!window.WorkArchive?.openArchive)throw new Error("Архив работ недоступен.");
-      return WorkArchive.openArchive(workspace);
+      return WorkArchive.openArchive("all");
     }
     if(target==="logos"){
       if(!window.LogoArchive?.open)throw new Error("Архив логотипов недоступен.");
