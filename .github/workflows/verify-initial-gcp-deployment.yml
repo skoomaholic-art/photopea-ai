@@ -1,0 +1,67 @@
+name: Verify initial Poster Editor deployment (one-time)
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  inspect:
+    # This is a read-only, one-time verification, not a new deploy.
+    if: ${{ github.event.head_commit.message == 'Inspect initial Poster Editor Cloud Run deployment' }}
+    runs-on: ubuntu-latest
+    steps:
+      - id: google-auth
+        continue-on-error: true
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - if: ${{ steps.google-auth.outcome == 'success' }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - id: inspect
+        shell: bash
+        env:
+          PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          REGION: ${{ vars.GCP_REGION }}
+          AUTH_OUTCOME: ${{ steps.google-auth.outcome }}
+        run: |
+          if [[ "$AUTH_OUTCOME" != "success" ]]; then
+            echo "result=Google Cloud authentication failed. Check repository WIF variables and Actions logs." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ -z "$REGION" ]]; then REGION="europe-west1"; fi
+          for i in $(seq 1 18); do
+            URL=$(gcloud run services describe poster-editor --project="$PROJECT" --region="$REGION" --format="value(status.url)" 2>/dev/null || true)
+            if [[ -n "$URL" ]]; then
+              CODE=$(curl -L -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL/api/status" || true)
+              if [[ "$CODE" == "200" ]]; then
+                echo "result=Cloud Run service is live; HTTP /api/status 200; URL: $URL" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+            sleep 20
+          done
+          echo "result=Cloud Run service not confirmed after 6 minutes. Service URL: ${URL:-none}; check deploy workflow logs." >> "$GITHUB_OUTPUT"
+
+      - name: Publish verification on deployment PR
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          RESULT: ${{ steps.inspect.outputs.result }}
+          AUTH_OUTCOME: ${{ steps.google-auth.outcome }}
+        with:
+          script: |
+            const result = process.env.RESULT || ('Status check failed before result; auth=' + process.env.AUTH_OUTCOME);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: 11,
+              body: 'One-time Google Cloud Run deployment verification:\\n\\n' + result
+            });
