@@ -85,6 +85,27 @@
     return asset;
   }
 
+  async function saveToArchive(item) {
+    try {
+      const asset=await importAsset(item);
+      if(item.imageType==="logo") {
+        // Preserve transparency, metadata and fingerprint deduplication.
+        await LogoArchive.rememberBlob(asset.originalAsset,{
+          title:item.title||"Логотип.png",
+          source:item.source,
+          sourceAssetId:asset.id,
+          countUse:false
+        });
+        status("Логотип сохранён в PNG-архиве. Найти его можно через «Библиотека».","ok");
+      }else{
+        await AssetManager.save({...asset,hiddenFromPosterArchive:false});
+        status("Изображение сохранено в архиве постеров. Откройте «Библиотека».","ok");
+      }
+    }catch(error){
+      status(error.message||"Не удалось сохранить изображение в архив.", "error");
+    }
+  }
+
   async function useItem(item) {
     try {
       const asset=await importAsset(item);
@@ -221,6 +242,7 @@
       actions.className="source-card-actions";
       const defs=[
         ["Использовать",()=>useItem(item),"primary"],
+        ["В архив",()=>saveToArchive(item),""],
         ["Фильтры",()=>filterItem(item),""],
         ["Photopea",()=>photopeaItem(item),""],
         ["Оригинал",()=>downloadItem(item),""],
