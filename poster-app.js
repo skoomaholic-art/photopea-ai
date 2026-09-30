@@ -464,6 +464,12 @@
   }
 
   function updateAiAvailability() {
+    // Paid and quota-limited image generation is intentionally disabled.
+    $("generateBtn").disabled = true;
+    $("aiServerBadge").textContent = "без платных AI";
+    $("aiServerBadge").className = "ok";
+    setAiStatus("Бесплатный режим: скопируйте промпт и импортируйте результат. Платные запросы отключены.", "ok");
+    return;
     const provider = $("aiProvider").value;
     const ready = !!state.aiProviders[provider];
     $("generateBtn").disabled = !ready;
