@@ -326,7 +326,7 @@
       render();
       const problems=(data.errors||[]).map(x=>x.message).filter(Boolean);
       const identity=data.identity?[data.identity.title,data.identity.year].filter(Boolean).join(" · "):q;
-      const fallback=data.fallback?fallbackReason+" Открытые источники: TVmaze, Commons и Wikidata. Покрытие тайтлов ограничено. ":"";
+      const fallback=data.fallback?fallbackReason+" Резервный поиск в открытых источниках: TVmaze, Commons и Wikidata. Покрытие тайтлов ограничено. ":"";
       status(fallback+identity+": "+state.items.length+" изображений."+(problems.length?" "+problems.join(" "):""),state.items.length?"ok":(problems.length?"error":""));
     } catch(error) {
       if(controller!==activeSearch || controller.signal.aborted)return;
