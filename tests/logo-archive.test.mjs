@@ -62,3 +62,50 @@ test("logo archive search and empty state are understandable",async t=>{
   assert.equal(a.el("logoArchiveList").querySelectorAll(".logo-archive-item").length,1);
   assert.deepEqual(a.errors,[]);
 });
+
+test("rename updates the archive card, filename, and search without changing PNG pixels",async t=>{
+  const a=await app(t);
+  const png=fixture(260,100,{logo:true,color:"#ffffff"});
+  await a.file("logoFileInput",png,"unfiled.png");
+  await a.w.LogoArchive.open("poster");
+  a.el("logoArchiveList").querySelector(".logo-archive-rename-button").click();
+  const form=a.el("logoArchiveList").querySelector(".logo-archive-edit");
+  assert.equal(form.hidden,false);
+  form.querySelector("input").value="Название для поиска";
+  form.dispatchEvent(new a.w.Event("submit",{bubbles:true,cancelable:true}));
+  await waitFor(async()=> (await a.w.LogoArchive.list())[0]?.title==="Название для поиска.png","renamed title was not persisted");
+  assert.match(a.el("logoArchiveList").textContent,/Название для поиска.png/);
+  const saved=(await a.w.LogoArchive.list())[0];
+  assert.equal(Buffer.compare(Buffer.from(await saved.originalAsset.arrayBuffer()),png),0,"rename must not modify PNG bytes");
+  await a.w.LogoArchive.rememberDataUrl(a.w.PosterApp.getState().vertical.logo,{
+    title:"outdated-autosave.png",countUse:false
+  });
+  assert.equal((await a.w.LogoArchive.list())[0].title,"Название для поиска.png","autosave must not overwrite a chosen name");
+  await a.w.LogoArchive.close();
+  await a.w.LogoArchive.open("poster");
+  await a.input("logoArchiveSearch","название");
+  assert.equal(a.el("logoArchiveList").querySelectorAll(".logo-archive-item").length,1);
+  assert.deepEqual(a.errors,[]);
+});
+
+test("delete confirms, stays deleted across reopening and permits a deliberate reupload",async t=>{
+  const a=await app(t);
+  const png=fixture(240,120,{logo:true,color:"#cccccc"});
+  await a.file("logoFileInput",png,"temporary.png");
+  await a.w.LogoArchive.open("poster");
+  a.w.confirm=()=>false;
+  a.el("logoArchiveList").querySelector(".logo-archive-delete-button").click();
+  await settle();
+  assert.equal((await a.w.LogoArchive.list()).length,1,"cancelled deletion must preserve the PNG");
+  a.w.confirm=()=>true;
+  a.el("logoArchiveList").querySelector(".logo-archive-delete-button").click();
+  await waitFor(()=>a.el("logoArchiveList").querySelectorAll(".logo-archive-item").length===0,"deleted card remained visible");
+  assert.equal((await a.w.LogoArchive.list()).length,0,"current editor must not silently restore deleted PNG");
+  await a.w.LogoArchive.close();
+  await a.w.LogoArchive.open("poster");
+  assert.equal((await a.w.LogoArchive.list()).length,0,"deletion must persist across reopening");
+  await a.file("logoFileInput",png,"reuploaded.png");
+  assert.equal((await a.w.LogoArchive.list()).length,1,"deliberate reupload must clear the deletion marker");
+  assert.equal((await a.w.LogoArchive.list())[0].title,"reuploaded.png");
+  assert.deepEqual(a.errors,[]);
+});

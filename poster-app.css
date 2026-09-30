@@ -180,6 +180,12 @@ body.modal-open{overflow:hidden}
 .logo-archive-item-body small{min-height:28px;color:var(--muted);line-height:1.35}
 .logo-archive-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:auto}
 .logo-archive-actions button{min-width:0;padding:8px 6px;font-size:10px}
+.logo-archive-delete-button{color:#ffa19a;border-color:#77443d;background:#291714}
+.logo-archive-delete-button:hover{background:#43221c;border-color:#d56a59;color:#fff}
+.logo-archive-edit{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:4px 0}
+.logo-archive-edit[hidden]{display:none}
+.logo-archive-edit input{grid-column:1/-1;min-width:0;width:100%;font-size:12px;padding:9px}
+.logo-archive-edit button{min-width:0;padding:7px 5px;font-size:10px}
 .logo-archive-empty{grid-column:1/-1;display:grid;place-items:center;min-height:180px;padding:24px;border:1px dashed #36543c;border-radius:12px;color:var(--muted);text-align:center}
 @media(max-width:620px){.logo-archive-toolbar{grid-template-columns:1fr}.logo-archive-list{grid-template-columns:1fr}.logo-archive-item{grid-template-columns:110px minmax(0,1fr);grid-template-rows:auto}.logo-archive-preview{min-height:126px}.logo-archive-preview img{height:102px}.logo-archive-actions{grid-template-columns:1fr}}
 

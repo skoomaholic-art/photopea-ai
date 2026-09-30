@@ -87,6 +87,13 @@
     return "fallback-" + (hash >>> 0).toString(16).padStart(8, "0") + "-" + bytes.byteLength;
   }
 
+  // Deleted logos stay hidden even if an open editor still references their pixels.
+  // Keep the tombstone in the same IndexedDB database as the archive.
+  const deletedId = hash => "asset-logo-archive-deleted-" + hash;
+  async function isDeleted(hash) {
+    return Boolean(hash && await window.SkoomaStore?.getAsset?.(deletedId(hash)));
+  }
+
   async function rawLogoAssets() {
     if (!window.AssetManager?.list) return [];
     return (await AssetManager.list()).filter(item => item?.imageType === "logo" && item.originalAsset);
@@ -96,6 +103,12 @@
     if (!window.AssetManager) throw new Error("Локальное хранилище логотипов недоступно.");
     const png = await toPng(blob);
     const hash = await fingerprint(png);
+    // Autosave restoration must never undo an explicit archive deletion.
+    if (options.countUse === false && await isDeleted(hash)) return null;
+    // A new manual upload of the same PNG is an explicit request to archive it again.
+    if (options.countUse !== false && await isDeleted(hash)) {
+      await window.SkoomaStore.deleteAsset(deletedId(hash));
+    }
     const assets = await rawLogoAssets();
     let match = assets.find(item => item.archiveKind === "logo" && item.fingerprint === hash) || null;
 
@@ -119,7 +132,10 @@
       id: match?.id || "asset-logo-archive-" + hash.slice(0, 32),
       source: match?.source || options.source || "logo-archive",
       sourceId: match?.sourceId || options.sourceId || null,
-      title: pngName(options.countUse === false && match?.title ? match.title : options.title || match?.title),
+      title: match?.archiveTitleLocked
+        ? match.title
+        : pngName(options.countUse === false && match?.title ? match.title : options.title || match?.title),
+      archiveTitleLocked: Boolean(match?.archiveTitleLocked),
       imageType: "logo",
       mimeType: "image/png",
       originalAsset: png,
@@ -196,8 +212,10 @@
     await migrateExisting();
     await captureCurrentEditorLogos();
     const assets = await rawLogoAssets();
-    return assets
+    const archive = await Promise.all(assets
       .filter(item => item.archiveKind === "logo" && item.mimeType === "image/png")
+      .map(async item => await isDeleted(item.fingerprint) ? null : item));
+    return archive.filter(Boolean)
       .sort((a, b) => (b.lastUsedAt || b.updatedAt || b.createdAt || 0) - (a.lastUsedAt || a.updatedAt || a.createdAt || 0));
   }
 
@@ -233,6 +251,46 @@
     }
     close();
     notify("Логотип добавлен из архива.", "ok");
+  }
+
+  async function rename(id, value) {
+    const base = String(value ?? "").trim().replace(/\\.png$/i, "").trim();
+    if (!base || base.length > 100 || /[<>:"|?*\u0000-\u001f]/.test(base) || base.includes("/") || base.includes("\\")) {
+      throw new Error("Введите название до 100 символов без запрещённых знаков.");
+    }
+    const item = await AssetManager.get(id);
+    if (!item || item.archiveKind !== "logo" || await isDeleted(item.fingerprint)) {
+      throw new Error("Логотип не найден в архиве.");
+    }
+    const updated = await AssetManager.save({ ...item, title: base + ".png", archiveTitleLocked: true });
+    cachedItems = cachedItems.map(entry => entry.id === id ? updated : entry);
+    await render();
+    setStatus("Логотип переименован.", "ok");
+    return updated;
+  }
+
+  async function remove(id, confirmDelete = true) {
+    const item = await AssetManager.get(id);
+    if (!item || item.archiveKind !== "logo") throw new Error("Логотип не найден в архиве.");
+    if (confirmDelete && !window.confirm("Удалить «" + item.title + "» из архива? Это не удалит логотип из открытых макетов.")) return false;
+    if (!window.SkoomaStore?.saveAsset || !window.SkoomaStore?.deleteAsset) {
+      throw new Error("Хранилище архива недоступно.");
+    }
+    const hash = item.fingerprint || await fingerprint(await toPng(item.originalAsset));
+    await window.SkoomaStore.saveAsset({
+      id: deletedId(hash), imageType: "logo-deletion-marker", fingerprint: hash, createdAt: Date.now()
+    });
+    const assets = await rawLogoAssets();
+    for (const entry of assets) {
+      if (entry.archiveKind === "logo" && (entry.id === id || entry.fingerprint === hash)) {
+        await window.SkoomaStore.deleteAsset(entry.id);
+      }
+    }
+    cachedItems = cachedItems.filter(entry => entry.id !== id && entry.fingerprint !== hash);
+    window.dispatchEvent(new CustomEvent("logo-archive-changed", { detail: { id, deleted: true } }));
+    await render();
+    setStatus("Логотип удалён из архива.", "ok");
+    return true;
   }
 
   async function render() {
@@ -283,8 +341,59 @@
       downloadButton.type = "button";
       downloadButton.textContent = "Скачать PNG";
       downloadButton.addEventListener("click", () => download(item).catch(error => setStatus(error.message, "error")));
-      actions.append(useButton, downloadButton);
-      body.append(title, meta, actions);
+      const renameButton = document.createElement("button");
+      renameButton.type = "button";
+      renameButton.className = "logo-archive-rename-button";
+      renameButton.textContent = "Переименовать";
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "logo-archive-delete-button";
+      deleteButton.textContent = "Удалить";
+      deleteButton.addEventListener("click", async () => {
+        deleteButton.disabled = true;
+        try { await remove(item.id); }
+        catch (error) { setStatus(error.message || "Не удалось удалить логотип.", "error"); }
+        finally { deleteButton.disabled = false; }
+      });
+      const edit = document.createElement("form");
+      edit.className = "logo-archive-edit";
+      edit.hidden = true;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = 100;
+      input.required = true;
+      input.setAttribute("aria-label", "Новое название PNG-логотипа");
+      input.value = String(item.title || "").replace(/\\.png$/i, "");
+      const saveButton = document.createElement("button");
+      saveButton.type = "submit";
+      saveButton.textContent = "Сохранить";
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.textContent = "Отмена";
+      function cancelEdit() {
+        edit.hidden = true;
+        title.hidden = false;
+        renameButton.hidden = false;
+      }
+      renameButton.addEventListener("click", () => {
+        edit.hidden = false;
+        title.hidden = true;
+        renameButton.hidden = true;
+        input.focus();
+        input.select();
+      });
+      cancelButton.addEventListener("click", cancelEdit);
+      input.addEventListener("keydown", event => { if (event.key === "Escape") cancelEdit(); });
+      edit.addEventListener("submit", async event => {
+        event.preventDefault();
+        saveButton.disabled = true;
+        try { await rename(item.id, input.value); }
+        catch (error) { setStatus(error.message || "Не удалось переименовать логотип.", "error"); }
+        finally { saveButton.disabled = false; }
+      });
+      edit.append(input, saveButton, cancelButton);
+      actions.append(useButton, downloadButton, renameButton, deleteButton);
+      body.append(title, edit, meta, actions);
       card.append(preview, body);
       listNode.append(card);
     }
@@ -327,6 +436,8 @@
     rememberBlob,
     rememberDataUrl,
     rememberFile,
+    rename,
+    remove,
     captureCurrentEditorLogos,
     toPng
   };
