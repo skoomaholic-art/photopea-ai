@@ -56,6 +56,8 @@
       mimeType: meta.mimeType || null,
       archiveKind: meta.archiveKind || null,
       archiveTitleLocked: Boolean(meta.archiveTitleLocked),
+      posterArchiveTitleLocked: Boolean(meta.posterArchiveTitleLocked),
+      hiddenFromPosterArchive: Boolean(meta.hiddenFromPosterArchive),
       fingerprint: meta.fingerprint || null,
       lastUsedAt: Number(meta.lastUsedAt) || null,
       useCount: Math.max(0, Number(meta.useCount) || 0),
