@@ -19,8 +19,8 @@
   const pixLine=(c,x,y,w,h,col)=>px(c,x,y,Math.max(1,w),Math.max(1,h),col);
   function draw(canvas,kind,frame) {
     const vertical = kind==="vertical" || kind==="top10";
-    const w=kind==="train"?240:vertical?112:176;
-    const h=kind==="train"?66:vertical?176:98;
+    const w=kind==="train"?384:kind==="top10"?100:vertical?112:176;
+    const h=kind==="train"?48:kind==="top10"?175:vertical?168:98;
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
     const c=canvas.getContext("2d",{alpha:false});
     c.imageSmoothingEnabled=false;
@@ -33,7 +33,7 @@
     for(let x=3;x<w;x+=19)px(c,x,floor+2,1,h-floor-3,P.seam);
 
     const winW=vertical?46:kind==="train"?56:48;
-    const winH=vertical?50:kind==="train"?35:47;
+    const winH=vertical?50:kind==="train"?25:47;
     const winX=w-winW-(vertical?5:kind==="train"?23:11),winY=Math.floor(h*.12);
     px(c,winX-3,winY-3,winW+6,winH+6,P.deskTop);
     px(c,winX,winY,winW,winH,P.skyline);
