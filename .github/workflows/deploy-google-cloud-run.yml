@@ -1,7 +1,9 @@
 name: Deploy Poster Editor to Google Cloud Run (manual)
 
-# Explicitly manual: deployment can create chargeable Google Cloud resources.
+# First deploy on a specifically named merge commit. Subsequent deploys stay manual/gated.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -14,8 +16,8 @@ concurrency:
 
 jobs:
   deploy:
-    # Set only after owner has reviewed billing and Google Cloud permissions.
-    if: ${{ vars.GCP_DEPLOY_ENABLED == 'true' && vars.GCP_PROJECT_ID != '' && vars.GCP_WIF_PROVIDER != '' && vars.GCP_DEPLOY_SA != '' }}
+    # One-time initial deploy via the precisely named merge commit. Later deploys require owner-controlled flag.
+    if: ${{ ((github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Deploy Poster Editor to Google Cloud Run')) || (github.event_name == 'workflow_dispatch' && vars.GCP_DEPLOY_ENABLED == 'true')) && vars.GCP_PROJECT_ID != '' && vars.GCP_WIF_PROVIDER != '' && vars.GCP_DEPLOY_SA != '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
