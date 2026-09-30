@@ -1,0 +1,40 @@
+name: Deploy Firebase Hosting (Spark)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-hosting
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Keep this workflow dormant until Firebase project and deploy credentials exist.
+    if: ${{ vars.FIREBASE_PROJECT_ID != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build allowlisted static runtime
+        run: |
+          npm ci
+          npm run build:vendor
+          npm run build:static
+
+      - name: Deploy static site to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_POSTER_EDITOR }}
+          projectId: ${{ vars.FIREBASE_PROJECT_ID }}
+          channelId: live
