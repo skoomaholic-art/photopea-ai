@@ -1,0 +1,22 @@
+# Explicit allowlist would require maintaining every static asset; exclude sensitive and
+# non-runtime directories here instead. Required browser assets remain included.
+.git/
+.github/
+.env
+.env.*
+**/.env
+**/.env.*
+node_modules/
+dist/
+tests/
+test-results/
+playwright-report/
+coverage/
+docs/
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+Dockerfile
+.dockerignore
