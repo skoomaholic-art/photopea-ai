@@ -123,7 +123,7 @@
   function renderProviderStatus() {
     const root=$("sourceProviderStatus");
     root.innerHTML="";
-    const labels={tmdb:"TMDB",fanart:"Fanart.tv",wikimedia:"Wikimedia",tvmaze:"TVmaze"};
+    const labels={tmdb:"TMDB",fanart:"Fanart.tv",wikimedia:"Wikimedia",tvmaze:"TVmaze",wikidata:"Wikidata"};
     for(const [key,label] of Object.entries(labels)) {
       const info=state.providers?.[key]||null;
       const pill=document.createElement("span");
@@ -260,7 +260,7 @@
     const controller=new AbortController();activeSearch=controller;
     $("posterSearchInput").value=q; $("posterSearchYear").value=year;
     $("sourceSearchRun").disabled=true;
-    status("Ищу TMDB / Fanart.tv / Commons / TVmaze...");
+    status("Ищу TMDB / Fanart.tv / Commons / TVmaze / Wikidata...");
     try {
       const forcedId=forced?.tmdbId?String(forced.tmdbId):"";
       const forcedType=forced?.mediaType?String(forced.mediaType):"";
@@ -288,7 +288,36 @@
         }
       }
       if(controller!==activeSearch)return;
-      state.items=Array.isArray(data.results)?data.results:[];
+      // Enrich already successful server results with the separate, no-key
+      // Wikidata source. Direct PublicImageSearch fallback already includes it.
+      if(!data._wikidataMerged && window.PublicImageSearch?.wikidata){
+        try {
+          const extra=await PublicImageSearch.wikidata(q,year,controller.signal);
+          data.results=[...(data.results||[]),...extra];
+          data.providers={...(data.providers||{}),wikidata:{
+            enabled:true,configured:true,reason:"Официальный бесплатный API. Лицензия у каждого файла своя."
+          }};
+        }catch(error){
+          if(controller.signal.aborted)return;
+          data.providers={...(data.providers||{}),wikidata:{
+            enabled:false,configured:true,reason:"Wikidata сейчас недоступен."
+          }};
+          data.errors=[...(data.errors||[]),{source:"wikidata",message:"Wikidata: "+searchError(error)}];
+        }
+        data._wikidataMerged=true;
+        await SkoomaStore?.setCache?.(key,data,10*60*1000).catch(()=>{});
+      }
+      if(controller!==activeSearch)return;
+      const unique=new Set();
+      const matches=(data.results||[]).filter(item=>{
+        const uri=item?.originalUrl||item?.proxyUrl||item?.thumbnailUrl||"";
+        // Exact same Commons upload may be returned via Commons and Wikidata.
+        const normalized=uri.replace(/\?.*$/,"").replace(/\/thumb\//,"/").toLowerCase();
+        const key=normalized||item.id||String(item.title);
+        if(unique.has(key))return false;
+        unique.add(key);return true;
+      });
+      state.items=matches;
       state.references=Array.isArray(data.references)?data.references:[];
       state.identity=data.identity||null;
       state.candidates=Array.isArray(data.candidates)?data.candidates:[];
@@ -297,7 +326,7 @@
       render();
       const problems=(data.errors||[]).map(x=>x.message).filter(Boolean);
       const identity=data.identity?[data.identity.title,data.identity.year].filter(Boolean).join(" · "):q;
-      const fallback=data.fallback?fallbackReason+" Резервный поиск: TVmaze (сериалы) и Commons (свободные изображения). Покрытие тайтлов ограничено. ":"";
+      const fallback=data.fallback?fallbackReason+" Открытые источники: TVmaze, Commons и Wikidata. Покрытие тайтлов ограничено. ":"";
       status(fallback+identity+": "+state.items.length+" изображений."+(problems.length?" "+problems.join(" "):""),state.items.length?"ok":(problems.length?"error":""));
     } catch(error) {
       if(controller!==activeSearch || controller.signal.aborted)return;
