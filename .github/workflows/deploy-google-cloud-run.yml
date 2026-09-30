@@ -35,7 +35,8 @@ jobs:
             --source=. \
             --service-account="poster-editor-runtime@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
             --build-service-account="projects/${{ vars.GCP_PROJECT_ID }}/serviceAccounts/poster-editor-builder@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
-            --allow-unauthenticated \
+            --no-invoker-iam-check \
+            --ingress=all \
             --min-instances=0 \
             --max-instances=1 \
             --cpu=1 \
