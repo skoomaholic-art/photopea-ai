@@ -121,6 +121,11 @@
       }
     }
 
+    // A passive autosave already represented in the archive must not write back
+    // stale filenames or override an in-flight manual rename.
+    if (options.countUse === false && match?.archiveKind === "logo"
+      && match.fingerprint === hash && match.mimeType === "image/png") return match;
+
     if (!match && options.sourceAssetId) {
       const source = await AssetManager.get(options.sourceAssetId);
       if (source?.imageType === "logo") match = source;
@@ -254,7 +259,7 @@
   }
 
   async function rename(id, value) {
-    const base = String(value ?? "").trim().replace(/\\.png$/i, "").trim();
+    const base = String(value ?? "").trim().replace(/\.png$/i, "").trim();
     if (!base || base.length > 100 || /[<>:"|?*\u0000-\u001f]/.test(base) || base.includes("/") || base.includes("\\")) {
       throw new Error("Введите название до 100 символов без запрещённых знаков.");
     }
@@ -363,7 +368,7 @@
       input.maxLength = 100;
       input.required = true;
       input.setAttribute("aria-label", "Новое название PNG-логотипа");
-      input.value = String(item.title || "").replace(/\\.png$/i, "");
+      input.value = String(item.title || "").replace(/\.png$/i, "");
       const saveButton = document.createElement("button");
       saveButton.type = "submit";
       saveButton.textContent = "Сохранить";

@@ -52,8 +52,76 @@
       });
     }).filter(Boolean);
   }
+
+  // Wikidata stores structured title/type IDs as CC0 data. Each image itself
+  // is resolved through the Commons file API so its *own* license can be shown.
+  // Do not equate CC0 Wikidata metadata with copyright clearance of an image.
+  async function wikidata(query, year, signal) {
+    const language=/[А-Яа-яЁёҚқҒғҮүҰұІіӘәӨөҺһ]/.test(query)?"ru":"en";
+    const searchParams=new URLSearchParams({
+      action:"wbsearchentities",format:"json",origin:"*",language,search:query,limit:"12"
+    });
+    const found=await json("https://www.wikidata.org/w/api.php?"+searchParams,signal);
+    if(found.error)throw new Error("Wikidata entity search failed");
+    const candidates=(found.search||[]).filter(row=>
+      /film|movie|television|tv series|tv show|фильм|сериал|телесериал|мультфильм/i.test(
+        String(row.description||"")
+      )
+    ).slice(0,8);
+    if(!candidates.length)return [];
+    const ids=candidates.map(row=>row.id).join("|");
+    const entityParams=new URLSearchParams({action:"wbgetentities",format:"json",origin:"*",ids,props:"claims"});
+    const payload=await json("https://www.wikidata.org/w/api.php?"+entityParams,signal);
+    const files=new Map();
+    for(const candidate of candidates){
+      const item=payload.entities?.[candidate.id];
+      if(!item||item.missing!==undefined)continue;
+      const born=String(item.claims?.P577?.[0]?.mainsnak?.datavalue?.value?.time||"");
+      const publishedYear=born.match(/[+-](\d{4})-/)?.[1]||"";
+      if(year && publishedYear && year!==publishedYear)continue;
+      for(const [prop,kind] of [["P154","logo"],["P18","poster"]]){
+        const filename=item.claims?.[prop]?.[0]?.mainsnak?.datavalue?.value;
+        if(typeof filename!=="string"||!filename.trim())continue;
+        const key=filename.trim().replace(/_/g," ").toLowerCase();
+        if(!files.has(key))files.set(key,[]);
+        files.get(key).push({file:filename,title:candidate.label||query,year:publishedYear,
+          kind,qid:candidate.id,description:candidate.description||""});
+      }
+    }
+    if(!files.size)return [];
+    const filenames=[...files.values()].map(links=>links[0].file);
+    const fileParams=new URLSearchParams({
+      action:"query",format:"json",origin:"*",prop:"imageinfo",
+      titles:filenames.map(name=>"File:"+name).join("|"),
+      iiprop:"url|size|mime|extmetadata",iiurlwidth:"400"
+    });
+    const metadata=await json("https://commons.wikimedia.org/w/api.php?"+fileParams,signal);
+    if(metadata.error)throw new Error("Commons image metadata unavailable");
+    const results=[];
+    for(const page of Object.values(metadata.query?.pages||{})){
+      const info=page.imageinfo?.[0];
+      if(!/^image\/(?:png|jpeg|webp)$/.test(info?.mime||""))continue;
+      const filename=String(page.title||"").replace(/^File:/,"");
+      const rows=files.get(filename.replace(/_/g," ").toLowerCase())||[];
+      for(const row of rows){
+        const more=info.extmetadata||{},ratio=info.width/info.height;
+        const result=asset("Wikidata",row.qid+":"+row.kind,row.title,info.url,info.thumburl,{
+          imageType:row.kind,width:info.width,height:info.height,
+          shape:ratio>1.2?"horizontal":ratio<.9?"vertical":"square",
+          year:row.year,mediaType:/television|tv |сериал/i.test(row.description)?"tv":"movie",
+          sourceUrl:"https://commons.wikimedia.org/wiki/"+encodeURIComponent(page.title),
+          license:clean(more.LicenseShortName?.value)||"Проверьте лицензию конкретного файла",
+          attribution:clean(more.Artist?.value),
+          isTextless:row.kind==="logo"?null:null
+        });
+        if(result)results.push(result);
+      }
+    }
+    return results;
+  }
+
   async function search(query, year, signal) {
-    const sources=[['tvmaze','TVmaze',()=>tvmaze(query,year,signal)],['wikimedia','Wikimedia Commons',()=>commons(query,year,signal)]];
+    const sources=[['tvmaze','TVmaze',()=>tvmaze(query,year,signal)],['wikimedia','Wikimedia Commons',()=>commons(query,year,signal)],['wikidata','Wikidata',()=>wikidata(query,year,signal)]];
     const settled=await Promise.allSettled(sources.map(([, , run])=>run()));
     if(signal?.aborted)throw signal.reason;
     const results=[],errors=[],providers={tmdb:{enabled:false,reason:'Нужен настроенный сервер'},fanart:{enabled:false,reason:'Нужен настроенный сервер'}};
@@ -62,10 +130,11 @@
       if(result.status==='fulfilled')results.push(...result.value);
       else {providers[key].reason=message(result.reason);errors.push({source:key,message:label+': '+message(result.reason)});}
     });
-    return {results,errors,providers,fallback:true,identity:null,candidates:[],references:[
+    return {results,errors,providers,fallback:true,_wikidataMerged:true,identity:null,candidates:[],references:[
       {name:'TVmaze',url:'https://www.tvmaze.com/api',mode:'automatic'},
-      {name:'Wikimedia Commons',url:'https://commons.wikimedia.org',mode:'automatic'}
+      {name:'Wikimedia Commons',url:'https://commons.wikimedia.org',mode:'automatic'},
+      {name:'Wikidata',url:'https://www.wikidata.org/wiki/Wikidata:Data_access',mode:'automatic'}
     ]};
   }
-  window.PublicImageSearch={search};
+  window.PublicImageSearch={search,wikidata};
 })();

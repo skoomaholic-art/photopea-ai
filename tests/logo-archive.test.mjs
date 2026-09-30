@@ -74,6 +74,7 @@ test("rename updates the archive card, filename, and search without changing PNG
   form.querySelector("input").value="Название для поиска";
   form.dispatchEvent(new a.w.Event("submit",{bubbles:true,cancelable:true}));
   await waitFor(async()=> (await a.w.LogoArchive.list())[0]?.title==="Название для поиска.png","renamed title was not persisted");
+  await waitFor(()=>a.el("logoArchiveList").textContent.includes("Название для поиска.png"),"renamed archive card did not refresh");
   assert.match(a.el("logoArchiveList").textContent,/Название для поиска.png/);
   const saved=(await a.w.LogoArchive.list())[0];
   assert.equal(Buffer.compare(Buffer.from(await saved.originalAsset.arrayBuffer()),png),0,"rename must not modify PNG bytes");

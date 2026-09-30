@@ -5,27 +5,36 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#07100b">
   <meta name="poster-api" content="https://skoomaholic.alexandr-petrossov.workers.dev">
+  <script>
+    // Google Cloud Run serves its own API; keep the existing Worker only for GitHub Pages.
+    if (location.hostname.endsWith(".a.run.app")) document.querySelector('meta[name="poster-api"]').content = "";
+  </script>
   <title>Poster Editor</title>
   <link rel="icon" type="image/png" href="assets/poster-markup-icon.png?v=20260928-white">
   <link rel="stylesheet" href="poster-app.css?v=20260930-archive-actions">
   <script defer src="assets/fabric.js"></script>
   <script defer src="editor-core.js?v=20260924"></script>
   <link rel="stylesheet" href="poster-overrides.css?v=20260924">
+  <link rel="stylesheet" href="ui-modern.css?v=20260930">
   <script defer src="storage.js?v=20260923-layered-model"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
-  <script defer src="asset-manager.js?v=20260926-timeout"></script>
+  <script defer src="asset-manager.js?v=20261001-poster-archive"></script>
   <script defer src="logo-archive.js?v=20260930-rename-delete"></script>
   <script defer src="local-background-removal.js?v=20260926-timeout"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
-  <script defer src="poster-app.js?v=20260926-repair"></script>
+  <script defer src="poster-app.js?v=20260930-free-only"></script>
   <script defer src="train-editor.js?v=20260923-master-dirty"></script>
   <script defer src="top10-editor.js?v=20260928-clean-cutouts"></script>
   <script defer src="filter-studio.js?v=20260923top10a"></script>
-  <script defer src="public-image-search.js?v=20260926"></script>
-  <script defer src="source-browser.js?v=20260926-repair"></script>
+  <script defer src="public-image-search.js?v=20260930-wikidata"></script>
+  <script defer src="source-browser.js?v=20260930-wikidata"></script>
   <script defer src="photopea-bridge.js?v=20260926-repair"></script>
   <script defer src="range-number-sync.js?v=20260923-remaining-a"></script>
-  <script defer src="workspace-tools.js?v=20260923-master-archive"></script>
+  <script defer src="workspace-tools.js?v=20261001-library"></script>
+  <script defer src="poster-archive.js?v=20260930b"></script>
+  <script defer src="library-transfer.js?v=20260930a"></script>
+  <script defer src="library-ui.js?v=20260930b"></script>
+  <script defer src="empty-pixel-art.js?v=20260930a"></script>
 </head>
 <body>
   <header class="topbar">
@@ -43,19 +52,40 @@
     </nav>
 
     <div class="header-actions">
+      <div class="library-menu-wrap">
+        <button id="libraryBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="libraryMenu">Библиотека</button>
+        <div id="libraryMenu" class="library-dropdown" hidden>
+          <button type="button" data-library-go="works"><strong>Архив работ</strong><small>Сохранённые версии по рабочим пространствам</small></button>
+          <button type="button" data-library-go="logos"><strong>Архив логотипов</strong><small>PNG, поиск и повторное использование</small></button>
+          <button type="button" data-library-go="posters"><strong>Архив постеров</strong><small>Оригиналы, переименование и загрузка</small></button>
+          <div class="library-transfer-actions"><button id="libraryExportBtn" type="button">Экспорт всей библиотеки (ZIP)</button><label class="file-button" for="libraryImportFile">Импорт библиотеки (ZIP)<input id="libraryImportFile" type="file" accept=".zip,application/zip" hidden></label></div>
+        </div>
+      </div>
       <button id="saveProjectBtn" class="ghost">Сохранить проект</button>
+      <button id="saveProjectAsBtn" class="ghost" title="Создать отдельную сохранённую версию проекта">Сохранить как...</button>
       <label class="ghost file-button">Открыть проект<input id="projectFileInput" type="file" accept="application/json"></label>
     </div>
   </header>
-  <details class="project-tools"><summary>Проект и инструменты <small>Сборка 2026.09.25</small></summary>
+  <details class="project-tools"><summary>Инструменты проекта <small>История, перенос элементов и шаблоны</small></summary>
     <div class="project-tools-body">
-      <label>Название проекта <input id="projectTitle" placeholder="Название тайтла или события"></label>
-      <button id="globalUndo">Отменить</button><button id="globalRedo">Повторить</button>
-      <label>Копировать изображение в <select id="copyLayerTarget"><option value="vertical">Вертикальный</option><option value="horizontal">Горизонтальный</option><option value="train">Паровозик</option><option value="top10">ТОП10</option></select></label>
-      <button id="copyLayerBtn">Копировать выбранное</button>
-      <button id="saveTemplateBtn">Сохранить шаблон проекта</button>
-      <select id="projectTemplates" aria-label="Шаблоны проекта"><option value="">Выберите шаблон</option></select>
-      <button id="applyTemplateBtn">Открыть шаблон</button><button id="deleteTemplateBtn">Удалить шаблон</button>
+      <div class="project-main">
+        <label>Название проекта <input id="projectTitle" placeholder="Например: Крёстный отец - вертикальный"></label>
+        <span class="project-main-note">Сохранение и библиотека доступны в верхней панели.</span>
+      </div>
+      <div class="project-extras">
+        <button id="globalUndo" type="button">↶ Отменить</button>
+        <button id="globalRedo" type="button">↷ Повторить</button>
+        <label>Куда перенести элемент <select id="copyLayerTarget"><option value="vertical">Вертикальный</option><option value="horizontal">Горизонтальный</option><option value="train">Паровозик</option><option value="top10">ТОП10</option></select></label>
+        <button id="copyLayerBtn" type="button">Копировать выбранное</button>
+      </div>
+      <div class="project-templates">
+        <span class="project-template-hint">ШАБЛОНЫ · Сохраняют расположение элементов для повторного использования</span>
+        <select id="projectTemplates" aria-label="Шаблоны проекта"><option value="">Выберите шаблон</option></select>
+        <button id="saveTemplateBtn" type="button">Сохранить шаблон</button>
+        <button id="applyTemplateBtn" type="button">Применить</button>
+        <button id="renameTemplateBtn" type="button">Переименовать</button>
+        <button id="deleteTemplateBtn" type="button">Удалить шаблон</button>
+      </div>
       <span id="projectToolsStatus" role="status"></span>
     </div></details>
 
@@ -119,14 +149,8 @@
 
         <section>
           <div class="section-head"><h3>Удаление фона</h3><span id="bgProviderBadge">проверка</span></div>
-          <label class="field">Провайдер
-            <select id="bgProviderSelect">
-              <option value="auto">Авто</option>
-              <option value="local">Локально (без API)</option>
-              <option value="carve">Carve.Photos</option>
-              <option value="removal">Removal.AI</option>
-            </select>
-          </label>
+          <p class="muted">Удаление выполняется на вашем устройстве. При первом запуске браузер скачает модель и сохранит её в кэше.</p>
+          <select id="bgProviderSelect" hidden><option value="local">Локально (без API и оплаты)</option></select>
           <button id="removeBackgroundBtn" class="wide" disabled>Удалить фон выбранного изображения</button>
           <div id="bgRemoveStatus" class="mini-status">Проверяю сервер...</div>
         </section>
@@ -156,15 +180,17 @@
 
       <aside class="panel sidebar">
         <section>
-          <div class="section-head"><h3>AI / IMAGE EDIT</h3><span id="aiServerBadge">проверка</span></div>
-          <p class="muted">Ключи хранятся только на сервере. Генерация расходует лимит выбранного сервиса.</p>
-          <label class="field">Провайдер
-            <select id="aiProvider">
-              <option value="cloudflare">FLUX.2 Klein (лимиты Cloudflare)</option>
-              <option value="xai">Grok Imagine (платный)</option>
-              <option value="openai">GPT Image (платный)</option>
-            </select>
-          </label>
+          <div class="section-head"><h3>Работа с логотипами</h3><span id="aiServerBadge">Без платных API</span></div>
+          <div class="ai-safety-note"><strong>Работа без расходов на генерацию</strong>
+            Платная и лимитированная генерация отключена. Подготовьте точный промпт, загрузите
+            полученный PNG либо используйте бесплатное локальное удаление фона и фильтры.
+          </div>
+          <select id="aiProvider" hidden><option value="local">Локальные инструменты</option></select>
+          <ol class="ai-steps">
+            <li data-step="1">Выберите логотип в редакторе.</li>
+            <li data-step="2" class="ai-step-highlight">Введите перевод и скопируйте промпт.</li>
+            <li data-step="3">Загрузите обработанный PNG и примените.</li>
+          </ol>
           <label class="field">Язык
             <select id="aiLanguage"><option value="kk">Казахский</option><option value="ru">Русский</option></select>
           </label>
@@ -172,17 +198,24 @@
           <label class="field">Дополнительные пожелания
             <textarea id="aiPrompt" rows="4">Адаптируй логотип на выбранный язык, сохрани стиль, композицию и цвета. Верни чистый логотип на прозрачном фоне.</textarea>
           </label>
-          <div class="button-row"><button id="copyAiPromptBtn">Скопировать промпт</button><button id="downloadAiSourceBtn">Скачать исходник</button><label class="file-button">Загрузить результат<input id="manualAiResult" type="file" accept="image/png,image/webp,image/jpeg"></label></div>
-          <button id="generateBtn" class="primary wide" disabled>Адаптировать логотип</button>
-          <div id="aiStatus" class="mini-status">Проверяю AI-сервер...</div>
+          <div class="button-row ai-tools-actions">
+            <button id="copyAiPromptBtn" type="button">Скопировать промпт</button>
+            <button id="downloadAiSourceBtn" type="button">Скачать исходник</button>
+            <label class="file-button" title="Загрузить уже обработанное изображение">
+              Загрузить результат<input id="manualAiResult" type="file" accept="image/png,image/webp,image/jpeg">
+            </label>
+          </div>
+          <button id="goLocalBackgroundBtn" class="ai-local-link" type="button">Удалить фон локально / бесплатно</button>
+          <button id="generateBtn" hidden disabled>Платная генерация отключена</button>
+          <div id="aiStatus" class="mini-status">Результат можно загрузить вручную. Генерация через платный API отключена.</div>
           <div class="ai-comparison">
             <figure><figcaption>Загруженный исходник</figcaption><img id="aiOriginalPreview" alt="Исходный логотип" hidden></figure>
             <span aria-hidden="true">→</span>
-            <figure><figcaption id="aiResultLabel">Результат Grok</figcaption><img id="aiResultPreview" alt="Выбранный результат" hidden></figure>
+            <figure><figcaption id="aiResultLabel">Загруженный результат</figcaption><img id="aiResultPreview" alt="Выбранный результат" hidden></figure>
           </div>
           <div id="results" class="ai-results"></div>
           <div class="button-row">
-            <button id="moveResultBtn" disabled>Переместить на постер</button>
+            <button id="moveResultBtn" disabled>Применить PNG</button>
             <button id="downloadResultBtn" disabled>Скачать</button>
           </div>
         </section>
@@ -449,7 +482,7 @@
         <button data-image-tab="logo">ЛОГОТИПЫ</button>
       </div>
       <div class="source-filters">
-        <label>Источник<select id="sourceFilter"><option value="all">Все</option><option value="tmdb">TMDB</option><option value="fanart.tv">Fanart.tv</option><option value="wikimediacommons">Wikimedia</option><option value="tvmaze">TVmaze</option></select></label>
+        <label>Источник<select id="sourceFilter"><option value="all">Все</option><option value="tmdb">TMDB</option><option value="fanart.tv">Fanart.tv</option><option value="wikimediacommons">Wikimedia</option><option value="tvmaze">TVmaze</option><option value="wikidata">Wikidata</option></select></label>
         <label>Формат<select id="formatFilter"><option value="all">Все</option><option value="vertical">Вертикальный</option><option value="horizontal">Горизонтальный</option></select></label>
         <label>Текст<select id="textFilter"><option value="all">Все</option><option value="textless">Без текста</option><option value="text">С текстом</option></select></label>
         <label>Разрешение<select id="resolutionFilter"><option value="any">Любое</option><option value="fhd">Full HD+</option><option value="2k">2K+</option><option value="4k">4K+</option></select></label>
@@ -509,6 +542,22 @@
         <div><small>WORK ARCHIVE</small><h2 id="archiveTitle">Архив работ</h2></div>
         <button id="archiveCloseBtn" aria-label="Закрыть">×</button>
       </header>
+      <nav class="library-tabbar" aria-label="Разделы библиотеки">
+        <button type="button" data-library-go="works" class="active">Работы</button>
+        <button type="button" data-library-go="logos" class="">Логотипы</button>
+        <button type="button" data-library-go="posters" class="">Постеры</button>
+      </nav>
+      <button class="library-export-inline" type="button" data-library-export="works">Скачать архив работ (ZIP)</button>
+      <div class="work-archive-filters">
+        <label>Рабочая область <select id="archiveWorkspaceFilter">
+          <option value="all">Все работы</option>
+          <option value="vertical">Вертикальные</option>
+          <option value="horizontal">Горизонтальные</option>
+          <option value="train">Паровозик</option>
+          <option value="top10">ТОП10</option>
+        </select></label>
+        <label>Поиск по названию <input id="archiveSearch" type="search" placeholder="Название сохранённой версии" aria-label="Поиск в архиве работ"></label>
+      </div>
       <div id="archiveStatus" class="mini-status">Загрузка архива...</div>
       <div id="archiveList" class="archive-list"></div>
     </section>
@@ -520,6 +569,12 @@
         <div><small>PNG LOGO ARCHIVE</small><h2 id="logoArchiveTitle">Архив логотипов</h2></div>
         <button id="logoArchiveCloseBtn" type="button" aria-label="Закрыть архив логотипов">×</button>
       </header>
+      <nav class="library-tabbar" aria-label="Разделы библиотеки">
+        <button type="button" data-library-go="works" class="">Работы</button>
+        <button type="button" data-library-go="logos" class="active">Логотипы</button>
+        <button type="button" data-library-go="posters" class="">Постеры</button>
+      </nav>
+      <button class="library-export-inline" type="button" data-library-export="logos">Скачать архив логотипов (ZIP)</button>
       <p class="muted logo-archive-note">Здесь автоматически сохраняются PNG-копии всех использованных логотипов. Архив доступен в этом браузере.</p>
       <div class="logo-archive-toolbar">
         <input id="logoArchiveSearch" type="search" placeholder="Найти логотип по названию" aria-label="Поиск в архиве логотипов">
@@ -527,6 +582,29 @@
       </div>
       <div id="logoArchiveStatus" class="mini-status" role="status">Загрузка архива...</div>
       <div id="logoArchiveList" class="logo-archive-list"></div>
+    </section>
+  </div>
+
+
+  <div id="posterArchiveModal" class="modal-backdrop" hidden>
+    <section class="modal-card logo-archive-card" role="dialog" aria-modal="true" aria-labelledby="posterArchiveTitle">
+      <header class="modal-head">
+        <div><small>POSTER LIBRARY</small><h2 id="posterArchiveTitle">Архив постеров</h2></div>
+        <button id="posterArchiveCloseBtn" type="button" aria-label="Закрыть архив постеров">×</button>
+      </header>
+      <nav class="library-tabbar" aria-label="Разделы библиотеки">
+        <button type="button" data-library-go="works" class="">Работы</button>
+        <button type="button" data-library-go="logos" class="">Логотипы</button>
+        <button type="button" data-library-go="posters" class="active">Постеры</button>
+      </nav>
+      <button class="library-export-inline" type="button" data-library-export="posters">Скачать архив постеров (ZIP)</button>
+      <p class="muted logo-archive-note">Изображения хранятся в этом браузере. Удаление из архива не затрагивает ранее созданные макеты.</p>
+      <div class="logo-archive-toolbar">
+        <input id="posterArchiveSearch" type="search" placeholder="Название, год или источник" aria-label="Поиск в архиве постеров">
+        <span id="posterArchiveCount" class="mini-status">0</span>
+      </div>
+      <div id="posterArchiveStatus" class="mini-status" role="status"></div>
+      <div id="posterArchiveList" class="logo-archive-list"></div>
     </section>
   </div>
 

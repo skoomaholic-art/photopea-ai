@@ -1028,6 +1028,7 @@
     activate, serialize, restore, resetWorkspace, undo, redo, setViewZoom,
     addImageFromFile,
     getSelectedImageContext:()=>{const o=activeObject();return o instanceof F.FabricImage ? {src:o.getSrc(),name:objectName(o),layer:o.kind==="logo"?"logo":"poster"}:null;},
+    hasUserImages:()=>canvas.getObjects().some(obj=>obj instanceof F.FabricImage && !obj.sticker) || Boolean(canvas.backgroundImage),
     exportAllSizes, exportSelectedSize, renderMasterBlob, buildPhotopeaModel, setBackgroundFromDataUrl, applyPhotopeaComposite, getPhotopeaMasterId,
     inspect: () => {
       const sticker = canvas.getObjects().find(obj => obj.sticker);
