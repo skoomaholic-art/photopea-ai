@@ -1,6 +1,8 @@
 (() => {
   const $ = id => document.getElementById(id);
-  const apiBase=(document.querySelector('meta[name="poster-api"]')?.content||"").replace(/\/$/,"");
+  const configuredApi=(document.querySelector('meta[name="poster-api"]')?.content||"").replace(/\/$/,"");
+  const apiBase=location.hostname.endsWith(".run.app") ||
+    ["localhost","127.0.0.1"].includes(location.hostname) ? location.origin : configuredApi;
   const state={items:[],references:[],identity:null,candidates:[],providers:{},shown:48,tab:"all"};
   let activeSearch=null;
 
