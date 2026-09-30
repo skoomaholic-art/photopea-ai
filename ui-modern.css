@@ -40,6 +40,11 @@ textarea:focus-visible,summary:focus-visible{outline:2px solid var(--green);outl
  padding:11px 12px;background:transparent;border-color:transparent}
 .library-dropdown button:hover{background:#1c2e22;border-color:#4c7653}
 .library-dropdown button small{font-weight:400;font-size:10px;color:#a4b9a6}
+.library-transfer-actions{display:grid;gap:5px;border-top:1px solid #314737;padding-top:9px;margin-top:6px}
+.library-transfer-actions .file-button{display:block;width:100%;text-align:left;margin:0}
+.library-transfer-actions button{font-size:11px;color:#c8eecc}
+.source-card-media.preview-unavailable{display:grid;place-items:center;background:linear-gradient(155deg,#19261d,#0b1510);border-bottom:1px dashed #35533b}
+.source-card-media.preview-unavailable:before{content:"Превью недоступно\A Откройте оригинал или источник";white-space:pre-line;font-size:11px;line-height:1.6;text-align:center;color:#a6b5a4;padding:12px}
 .library-tabbar{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 12px}
 .library-tabbar button{flex:1 1 128px;min-width:0;border-color:#395440;background:#142319}
 .library-tabbar button.active{border-color:#8cf06b;background:#2c4930;color:#d4ffcb}
