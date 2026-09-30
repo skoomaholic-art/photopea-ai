@@ -183,7 +183,8 @@
 
   async function renderArchive() {
     const root=$("archiveList"); root.innerHTML=""; $("archiveStatus").textContent="Загрузка...";
-    const all=await SkoomaStore.listArchiveEntries(archiveWorkspace);
+    const selected=$("archiveWorkspaceFilter")?.value||archiveWorkspace;
+    const all=await SkoomaStore.listArchiveEntries(selected==="all"?null:selected);
     const query=String($("archiveSearch")?.value||"").trim().toLocaleLowerCase("ru");
     const entries=all.filter(item=>!query || String(item.title||"").toLocaleLowerCase("ru").includes(query));
     $("archiveStatus").textContent=entries.length
@@ -195,7 +196,7 @@
       const body=document.createElement("div"); body.className="archive-item-body";
       const title=document.createElement("strong"); title.textContent=entry.title;
       const meta=document.createElement("small");
-      meta.textContent=new Date(entry.createdAt).toLocaleString("ru-RU")+" · "+entry.masterWidth+" × "+entry.masterHeight+" · "+(entry.reason||"snapshot");
+      meta.textContent=(LABELS[entry.workspace]||entry.workspace)+" · "+new Date(entry.createdAt).toLocaleString("ru-RU")+" · "+entry.masterWidth+" × "+entry.masterHeight+" · "+(entry.reason||"snapshot");
       const actions=document.createElement("div"); actions.className="archive-actions";
       for (const [label,action] of [["Восстановить","restore"],["Скачать","download"],["Переименовать","rename"],["Удалить","delete"]]) {
         const button=document.createElement("button"); button.type="button"; button.textContent=label;
@@ -209,7 +210,8 @@
 
   async function openArchive(workspace) {
     archiveWorkspace=workspace;
-    $("archiveTitle").textContent="Архив - "+LABELS[workspace];
+    $("archiveTitle").textContent=workspace==="all"?"Архив всех работ":"Архив - "+LABELS[workspace];
+    if($("archiveWorkspaceFilter")) $("archiveWorkspaceFilter").value=workspace;
     if($("archiveSearch")) $("archiveSearch").value="";
     $("archiveModal").hidden=false; document.body.classList.add("modal-open");
     await renderArchive();
@@ -218,6 +220,7 @@
 
   $("archiveCloseBtn").addEventListener("click",closeArchive);
   $("archiveSearch")?.addEventListener("input",()=>{void renderArchive();});
+  $("archiveWorkspaceFilter")?.addEventListener("change",()=>{void renderArchive();});
   $("archiveModal").addEventListener("click",e=>{if(e.target===$("archiveModal")) closeArchive();});
   $("archiveList").addEventListener("click",async e=>{
     const button=e.target.closest("[data-archive-action]"); if(!button) return;
