@@ -524,6 +524,19 @@
     </section>
   </div>
 
+  <div id="posterLibraryModal" class="modal-backdrop" hidden>
+    <section class="modal-card poster-library-card" role="dialog" aria-modal="true" aria-labelledby="posterLibraryTitle">
+      <header class="modal-head">
+        <div><small>POSTER LIBRARY</small><h2 id="posterLibraryTitle">Архив постеров</h2></div>
+        <button id="posterLibraryClose" type="button" aria-label="Закрыть архив постеров">×</button>
+      </header>
+      <p class="muted">Исходники хранятся только в этом браузере. Сохранённые проекты не затрагиваются.</p>
+      <input id="posterLibrarySearch" type="search" placeholder="Найти постер по названию" aria-label="Поиск в архиве постеров">
+      <div id="posterLibraryStatus" class="mini-status" role="status"></div>
+      <div id="posterLibraryGallery" class="poster-library-gallery"></div>
+    </section>
+  </div>
+
   <div id="logoArchiveModal" class="modal-backdrop" hidden>
     <section class="modal-card logo-archive-card" role="dialog" aria-modal="true" aria-labelledby="logoArchiveTitle">
       <header class="modal-head">
