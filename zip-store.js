@@ -41,13 +41,14 @@
   }
 
   async function bytesOf(value) {
-    if (value instanceof Uint8Array) return value;
-    if (value instanceof ArrayBuffer) return new Uint8Array(value);
-    // Accept Blob/File objects from another browser realm or iframe, too.
-    if (value && typeof value.arrayBuffer === "function" && Number.isFinite(value.size))
-      return new Uint8Array(await value.arrayBuffer());
     if (typeof value === "string") return encoder.encode(value);
-    throw new TypeError("Unsupported ZIP entry payload");
+    if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    if (Object.prototype.toString.call(value)==="[object ArrayBuffer]") return new Uint8Array(value);
+    // Blob/File objects may originate from different browser realms or test harnesses.
+    if (value && typeof value.arrayBuffer === "function")
+      return new Uint8Array(await value.arrayBuffer());
+    throw new TypeError("Unsupported ZIP entry payload: " + Object.prototype.toString.call(value)
+      + " (arrayBuffer=" + typeof value?.arrayBuffer + ")");
   }
 
   async function build(entries) {
