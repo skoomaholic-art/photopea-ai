@@ -98,7 +98,7 @@
       const actions=document.createElement("div");actions.className="logo-archive-actions";
       actions.append(
         button("Использовать","primary",()=>apply(item)),
-        button("Скачать", "",()=>PosterApp.downloadBlob(item.originalAsset,cleanFilename(item.title) + (item.mimeType==="image/png"?".png":".jpg"))),
+        button("Скачать", "",()=>PosterApp.downloadBlob(item.originalAsset,cleanFilename(item.title).replace(/\.(?:png|jpe?g|webp)$/i,"") + (item.mimeType==="image/png"?".png":item.mimeType==="image/webp"?".webp":".jpg"))),
         button("Переименовать","",()=>{
           edit.hidden=false;title.hidden=true;field.focus();field.select();
         }),
