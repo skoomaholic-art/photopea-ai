@@ -92,6 +92,14 @@
     px(c,Math.max(2,cx-Z(32)),tableY+Z(3),Z(64),Math.max(4,h-tableY-Z(4)),P.desk);
     px(c,Math.max(2,cx-Z(30)),tableY+Z(7),Z(60),Z(1),"#654730");
     px(c,cx-Z(7),tableY+Z(4),Z(14),Z(2),P.dark);
+    // Small house cat next to the Don: an original low-resolution homage.
+    const catX=cx+Z(5),catY=tableY-Z(6);
+    px(c,catX,catY+Z(3),Z(8),Z(4),"#485049");
+    px(c,catX+Z(5),catY,Z(4),Z(4),"#535850");
+    px(c,catX+Z(5),catY-Z(2),Z(1),Z(2),"#535850");
+    px(c,catX+Z(8),catY-Z(2),Z(1),Z(2),"#535850");
+    px(c,catX+Z(8),catY+Z(2),1,1,"#e1c17a");
+    px(c,catX-Z(1),catY+Z(1)-(frame>=0?frame%10===0?1:0:0),Z(2),Z(3),"#485049");
     // Brass desk lamp, flicker is sparse to avoid distracting the editor.
     const lx=cx+Z(24),ly=tableY-Z(5);
     px(c,lx-1,ly,2,6,P.soft);px(c,lx-6,ly-1,10,2,P.soft);
@@ -115,7 +123,7 @@
     const canvas=document.createElement("canvas");
     canvas.className="pixel-idle-canvas";canvas.setAttribute("aria-hidden","true");
     const label=document.createElement("div");label.className="pixel-idle-caption";
-    const over=document.createElement("span");over.className="pixel-idle-eyebrow";over.textContent="POSTER EDITOR / PIXEL NOIR";
+    const over=document.createElement("span");over.className="pixel-idle-eyebrow";over.textContent="THE DON\u2019S OFFICE / PIXEL NOIR";
     const title=document.createElement("strong");title.textContent="Ваша история начинается здесь";
     const sub=document.createElement("span");sub.textContent="Загрузите изображение или выберите исходник";
     label.append(over,title,sub);layer.append(canvas,label);host.append(layer);
@@ -143,10 +151,15 @@
   }
   sync();
   window.setInterval(sync,450);
+  function visibleWorkspace(item){
+    const id=item.setting.kind==="train"?"trainWorkspace":item.setting.kind==="top10"?"top10Workspace":"posterWorkspace";
+    const panel=document.getElementById(id);
+    return Boolean(panel && !panel.hidden && panel.classList.contains("active"));
+  }
   const animate=()=>{
     if(!document.hidden && !reduceMotion.matches){
       tick++;
-      for(const item of mounted)if(item.shown)draw(item.canvas,item.setting.kind,tick);
+      for(const item of mounted)if(item.shown && visibleWorkspace(item))draw(item.canvas,item.setting.kind,tick);
     }
   };
   // Drawing only a handful of tiny pixel frames, and only for empty states.
