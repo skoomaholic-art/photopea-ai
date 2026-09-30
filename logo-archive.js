@@ -255,7 +255,7 @@
 
   async function rename(id, value) {
     const base = String(value ?? "").trim().replace(/\\.png$/i, "").trim();
-    if (!base || base.length > 100 || /[<>:"|?*\\u0000-\\u001f]/.test(base) || base.includes("/") || base.includes("\\\\")) {
+    if (!base || base.length > 100 || /[<>:"|?*\u0000-\u001f]/.test(base) || base.includes("/") || base.includes("\\")) {
       throw new Error("Введите название до 100 символов без запрещённых знаков.");
     }
     const item = await AssetManager.get(id);
