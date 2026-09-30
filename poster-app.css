@@ -271,3 +271,15 @@ button.danger:hover{border-color:#d85349!important;background:#3a1916!important;
 .poster-library-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .poster-library-actions>button{min-width:0;font-size:11px;padding:8px 5px;overflow-wrap:anywhere}
 .poster-library-actions .delete{color:#ffc3b9;border-color:#8b5046}
+
+
+/* Inert pixel-art overlays on TOP10 and train editor; never exported. */
+.train-canvas-shell,.top10-canvas-shell{position:relative}
+.pixel-stage-overlay{position:absolute;inset:0;z-index:16;display:grid;place-items:center;isolation:isolate;pointer-events:none;overflow:hidden;border-radius:11px;background:#090d09;transition:opacity .24s ease}
+.pixel-stage-overlay[hidden]{display:none!important}
+.pixel-stage-overlay .godfather-pixel{position:absolute;inset:0}
+.pixel-stage-overlay .pixel-caption{top:7%;font-size:clamp(7px,1vw,13px)}
+.pixel-stage-overlay .pixel-overlay-note{position:absolute;z-index:2;bottom:8%;left:50%;transform:translateX(-50%);width:max-content;max-width:82%;text-align:center;color:#e9d9b6;font-size:clamp(10px,1.1vw,15px);padding:9px 14px;border-radius:9px;background:#09110bdc;border:1px solid #a88a5860}
+.pixel-stage-wide .pixel-overlay-note{bottom:10%;font-size:clamp(8px,1vw,12px);padding:4px 9px}
+.pixel-stage-wide .pixel-caption{top:8%}
+@media(prefers-reduced-motion:reduce){.pixel-stage-overlay{transition:none}}
