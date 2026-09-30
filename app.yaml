@@ -1,0 +1,15 @@
+# Cost-conscious option: App Engine Standard, not App Engine Flexible.
+# Does NOT enforce a $0 bill; egress and build/image storage have separate billing.
+runtime: nodejs24
+instance_class: F1
+entrypoint: node scripts/dev-server.mjs --host 0.0.0.0 --port $PORT
+
+automatic_scaling:
+  min_instances: 0
+  max_instances: 1
+  min_idle_instances: 0
+  max_idle_instances: 1
+
+env_variables:
+  AI_REQUESTS_ENABLED: 'false'
+  REMOTE_BACKGROUND_ENABLED: 'false'
