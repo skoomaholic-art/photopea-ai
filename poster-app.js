@@ -1107,6 +1107,7 @@
     resetWorkspace,
     restoreWorkspace,
     getSelectedImageContext,
+    hasUserImages: () => Boolean(current().poster || current().logo),
     getActiveFormat: () => state.activeFormat,
     getSelectedLayer: () => state.selectedLayer,
     getImageProviders: () => JSON.parse(JSON.stringify(state.imageProviders)),
