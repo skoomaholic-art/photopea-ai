@@ -183,15 +183,20 @@
 
   async function renderArchive() {
     const root=$("archiveList"); root.innerHTML=""; $("archiveStatus").textContent="Загрузка...";
-    const entries=await SkoomaStore.listArchiveEntries(archiveWorkspace);
-    $("archiveStatus").textContent=entries.length ? entries.length + " версий" : "Архив пока пуст.";
+    const selected=$("archiveWorkspaceFilter")?.value||archiveWorkspace;
+    const all=await SkoomaStore.listArchiveEntries(selected==="all"?null:selected);
+    const query=String($("archiveSearch")?.value||"").trim().toLocaleLowerCase("ru");
+    const entries=all.filter(item=>!query || String(item.title||"").toLocaleLowerCase("ru").includes(query));
+    $("archiveStatus").textContent=entries.length
+      ? (query ? entries.length+" из "+all.length+" версий" : entries.length+" версий")
+      : all.length ? "По запросу ничего не найдено." : "Архив пока пуст.";
     for (const entry of entries) {
       const card=document.createElement("article"); card.className="archive-item";
       const preview=document.createElement("img"); preview.src=entry.preview || ""; preview.alt="";
       const body=document.createElement("div"); body.className="archive-item-body";
       const title=document.createElement("strong"); title.textContent=entry.title;
       const meta=document.createElement("small");
-      meta.textContent=new Date(entry.createdAt).toLocaleString("ru-RU")+" · "+entry.masterWidth+" × "+entry.masterHeight+" · "+(entry.reason||"snapshot");
+      meta.textContent=(LABELS[entry.workspace]||entry.workspace)+" · "+new Date(entry.createdAt).toLocaleString("ru-RU")+" · "+entry.masterWidth+" × "+entry.masterHeight+" · "+(entry.reason||"snapshot");
       const actions=document.createElement("div"); actions.className="archive-actions";
       for (const [label,action] of [["Восстановить","restore"],["Скачать","download"],["Переименовать","rename"],["Удалить","delete"]]) {
         const button=document.createElement("button"); button.type="button"; button.textContent=label;
@@ -205,13 +210,17 @@
 
   async function openArchive(workspace) {
     archiveWorkspace=workspace;
-    $("archiveTitle").textContent="Архив - "+LABELS[workspace];
+    $("archiveTitle").textContent=workspace==="all"?"Архив всех работ":"Архив - "+LABELS[workspace];
+    if($("archiveWorkspaceFilter")) $("archiveWorkspaceFilter").value=workspace;
+    if($("archiveSearch")) $("archiveSearch").value="";
     $("archiveModal").hidden=false; document.body.classList.add("modal-open");
     await renderArchive();
   }
   function closeArchive(){ $("archiveModal").hidden=true; document.body.classList.remove("modal-open"); }
 
   $("archiveCloseBtn").addEventListener("click",closeArchive);
+  $("archiveSearch")?.addEventListener("input",()=>{void renderArchive();});
+  $("archiveWorkspaceFilter")?.addEventListener("change",()=>{void renderArchive();});
   $("archiveModal").addEventListener("click",e=>{if(e.target===$("archiveModal")) closeArchive();});
   $("archiveList").addEventListener("click",async e=>{
     const button=e.target.closest("[data-archive-action]"); if(!button) return;
@@ -298,6 +307,37 @@
   async function listTemplates(){templates=(await SkoomaStore.listProjects()).filter(p=>p.template===true);const select=$('projectTemplates');select.replaceChildren(new Option('Выберите шаблон',''));for(const t of templates)select.add(new Option(t.title||t.id,t.id));}
   $('saveTemplateBtn').onclick=async()=>{try{const title=$('projectTitle').value.trim();if(!title)throw new Error('Введите название проекта.');const p=PosterApp.serialize();p.id='template-'+crypto.randomUUID();p.template=true;p.title=title;await SkoomaStore.saveProject(p);await listTemplates();status('Шаблон со всеми четырьмя макетами сохранён в этом браузере.');}catch(e){status(e.message);}};
   $('applyTemplateBtn').onclick=async()=>{try{const t=templates.find(x=>x.id===$('projectTemplates').value);if(!t)throw new Error('Выберите шаблон.');if(!await WorkspaceTools.confirmAction({title:'Открыть шаблон',message:'Текущая работа будет сохранена в архив, затем заменена шаблоном.',confirmLabel:'Открыть'}))return;await WorkArchive.captureAll('before-template');await PosterApp.restore(clone(t));resetHistory();status('Шаблон открыт.');}catch(e){status(e.message);}};
+  $('renameTemplateBtn').onclick=async()=>{
+    try{
+      const id=$('projectTemplates').value,template=templates.find(x=>x.id===id);
+      if(!template)throw new Error('Выберите шаблон для переименования.');
+      const title=window.prompt('Новое название шаблона:',template.title||'');
+      if(title===null)return;
+      if(!title.trim())throw new Error('Название не может быть пустым.');
+      await SkoomaStore.saveProject({...template,title:title.trim(),updatedAt:Date.now()});
+      await listTemplates();$('projectTemplates').value=id;status('Шаблон переименован.');
+    }catch(e){status(e.message);}
+  };
+  $('saveProjectAsBtn').onclick=async()=>{
+    try{
+      const entered=window.prompt('Название новой сохранённой версии:',$('projectTitle').value.trim()||'Новая работа');
+      if(entered===null)return;
+      const title=entered.trim();
+      if(!title)throw new Error('Введите название проекта.');
+      $('projectTitle').value=title;
+      const project=PosterApp.serialize();
+      project.id='project-'+crypto.randomUUID();
+      project.title=title;
+      project.updatedAt=Date.now();
+      await SkoomaStore.saveProject(project);
+      const captures=await WorkArchive.captureAll('save-as');
+      for(const entry of captures.filter(Boolean)){
+        entry.title=title+' · '+labels[entry.workspace];
+        await SkoomaStore.saveArchiveEntry(entry);
+      }
+      status('Проект «'+title+'» сохранён отдельной версией в библиотеке.');
+    }catch(error){status(error.message||'Не удалось сохранить проект.');}
+  };
   $('deleteTemplateBtn').onclick=async()=>{try{const id=$('projectTemplates').value;if(!id)return;if(!await WorkspaceTools.confirmAction({title:'Удалить шаблон',message:'Удалить выбранный шаблон из этого браузера?',confirmLabel:'Удалить'}))return;await SkoomaStore.deleteProject(id);await listTemplates();}catch(e){status(e.message);}};
   const restore=PosterApp.restore;PosterApp.restore=async p=>{await restore(p);$('projectTitle').value=p.title||'';resetHistory();};
   const serialize=PosterApp.serialize;PosterApp.serialize=()=>({...serialize(),title:$('projectTitle').value.trim()});

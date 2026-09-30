@@ -40,7 +40,7 @@ export async function app(t) {
   // Blobs are immutable; preserve them while cloning the surrounding stored records.
   const originalClone=globalThis.structuredClone;
   function cloneStored(value,seen=new Map()) {
-    if(value instanceof w.Blob) return value;
+    if(value instanceof w.Blob || value instanceof w.File) return value;
     if(value && (Array.isArray(value)||Object.prototype.toString.call(value)==="[object Object]")) {
       if(seen.has(value)) return seen.get(value);
       const out=Array.isArray(value)?[]:{};seen.set(value,out);

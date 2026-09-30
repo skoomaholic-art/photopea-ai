@@ -59,6 +59,11 @@ function remoteItem(overrides = {}) {
 }
 
 async function mockUnifiedSearch(page, items, errors = []) {
+  // Deterministic search tests must not call the live Wikidata API.
+  await page.route("https://www.wikidata.org/**", route => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ search: [] })
+  }));
   await page.route("**/api/images/search?*", route => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -144,7 +149,7 @@ test("boots existing four-workspace Poster Editor with unified tools", async ({ 
   await expect(page.locator("#posterSearchBtn")).toHaveText("Показать постеры");
   await expect(page.locator("#filterSelectedBtn")).toHaveText("Фильтры");
   await expect(page.locator("#editSelectedPhotopeaBtn")).toContainText("Photopea");
-  await expect(page.locator("#generateBtn")).toBeEnabled();
+  await expect(page.locator("#generateBtn")).toBeDisabled();
   await expect(page.locator("#removeBackgroundBtn")).toBeEnabled();
 });
 
@@ -312,17 +317,16 @@ test("vertical and horizontal states stay independent", async ({ page }) => {
 
 test("background removal preserves transform", async ({ page }) => {
   await mockStatus(page);
-  await page.route("**/api/remove-background", route => route.fulfill({
-    status: 200,
-    contentType: "application/json",
-    body: JSON.stringify({ image: PNG_DATA, provider: "Carve.Photos" })
-  }));
+  // No billable remote removal: stub the existing browser-local removal module.
   await page.goto("/");
   await page.locator("#posterFileInput").setInputFiles({ name: "safe.png", mimeType: "image/png", buffer: PNG });
   await page.locator("#posterLockInput").uncheck();
   await page.locator("#layerScaleInput").fill("145");
   await page.locator("#layerRotationInput").fill("11");
-  await page.locator("#bgProviderSelect").selectOption("carve");
+  await expect(page.locator("#bgProviderSelect")).toHaveValue("local");
+  await page.evaluate(() => {
+    window.LocalBackgroundRemoval.remove = async src => (await fetch(src)).blob();
+  });
   await page.locator("#removeBackgroundBtn").click();
   await expect(page.locator("#bgRemoveStatus")).toContainText("Положение и трансформация сохранены");
   const state = await page.evaluate(() => window.PosterApp.getState().vertical);
@@ -421,7 +425,7 @@ test("TEST 9 missing keys do not crash and are surfaced", async ({ page }) => {
   await page.goto("/");
   await expect(page.locator("#generateBtn")).toBeDisabled();
   await expect(page.locator("#removeBackgroundBtn")).toBeEnabled();
-  await expect(page.locator("#bgRemoveStatus")).toContainText("Локальное удаление фона готово");
+  await expect(page.locator("#bgRemoveStatus")).toContainText("Бесплатное удаление фона работает");
   await openSearch(page, "Test Show", "2026");
   await expect(page.locator("#sourceSearchStatus")).toContainText("TMDB API key не настроен");
   await expect(page.locator(".source-card")).toHaveCount(1);

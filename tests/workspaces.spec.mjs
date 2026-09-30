@@ -36,17 +36,22 @@ test('Photopea tab exits blocked loading and explicit retry restores readiness',
  await expect(page.locator('#photopeaFrame')).toHaveAttribute('aria-busy','false');
 });
 
-test('exact-title validation, detailed prompt, comparison, explicit apply and credit recovery (API fake)',async({page})=>{
- await start(page);await upload(page,'logoFileInput',fixture(320,100,{logo:true}),'original.png');await expect(page.locator('#aiOriginalPreview')).toBeVisible();
- await page.locator('#aiProvider').selectOption('xai');
- let calls=0,prompt='',fail=false;const result='data:image/png;base64,'+fixture(320,100,{logo:true,color:'#ffffff'}).toString('base64');
- await page.route('**/api/generate',async r=>{calls++;prompt=r.request().postDataJSON().prompt;await r.fulfill(fail?{status:402,json:{error:"Account doesn't have enough credits"}}:{json:{images:[result]}});});
- await page.locator('#generateBtn').click();await expect(page.locator('#aiStatus')).toHaveText('Введите точное название на казахском языке');expect(calls).toBe(0);
- const original=await page.evaluate(()=>PosterApp.getState().vertical.logo);
- await page.locator('#aiTitle').fill('Жекпе-жек чемпиондары');await page.locator('#generateBtn').click();await expect(page.locator('#aiResultPreview')).toHaveAttribute('src',result);expect(prompt).toContain('Жекпе-жек чемпиондары');expect(prompt).toContain('Не заменяй кириллицу латиницей');
- expect(await page.evaluate(()=>PosterApp.getState().vertical.logo)).toBe(original);await page.locator('#moveResultBtn').click();await expect.poll(()=>page.evaluate(()=>PosterApp.getState().vertical.logo)).toBe(result);await expect(page.locator('#aiOriginalPreview')).toHaveAttribute('src',original);
- const bytes=await download(page,'downloadResultBtn');expect(bytes.subarray(0,8).toString('hex')).toBe('89504e470d0a1a0a');
- fail=true;await page.locator('#generateBtn').click();await expect(page.locator('#aiStatus')).toContainText('закончились доступные кредиты');await expect(page.locator('#generateBtn')).toBeEnabled();
+test('free-only logo workflow: exact prompt, manual import, and no paid requests',async({page})=>{
+  await start(page);
+  await upload(page,'logoFileInput',fixture(320,100,{logo:true}),'original.png');
+  await expect(page.locator('#aiOriginalPreview')).toBeVisible();
+  await expect(page.locator('#generateBtn')).toBeDisabled();
+  await expect(page.locator('#aiProvider')).toHaveValue('local');
+  await page.locator('#aiTitle').fill('Жекпе-жек чемпиондары');
+  const prompt=await page.evaluate(()=>PosterApp.buildLogoPrompt('Жекпе-жек чемпиондары','казахский'));
+  expect(prompt).toContain('Жекпе-жек чемпиондары');
+  expect(prompt).toContain('Не заменяй кириллицу латиницей');
+  const original=await page.evaluate(()=>PosterApp.getState().vertical.logo);
+  await upload(page,'manualAiResult',fixture(320,100,{logo:true,color:'#ffffff'}),'result.png');
+  await expect(page.locator('#aiResultPreview')).toBeVisible();
+  expect(await page.evaluate(()=>PosterApp.getState().vertical.logo)).toBe(original);
+  await page.locator('#moveResultBtn').click();
+  await expect.poll(()=>page.evaluate(()=>PosterApp.getState().vertical.logo)).not.toBe(original);
 });
 
 test('poster edges contain image pixels; locks remain independent between formats',async({page})=>{
@@ -118,7 +123,8 @@ test('PNG logo archive survives reload, deduplicates and inserts into TOP10',asy
  await page.locator('[data-workspace="top10"]').click();
  await page.locator('[data-logo-archive-target="top10"]').click();
  await expect(page.locator('#logoArchiveList .logo-archive-item')).toHaveCount(1);
+ const storedFilename=await page.locator('#logoArchiveList .logo-archive-item strong').first().textContent();
  await page.locator('#logoArchiveList .logo-archive-actions .primary').click();
- await expect.poll(()=>page.evaluate(()=>Top10Editor.getState().logoName)).toBe('same-logo.png');
+ await expect.poll(()=>page.evaluate(()=>Top10Editor.getState().logoName)).toBe(storedFilename);
  await expect(page.locator('#logoArchiveModal')).toBeHidden();
 });
