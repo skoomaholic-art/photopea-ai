@@ -45,6 +45,8 @@ textarea:focus-visible,summary:focus-visible{outline:2px solid var(--green);outl
 .library-transfer-actions button{font-size:11px;color:#c8eecc}
 .source-card-media.preview-unavailable{display:grid;place-items:center;background:linear-gradient(155deg,#19261d,#0b1510);border-bottom:1px dashed #35533b}
 .source-card-media.preview-unavailable:before{content:"Превью недоступно\A Откройте оригинал или источник";white-space:pre-line;font-size:11px;line-height:1.6;text-align:center;color:#a6b5a4;padding:12px}
+.library-export-inline{padding:7px 10px;font-size:11px;background:#1b3220;border-color:#436146;
+ margin:0 0 8px;min-height:34px;color:#cfebcc}
 .library-tabbar{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 12px}
 .library-tabbar button{flex:1 1 128px;min-width:0;border-color:#395440;background:#142319}
 .library-tabbar button.active{border-color:#8cf06b;background:#2c4930;color:#d4ffcb}
