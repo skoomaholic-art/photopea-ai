@@ -203,7 +203,7 @@
     logoImage.style.height = "auto";
     logoImage.style.transform = `translate(-50%,-50%) rotate(${s.logoRotation}deg) scale(${s.logoScale / 100})`;
 
-    $("posterEmpty").hidden = !!s.poster;
+    $("posterEmpty").hidden = Boolean(s.poster || s.logo);
     selectLayer(state.selectedLayer);
     requestAnimationFrame(updateTransformOverlay);
   }
