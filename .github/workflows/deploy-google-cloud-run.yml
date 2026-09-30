@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
   id-token: write
-  issues: write
 
 concurrency:
   group: poster-editor-gcp
@@ -58,6 +57,7 @@ jobs:
               curl -fsS -o /dev/null --max-time 15 "$URL/"
               echo "url=$URL" >> "$GITHUB_OUTPUT"
               echo "Verified: homepage 200 and API ok=true"
+          { echo "### Poster Editor Cloud Run release"; echo ""; echo "✅ Live and API status confirmed"; echo "URL: $URL"; echo "Commit: $GITHUB_SHA"; } >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             sleep 5
@@ -65,17 +65,3 @@ jobs:
           echo "::error::Cloud Run did not return healthy /api/status"
           exit 1
 
-      - name: Post verified Cloud Run URL
-        if: ${{ steps.deploy.outcome == 'success' }}
-        uses: actions/github-script@v7
-        env:
-          DEPLOYED_URL: ${{ steps.deploy.outputs.url }}
-        with:
-          script: |
-            const url = process.env.DEPLOYED_URL;
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: 16,
-              body: '✅ Poster Editor 3.0 deployed to the existing Google Cloud Run service. Homepage and /api/status returned 200.\n\nURL: ' + url + '\nCommit: ' + context.sha
-            });
