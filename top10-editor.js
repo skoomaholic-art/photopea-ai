@@ -841,7 +841,7 @@
   window.Top10Editor={
     activate,serialize,restore,resetClassic,renderCanvas,renderBlob,buildPhotopeaModel,download,
     setBackgroundFromDataUrl,setLogoFromDataUrl,applyPhotopeaComposite,getPhotopeaMasterId,openFilters,inspect,
-    getState:()=>clone(data),getSelectedLayer:()=>runtime.selectedLayer,
+    getState:()=>clone(data),hasUserImages:()=>Boolean(data.background || data.logo),getSelectedLayer:()=>runtime.selectedLayer,
     numberAssets:TOP10_NUMBER_ASSETS,numberPreviews:TOP10_NUMBER_PREVIEWS,
     constants:{MASTER_W,MASTER_H}
   };
