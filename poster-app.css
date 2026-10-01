@@ -297,3 +297,13 @@ button.danger:hover{border-color:#d85349!important;background:#3a1916!important;
 .movie-parodies-summary strong{color:var(--green2)}
 .movie-parodies-summary span{font-size:10px;color:var(--muted)}
 @media(max-width:620px){.movie-parodies-grid{grid-template-columns:1fr}.movie-parodies-summary{align-items:flex-start;flex-direction:column}}
+
+.movie-parodies-visual{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin:0 0 14px}
+.movie-parodies-visual>div{min-height:94px;position:relative;display:flex;align-items:flex-end;padding:10px;border:1px solid #405945;border-radius:12px;overflow:hidden;background:
+radial-gradient(circle at 70% 25%,#7d5a2d55,transparent 33%),
+linear-gradient(145deg,#1e3125,#080d09 70%)}
+.movie-parodies-visual>div:nth-child(3n+1){background:radial-gradient(circle at 70% 20%,#87652f66,transparent 34%),linear-gradient(145deg,#283327,#0b0e0b 72%)}
+.movie-parodies-visual>div:nth-child(3n+2){background:radial-gradient(circle at 20% 25%,#3a756155,transparent 34%),linear-gradient(145deg,#132a25,#080d0b 72%)}
+.movie-parodies-visual span{position:absolute;right:8px;top:6px;font:900 24px/1 Inter,sans-serif;color:#ffffff12}
+.movie-parodies-visual b{position:relative;z-index:1;font-size:11px;line-height:1.15;color:#e7f5e9}
+@media(max-width:760px){.movie-parodies-visual{grid-template-columns:repeat(2,minmax(0,1fr))}}
