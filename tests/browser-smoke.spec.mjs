@@ -607,9 +607,9 @@ test("TOP10 master canvas, locked template, filters, export, Photopea routing an
 
   await page.locator(".top10-layer-row").filter({hasText:"TOP10 Number"}).click();
   await chooseTop10Number(page,"7");
-  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/7.png");
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/7.svg");
   await chooseTop10Number(page,"10");
-  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/10.png");
+  await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("assets/top10/numbers/10.svg");
 
   await page.locator(".top10-layer-row").filter({hasText:"Background Image"}).click();
   const unaffectedBefore = await page.evaluate(() => {
@@ -789,7 +789,7 @@ test("TOP10 image picker uses the exact supplied reference assets for positions 
     await page.locator("#top10NumberPickerButton").click();
     await page.locator(`#top10NumberPickerMenu [data-number="${value}"]`).click();
     await expect.poll(() => page.evaluate(() => window.Top10Editor.inspect().number.asset)).toContain("/"+value+".png");
-    await expect(page.locator("#top10NumberPickerImage")).toHaveAttribute("src",new RegExp(`/reference-numbers/${value}\\.png`));
+    await expect(page.locator("#top10NumberPickerImage")).toHaveAttribute("src",new RegExp(`/numbers/${value}\\.svg`));
     const number=await page.evaluate(() => window.Top10Editor.inspect().number);
     expect(number.locked).toBe(true);
     expect(number.value).toBe(String(value));
