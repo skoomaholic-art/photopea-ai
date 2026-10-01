@@ -102,7 +102,12 @@
     r.querySelector(".cat-scene-condition").textContent=s.kind==="snow"?"Снег":s.kind==="rain"?"Дождь":s.kind==="sun"?"Солнечно":s.kind==="cloud"?"Облачно":s.period==="night"?"Ночь":"Спокойно";
     renderPrecip(r,s.kind);
   }
+  function syncPlayback(){
+    const paused=document.hidden;
+    for(const item of mounted)item.root.classList.toggle("paused",paused);
+  }
   function sync(){
+    syncPlayback();
     for(const item of mounted){
       let empty=false;try{empty=item.cfg.empty();}catch{}
       if(empty){apply(item);item.root.hidden=false;item.root.classList.remove("leaving");}
@@ -113,6 +118,6 @@
   weather=fallback();sync();loadWeather(true);
   setInterval(sync,450);setInterval(()=>loadWeather(true),REFRESH);
   addEventListener("pageshow",sync);addEventListener("resize",sync);
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden){sync();loadWeather();}});
+  document.addEventListener("visibilitychange",()=>{syncPlayback();if(!document.hidden){sync();loadWeather();}});
   window.WeatherEmptyState={sync,refresh:()=>loadWeather(true),getWeather:()=>({...state()})};
 })();
