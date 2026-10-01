@@ -124,3 +124,24 @@ textarea:focus-visible,summary:focus-visible{outline:2px solid var(--green);outl
  .library-dropdown{left:0;right:auto}
 }
 @media(prefers-reduced-motion:reduce){.pixel-idle{transition:none}}
+
+
+/* Movie Parodies are decorative empty-workspace art only. They are never library items or export layers. */
+#stage,#trainCanvasShell,#top10CanvasShell{position:relative}
+.empty-showcase{position:absolute;inset:0;z-index:24;display:grid;place-items:stretch;overflow:hidden;pointer-events:none;border-radius:10px;opacity:1;transition:opacity .26s ease,filter .26s ease;background:#070b08}
+.empty-showcase[hidden]{display:none!important}
+.empty-showcase-leaving{opacity:0;filter:brightness(.6)}
+.empty-showcase-frame{position:absolute;inset:0;overflow:hidden;background:#070b08}
+.empty-showcase-image{position:absolute;inset:0;background-position:center;background-repeat:no-repeat;background-size:cover;transform:scale(1.002)}
+.empty-showcase-image[data-orientation="vertical"]{background-size:cover}
+.empty-showcase-image[data-orientation="horizontal"]{background-size:cover}
+.empty-showcase-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(3,7,4,.02) 40%,rgba(3,7,4,.42) 72%,rgba(3,7,4,.82) 100%)}
+.empty-showcase-caption{position:absolute;left:5%;right:5%;bottom:5%;z-index:2;display:grid;gap:4px;text-align:center;padding:9px 12px;border:1px solid #7aa66b44;border-radius:10px;background:#07100bc7;backdrop-filter:blur(2px)}
+.empty-showcase-caption strong{font-size:clamp(10px,1.25vw,16px);line-height:1.1;color:#f4f7f0}
+.empty-showcase-caption span{font-size:clamp(8px,.9vw,11px);color:#bdc9bf}
+#trainCanvasShell>.empty-showcase{border-radius:8px}
+#trainCanvasShell .empty-showcase-caption{bottom:7%;padding:4px 8px;gap:1px}
+#trainCanvasShell .empty-showcase-caption strong{font-size:clamp(7px,.85vw,11px)}
+#trainCanvasShell .empty-showcase-caption span{font-size:clamp(6px,.7vw,9px)}
+#top10CanvasShell>.empty-showcase{border-radius:8px}
+@media(prefers-reduced-motion:reduce){.empty-showcase{transition:none}.empty-showcase-image{transform:none}}
