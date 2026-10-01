@@ -14,15 +14,27 @@
     const parts=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:CITY.tz,hour12:false,hour:"2-digit",minute:"2-digit",weekday:"short"}).formatToParts(new Date()).filter(x=>x.type!=="literal").map(x=>[x.type,x.value]));
     return {hour:Number(parts.hour),minute:Number(parts.minute),weekday:parts.weekday};
   }
-  function period(isDay){
-    const h=localParts().hour;
+  function minutesOfDay(value){
+    const match=String(value||"").match(/T(\d{2}):(\d{2})/);
+    return match ? Number(match[1])*60+Number(match[2]) : null;
+  }
+  function period(isDay,sunrise=null,sunset=null){
+    const p=localParts(),now=p.hour*60+p.minute;
+    const rise=minutesOfDay(sunrise),set=minutesOfDay(sunset);
+    if(Number.isFinite(rise)&&Number.isFinite(set)){
+      if(now<rise||now>=set+45)return "night";
+      if(now<rise+150)return "morning";
+      if(now>=set-120)return "evening";
+      return "day";
+    }
+    const h=p.hour;
     if(isDay===false||h<5||h>=22)return "night";
     if(h<10)return "morning";
     if(h<17)return "day";
     return "evening";
   }
   function fallback(){
-    const p=period(null);
+    const p=period(null,null,null);
     return {temperature:null,weatherCode:null,clouds:null,precipitation:0,rain:0,snowfall:0,isDay:p!=="night",period:p,source:"fallback"};
   }
   function condition(w){
@@ -47,7 +59,8 @@
       const data=await response.json(),c=data.current||{};
       weather={temperature:Number.isFinite(Number(c.temperature_2m))?Number(c.temperature_2m):null,weatherCode:Number(c.weather_code),
         clouds:Number(c.cloud_cover)||0,precipitation:Number(c.precipitation)||0,rain:Number(c.rain)||0,snowfall:Number(c.snowfall)||0,
-        isDay:c.is_day===1,period:period(c.is_day===1),sunrise:data.daily?.sunrise?.[0]||null,sunset:data.daily?.sunset?.[0]||null,source:"open-meteo"};
+        isDay:c.is_day===1,sunrise:data.daily?.sunrise?.[0]||null,sunset:data.daily?.sunset?.[0]||null,source:"open-meteo"};
+      weather.period=period(weather.isDay,weather.sunrise,weather.sunset);
     }catch{weather=fallback();}
     sync();return weather;
   }
