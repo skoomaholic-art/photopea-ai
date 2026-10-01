@@ -49,7 +49,7 @@ export function createAppServer({
   publicRoot = root,
 } = {}) {
   const permittedFiles = new Set(publicFiles(root));
-  const tmdbToken=env.TMDB_READ_ACCESS_TOKEN||env.TMDB_ACCESS_TOKEN||env.TMDB_BEARER_TOKEN;
+  const tmdbToken=env.TMDB_TOKEN||env.TMDB_READ_ACCESS_TOKEN||env.TMDB_ACCESS_TOKEN||env.TMDB_BEARER_TOKEN;
   env={...env,TMDB_READ_ACCESS_TOKEN:tmdbToken,TMDB_ACCESS_TOKEN:tmdbToken};
   const libraryStore=createLibraryStore({env,fetchImpl});
   const timeoutMs = Number(env.API_TIMEOUT_MS) || 90000;
@@ -240,8 +240,8 @@ export function createAppServer({
     json(res, 200, { images });
   }
   function auth() {
-    if (env.TMDB_READ_ACCESS_TOKEN)
-      return { Authorization: "Bearer " + env.TMDB_READ_ACCESS_TOKEN };
+    if (env.TMDB_TOKEN || env.TMDB_READ_ACCESS_TOKEN)
+      return { Authorization: "Bearer " + (env.TMDB_TOKEN || env.TMDB_READ_ACCESS_TOKEN) };
     if (env.TMDB_API_KEY) return {};
     throw new ApiError(
       503,
@@ -360,7 +360,7 @@ export function createAppServer({
     providers:{cloudflare:false,xai:!!env.XAI_API_KEY && env.AI_REQUESTS_ENABLED==="true",openai:!!env.OPENAI_API_KEY && env.AI_REQUESTS_ENABLED==="true"},
     providerDetails:{cloudflare:{status:"not_configured"},xai:{status:!env.XAI_API_KEY?"not_configured":env.AI_REQUESTS_ENABLED!=="true"?"disabled":"configured"},openai:{status:!env.OPENAI_API_KEY?"not_configured":env.AI_REQUESTS_ENABLED!=="true"?"disabled":"configured"}},
     background:{local:true,carve:false,removal:false},images:imageProviderStatus(env),
-    tmdbConfigured: Boolean(env.TMDB_READ_ACCESS_TOKEN || env.TMDB_API_KEY),
+    tmdbConfigured: Boolean(env.TMDB_TOKEN || env.TMDB_READ_ACCESS_TOKEN || env.TMDB_API_KEY),
     xaiConfigured: Boolean(env.XAI_API_KEY),
     openaiConfigured: Boolean(env.OPENAI_API_KEY),
     aiEnabled: env.AI_REQUESTS_ENABLED === "true",
