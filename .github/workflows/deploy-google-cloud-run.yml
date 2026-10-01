@@ -22,7 +22,9 @@ jobs:
       REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
       TMDB_TOKEN_GH: ${{ secrets.TMDB_TOKEN }}
       TMDB_READ_ACCESS_TOKEN_GH: ${{ secrets.TMDB_READ_ACCESS_TOKEN }}
+      TMDB_API_KEY_GH: ${{ secrets.TMDB_API_KEY }}
       FANART_API_KEY_GH: ${{ secrets.FANART_API_KEY }}
+      FANART_CLIENT_KEY_GH: ${{ secrets.FANART_CLIENT_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,65 +36,103 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Ensure persistent server library bucket
+      - name: Prepare persistent server library
         run: |
           set -euo pipefail
-          BUCKET="${PROJECT_ID}-poster-editor-library-data"
+          BUCKET="${PROJECT_ID}-poster-editor-library"
           RUNTIME_SA="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-          RUN_AS_SA="${RUNTIME_SA}"
           if ! gcloud storage buckets describe "gs://${BUCKET}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
-            gcloud storage buckets create "gs://${BUCKET}" --project="${PROJECT_ID}" --location="${REGION}" --no-uniform-bucket-level-access
+            gcloud storage buckets create "gs://${BUCKET}" --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access
           fi
-          if gsutil acl ch -u "${RUNTIME_SA}:W" "gs://${BUCKET}" >/dev/null 2>&1 && gsutil defacl ch -u "${RUNTIME_SA}:OWNER" "gs://${BUCKET}" >/dev/null 2>&1; then
-            echo "Fine-grained bucket ACL granted to runtime service account."
-          else
-            echo "::warning::Fine-grained ACL could not be changed. Keeping the existing runtime identity and verifying through the live API."
+          if ! gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet; then
+            echo "::warning::Bucket exists, but deployer cannot grant Storage IAM. Archive API will report unavailable until an owner grants roles/storage.objectAdmin to ${RUNTIME_SA} on gs://${BUCKET}."
           fi
           echo "LIBRARY_BUCKET=${BUCKET}" >> "$GITHUB_ENV"
-          echo "RUN_AS_SA=${RUN_AS_SA}" >> "$GITHUB_ENV"
+
+      - name: Recover existing provider configuration
+        run: |
+          set -euo pipefail
+          recover_env() {
+            TARGET="$1"
+            for REV in $(gcloud run revisions list --service=poster-editor --project="${PROJECT_ID}" --region="${REGION}" --format='value(metadata.name)' 2>/dev/null || true); do
+              VALUE=$(gcloud run revisions describe "$REV" --project="${PROJECT_ID}" --region="${REGION}" --format=json 2>/dev/null | python -c 'import json,sys; n=sys.argv[1]; d=json.load(sys.stdin); env=((d.get("spec") or {}).get("containers") or [{}])[0].get("env") or []; print(next((str(x.get("value") or "") for x in env if x.get("name")==n and x.get("value")), ""))' "$TARGET" || true)
+              if [ -n "$VALUE" ]; then printf '%s' "$VALUE"; return 0; fi
+            done
+          }
+
+          TMDB_VALUE="${TMDB_TOKEN_GH}"
+          [ -n "$TMDB_VALUE" ] || TMDB_VALUE="${TMDB_READ_ACCESS_TOKEN_GH}"
+          [ -n "$TMDB_VALUE" ] || TMDB_VALUE="$(recover_env TMDB_TOKEN)"
+          [ -n "$TMDB_VALUE" ] || TMDB_VALUE="$(recover_env TMDB_READ_ACCESS_TOKEN)"
+          [ -n "$TMDB_VALUE" ] || TMDB_VALUE="$(recover_env TMDB_ACCESS_TOKEN)"
+          [ -n "$TMDB_VALUE" ] || TMDB_VALUE="$(recover_env TMDB_BEARER_TOKEN)"
+          TMDB_KEY_VALUE="${TMDB_API_KEY_GH}"
+          [ -n "$TMDB_KEY_VALUE" ] || TMDB_KEY_VALUE="$(recover_env TMDB_API_KEY)"
+          FANART_VALUE="${FANART_API_KEY_GH}"
+          [ -n "$FANART_VALUE" ] || FANART_VALUE="$(recover_env FANART_API_KEY)"
+          FANART_CLIENT_VALUE="${FANART_CLIENT_KEY_GH}"
+          [ -n "$FANART_CLIENT_VALUE" ] || FANART_CLIENT_VALUE="$(recover_env FANART_CLIENT_KEY)"
+
+          {
+            echo "TMDB_VALUE<<EOF"
+            echo "$TMDB_VALUE"
+            echo "EOF"
+            echo "TMDB_KEY_VALUE<<EOF"
+            echo "$TMDB_KEY_VALUE"
+            echo "EOF"
+            echo "FANART_VALUE<<EOF"
+            echo "$FANART_VALUE"
+            echo "EOF"
+            echo "FANART_CLIENT_VALUE<<EOF"
+            echo "$FANART_CLIENT_VALUE"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Deploy existing UI and same-origin API
         id: deploy
         run: |
           set -euo pipefail
           ENV_VARS="AI_REQUESTS_ENABLED=false,LIBRARY_BUCKET=${LIBRARY_BUCKET}"
-          if [ -n "${TMDB_TOKEN_GH}" ]; then
-            ENV_VARS="${ENV_VARS},TMDB_TOKEN=${TMDB_TOKEN_GH}"
-          elif [ -n "${TMDB_READ_ACCESS_TOKEN_GH}" ]; then
-            ENV_VARS="${ENV_VARS},TMDB_READ_ACCESS_TOKEN=${TMDB_READ_ACCESS_TOKEN_GH}"
-          fi
-          if [ -n "${FANART_API_KEY_GH}" ]; then
-            ENV_VARS="${ENV_VARS},FANART_API_KEY=${FANART_API_KEY_GH}"
-          fi
+          if [ -n "${TMDB_VALUE}" ]; then ENV_VARS="${ENV_VARS},TMDB_TOKEN=${TMDB_VALUE}"; fi
+          if [ -n "${TMDB_KEY_VALUE}" ]; then ENV_VARS="${ENV_VARS},TMDB_API_KEY=${TMDB_KEY_VALUE}"; fi
+          if [ -n "${FANART_VALUE}" ]; then ENV_VARS="${ENV_VARS},FANART_API_KEY=${FANART_VALUE}"; fi
+          if [ -n "${FANART_CLIENT_VALUE}" ]; then ENV_VARS="${ENV_VARS},FANART_CLIENT_KEY=${FANART_CLIENT_VALUE}"; fi
 
-          gcloud run deploy poster-editor --project="${PROJECT_ID}" --region="${REGION}" --source=. --service-account="${RUN_AS_SA}" --build-service-account="projects/${PROJECT_ID}/serviceAccounts/poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com" --no-invoker-iam-check --ingress=all --min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --concurrency=80 --cpu-throttling --update-env-vars="${ENV_VARS}" --quiet
+          gcloud run deploy poster-editor --project="${PROJECT_ID}" --region="${REGION}" --source=. --service-account="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com" --build-service-account="projects/${PROJECT_ID}/serviceAccounts/poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com" --no-invoker-iam-check --ingress=all --min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --concurrency=80 --cpu-throttling --update-env-vars="${ENV_VARS}" --quiet
 
           URL=$(gcloud run services describe poster-editor --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')
           test -n "$URL"
           echo "Deployed URL: $URL"
 
+          STATUS=""
           for attempt in 1 2 3 4 5 6; do
             STATUS=$(curl -fsS --max-time 15 "$URL/api/status" || true)
-            if printf '%s' "$STATUS" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' && printf '%s' "$STATUS" | grep -Eq '"library"[[:space:]]*:[[:space:]]*\{[[:space:]]*"server"[[:space:]]*:[[:space:]]*true'; then
-              curl -fsS -o /dev/null --max-time 15 "$URL/"
-              PROBE_KEY="deploy-check-${GITHUB_RUN_ID}-${GITHUB_SHA}"
-              PROBE_ID="probe-${GITHUB_RUN_ID}"
-              curl -fsS --max-time 20 -X POST "$URL/api/library/works" -H "Content-Type: application/json" -H "X-Library-Key: ${PROBE_KEY}" --data "{\"archiveId\":\"${PROBE_ID}\",\"workspace\":\"vertical\",\"title\":\"deployment probe\",\"createdAt\":0,\"updatedAt\":0}" >/dev/null
-              curl -fsS --max-time 20 "$URL/api/library/works/${PROBE_ID}" -H "X-Library-Key: ${PROBE_KEY}" | grep -q "${PROBE_ID}"
-              curl -fsS --max-time 20 -X DELETE "$URL/api/library/works/${PROBE_ID}" -H "X-Library-Key: ${PROBE_KEY}" >/dev/null
-              echo "url=$URL" >> "$GITHUB_OUTPUT"
-              echo "Verified: homepage 200, API ok=true, server library read/write=true"
-              {
-                echo "### Poster Editor Cloud Run release"
-                echo ""
-                echo "Live UI and server library read/write confirmed"
-                echo "URL: $URL"
-                echo "Commit: $GITHUB_SHA"
-              } >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
+            if printf '%s' "$STATUS" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then break; fi
             sleep 5
           done
+          printf '%s' "$STATUS" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
+          curl -fsS -o /dev/null --max-time 15 "$URL/"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
 
-          echo "::error::Cloud Run did not return healthy API with writable server library"
-          exit 1
+          LIBRARY_RESULT="unavailable"
+          PROBE_KEY="deploy-check-${GITHUB_RUN_ID}-${GITHUB_SHA}"
+          PROBE_ID="probe-${GITHUB_RUN_ID}"
+          if curl -fsS --max-time 20 -X POST "$URL/api/library/works" -H "Content-Type: application/json" -H "X-Library-Key: ${PROBE_KEY}" --data "{\"archiveId\":\"${PROBE_ID}\",\"workspace\":\"vertical\",\"title\":\"deployment probe\",\"createdAt\":0,\"updatedAt\":0}" >/dev/null 2>&1; then
+            if curl -fsS --max-time 20 "$URL/api/library/works/${PROBE_ID}" -H "X-Library-Key: ${PROBE_KEY}" | grep -q "${PROBE_ID}"; then
+              LIBRARY_RESULT="read/write"
+              curl -fsS --max-time 20 -X DELETE "$URL/api/library/works/${PROBE_ID}" -H "X-Library-Key: ${PROBE_KEY}" >/dev/null 2>&1 || true
+            fi
+          fi
+
+          TMDB_STATE=$(printf '%s' "$STATUS" | python -c 'import json,sys; d=json.load(sys.stdin); print("configured" if d.get("tmdbConfigured") else "not-configured")' 2>/dev/null || echo unknown)
+          FANART_STATE=$(printf '%s' "$STATUS" | python -c 'import json,sys; d=json.load(sys.stdin); x=((d.get("images") or {}).get("fanart") or {}); print("configured" if x.get("configured") else "not-configured")' 2>/dev/null || echo unknown)
+          echo "Verified: homepage 200, API ok=true, library=${LIBRARY_RESULT}, TMDB=${TMDB_STATE}, Fanart=${FANART_STATE}"
+          {
+            echo "### Poster Editor Cloud Run release"
+            echo ""
+            echo "URL: $URL"
+            echo "Commit: $GITHUB_SHA"
+            echo "Server library: ${LIBRARY_RESULT}"
+            echo "TMDB: ${TMDB_STATE}"
+            echo "Fanart.tv: ${FANART_STATE}"
+          } >> "$GITHUB_STEP_SUMMARY"
