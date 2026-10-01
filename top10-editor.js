@@ -187,11 +187,11 @@
   }
 
   function currentNumberAsset() {
-    return (TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"])+"?v=20261001-approved-svg-v2";
+    return (TOP10_NUMBER_ASSETS[String(data.ranking || "1")] || TOP10_NUMBER_ASSETS["1"])+"?v=20261001-approved-svg-v2";
   }
 
   function currentNumberPreview(value=data.ranking) {
-    return (TOP10_NUMBER_PREVIEWS[String(value || "2")] || TOP10_NUMBER_PREVIEWS["2"])+"?v=20261001-approved-svg-v2";
+    return (TOP10_NUMBER_PREVIEWS[String(value || "1")] || TOP10_NUMBER_PREVIEWS["1"])+"?v=20261001-approved-svg-v2";
   }
 
   function setNumberPickerOpen(open) {
@@ -203,7 +203,7 @@
   }
 
   function syncNumberPicker() {
-    const value=String(data.ranking||"2");
+    const value=String(data.ranking||"1");
     const image=$("top10NumberPickerImage"),label=$("top10NumberPickerValue"),menu=$("top10NumberPickerMenu");
     if(image) image.src=currentNumberPreview(value);
     if(label) label.textContent=`Позиция ${value}`;
