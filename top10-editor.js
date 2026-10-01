@@ -167,11 +167,11 @@
   }
 
   function currentNumberAsset() {
-    return (TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"])+"?v=20260928-clean-cutout";
+    return (TOP10_NUMBER_ASSETS[String(data.ranking || "2")] || TOP10_NUMBER_ASSETS["2"])+"?v=20261001-restored-approved";
   }
 
   function currentNumberPreview(value=data.ranking) {
-    return (TOP10_NUMBER_PREVIEWS[String(value || "2")] || TOP10_NUMBER_PREVIEWS["2"])+"?v=20260928-clean-cutout";
+    return (TOP10_NUMBER_PREVIEWS[String(value || "2")] || TOP10_NUMBER_PREVIEWS["2"])+"?v=20261001-restored-approved";
   }
 
   function setNumberPickerOpen(open) {
