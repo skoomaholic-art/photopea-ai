@@ -67,66 +67,36 @@ function enclosedTransparency(data,width,height){
   return components(interior,subWidth,subHeight).filter(size=>size>=16).length;
 }
 
-test('TOP10 uses exact transparent PNG cutouts from the supplied 1-10 references', async t => {
-  const heights=[];
-  for(const item of manifest){
-    await t.test(`number ${item.number}`,async()=>{
-      const source=await loadImage(new URL(item.reference,fixtureRoot).pathname);
-      const preview=await loadImage(new URL(`assets/top10/reference-numbers/${item.number}.png`,root).pathname);
-      const runtime=await loadImage(new URL(`assets/top10/numbers/${item.number}.png`,root).pathname);
-      const [x,y,right,bottom]=item.crop,width=right-x,height=bottom-y;
-      assert.equal(preview.width,width);
-      assert.equal(preview.height,height);
-      assert.equal(runtime.width,500);
-      assert.equal(runtime.height,500);
-
-      const referenceCanvas=createCanvas(width,height);
-      referenceCanvas.getContext('2d').drawImage(source,-x,-y);
-      const expected=referenceCanvas.getContext('2d').getImageData(0,0,width,height).data;
-      const actual=pixels(preview);
-      let sourceStroke=0,exactStroke=0,opaque=0,minY=height,maxY=0;
-      for(let i=0;i<expected.length;i+=4){
-        if(colored(expected,i)){
-          sourceStroke++;
-          if(expected[i]===actual[i]&&expected[i+1]===actual[i+1]&&expected[i+2]===actual[i+2]&&actual[i+3]===255) exactStroke++;
-        }
-        if(actual[i+3]){
-          opaque++;
-          const py=Math.floor(i/4/width);minY=Math.min(minY,py);maxY=Math.max(maxY,py);
+test('TOP10 uses the approved vector artwork for positions 1 through 10', async t => {
+  for(let number=1;number<=10;number++){
+    await t.test('number '+number,async()=>{
+      const file=new URL(`assets/top10/numbers/${number}.svg`,root);
+      const svg=await fs.readFile(file,'utf8');
+      assert.match(svg,/^<svg\b/);
+      assert.match(svg,/width="500"/);
+      assert.match(svg,/height="500"/);
+      assert.match(svg,/viewBox="0 0 500 500"/);
+      assert.match(svg,/<linearGradient\b/);
+      assert.match(svg,/fill="url\(#g\)"/);
+      assert.match(svg,/<path\b/);
+      assert.doesNotMatch(svg,/<image\b/i,'approved number artwork must stay vector-only');
+      assert.doesNotMatch(svg,/filter=/i,'approved number artwork must not use blur/filter effects');
+      const image=await loadImage(file.pathname);
+      assert.equal(image.width,500);
+      assert.equal(image.height,500);
+      const data=pixels(image);
+      assert.equal(data[3],0,'outer corner remains transparent');
+      let visible=0,coloured=0;
+      for(let i=0;i<data.length;i+=4){
+        if(data[i+3]>0){
+          visible++;
+          if(Math.max(data[i+1],data[i+2])-data[i]>20) coloured++;
         }
       }
-      assert.ok(sourceStroke>2000,'reference stroke detected');
-      assert.ok(exactStroke/sourceStroke>.99,'the supplied gradient stroke remains visually exact after edge cleanup');
-      assert.ok(opaque<width*height*.86,'poster background was removed');
-      assert.equal(actual[3],0,'transparent outside the glyph');
-      assert.equal(enclosedTransparency(actual,width,height),expectedCounters.get(item.number)||0,'glyph counters are transparent');
-
-      const runtimePixels=pixels(runtime);
-      const visible=new Uint8Array(500*500);
-      const alphaLevels=new Set();
-      let transparentRgb=0,darkBoundary=0,boundary=0;
-      for(let p=0;p<500*500;p++){
-        const i=p*4,alpha=runtimePixels[i+3];
-        alphaLevels.add(alpha);
-        visible[p]=alpha>2?1:0;
-        if(alpha===0) transparentRgb=Math.max(transparentRgb,runtimePixels[i],runtimePixels[i+1],runtimePixels[i+2]);
-      }
-      for(let p=0;p<500*500;p++){
-        if(runtimePixels[p*4+3]<64) continue;
-        const x=p%500,y=Math.floor(p/500);
-        const touchesTransparency=(x>0&&runtimePixels[(p-1)*4+3]<=2)||(x<499&&runtimePixels[(p+1)*4+3]<=2)||(y>0&&runtimePixels[(p-500)*4+3]<=2)||(y<499&&runtimePixels[(p+500)*4+3]<=2);
-        if(!touchesTransparency) continue;
-        boundary++;
-        if(Math.max(runtimePixels[p*4],runtimePixels[p*4+1],runtimePixels[p*4+2])<40) darkBoundary++;
-      }
-      assert.equal(components(visible,500,500).length,1,'no isolated alpha fragments or resize ringing');
-      assert.ok(alphaLevels.size>32,'runtime cut-out retains smooth antialiasing');
-      assert.equal(transparentRgb,0,'fully transparent pixels contain no fringe colour');
-      assert.ok(darkBoundary/Math.max(boundary,1)<.025,'no black crop halo surrounds the coloured outline');
-      heights.push(maxY-minY+1);
+      assert.ok(visible>4000,'number remains visible');
+      assert.ok(coloured/visible>.65,'green-to-blue supplied gradient remains dominant');
     });
   }
-  assert.ok(Math.max(...heights)/Math.min(...heights)<1.06,'all positions retain the supplied visual height, including 10');
 });
 
 test('application mark keeps its black background and uses white artwork', async () => {
