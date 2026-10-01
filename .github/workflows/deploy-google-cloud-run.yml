@@ -20,6 +20,7 @@ jobs:
     env:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+      DEPLOYER_SA: ${{ vars.GCP_DEPLOY_SA }}
       TMDB_TOKEN_GH: ${{ secrets.TMDB_TOKEN }}
       TMDB_READ_ACCESS_TOKEN_GH: ${{ secrets.TMDB_READ_ACCESS_TOKEN }}
       FANART_API_KEY_GH: ${{ secrets.FANART_API_KEY }}
@@ -42,10 +43,20 @@ jobs:
           if ! gcloud storage buckets describe "gs://${BUCKET}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
             gcloud storage buckets create "gs://${BUCKET}" --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access
           fi
+          RUN_AS_SA="${RUNTIME_SA}"
           if ! gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet; then
-            echo "::warning::Deployer cannot change bucket IAM. Continuing with existing runtime permissions and verifying through the live API."
+            echo "::warning::Deployer cannot change bucket IAM. Checking whether the deployer identity already has object access."
+            PROBE_OBJECT="gs://${BUCKET}/_deploy-permission-probe-${GITHUB_RUN_ID}.txt"
+            if printf 'probe' | gcloud storage cp - "${PROBE_OBJECT}" >/dev/null 2>&1; then
+              gcloud storage rm "${PROBE_OBJECT}" >/dev/null 2>&1 || true
+              RUN_AS_SA="${DEPLOYER_SA}"
+              echo "::warning::Using the existing deployer service account as Cloud Run runtime because it already has Storage object access."
+            else
+              echo "::warning::Neither bucket IAM changes nor deployer object access are available. Live archive verification is expected to fail."
+            fi
           fi
           echo "LIBRARY_BUCKET=${BUCKET}" >> "$GITHUB_ENV"
+          echo "RUN_AS_SA=${RUN_AS_SA}" >> "$GITHUB_ENV"
 
       - name: Deploy existing UI and same-origin API
         id: deploy
@@ -61,7 +72,7 @@ jobs:
             ENV_VARS="${ENV_VARS},FANART_API_KEY=${FANART_API_KEY_GH}"
           fi
 
-          gcloud run deploy poster-editor --project="${PROJECT_ID}" --region="${REGION}" --source=. --service-account="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com" --build-service-account="projects/${PROJECT_ID}/serviceAccounts/poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com" --no-invoker-iam-check --ingress=all --min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --concurrency=80 --cpu-throttling --update-env-vars="${ENV_VARS}" --quiet
+          gcloud run deploy poster-editor --project="${PROJECT_ID}" --region="${REGION}" --source=. --service-account="${RUN_AS_SA}" --build-service-account="projects/${PROJECT_ID}/serviceAccounts/poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com" --no-invoker-iam-check --ingress=all --min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --concurrency=80 --cpu-throttling --update-env-vars="${ENV_VARS}" --quiet
 
           URL=$(gcloud run services describe poster-editor --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')
           test -n "$URL"
