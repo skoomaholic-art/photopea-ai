@@ -15,7 +15,7 @@
   <script defer src="assets/fabric.js"></script>
   <script defer src="editor-core.js?v=20260924"></script>
   <link rel="stylesheet" href="poster-overrides.css?v=20260924">
-  <link rel="stylesheet" href="ui-modern.css?v=20261001-top10-showcase">
+  <link rel="stylesheet" href="ui-modern.css?v=20261001-library-fix">\n  <link rel="stylesheet" href="weather-empty-state.css?v=20261001">
   <script defer src="storage.js?v=20260923-layered-model"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
   <script defer src="asset-manager.js?v=20261001-poster-archive"></script>
@@ -35,16 +35,7 @@
   <script defer src="poster-archive.js?v=20260930b"></script>
   <script defer src="library-transfer.js?v=20260930a"></script>
   <script defer src="library-ui.js?v=20261001-server"></script>
-  <script defer src="assets/empty-parodies/01.js"></script>
-  <script defer src="assets/empty-parodies/02.js"></script>
-  <script defer src="assets/empty-parodies/03.js"></script>
-  <script defer src="assets/empty-parodies/04.js"></script>
-  <script defer src="assets/empty-parodies/05.js"></script>
-  <script defer src="assets/empty-parodies/06.js"></script>
-  <script defer src="assets/empty-parodies/08.js"></script>
-  <script defer src="assets/empty-parodies/09.js"></script>
-  <script defer src="assets/empty-parodies/10.js"></script>
-  <script defer src="empty-showcase.js?v=20261001-workspace-only"></script>
+  <script defer src="weather-empty-state.js?v=20261001"></script>
 </head>
 <body>
   <header class="topbar">
@@ -489,11 +480,11 @@
       <div id="sourceProviderStatus" class="source-provider-status" aria-label="Статус источников изображений"></div>
       <div class="source-tabs">
         <button class="active" data-image-tab="all">ВСЕ</button>
-        <button data-image-tab="poster">ПОСТЕРЫ</button>
-        <button data-image-tab="horizontal">ГОРИЗОНТАЛЬНЫЕ</button>
+        <button data-image-tab="poster">POSTERS</button>
+        <button data-image-tab="horizontal">BACKDROPS</button>
         <button data-image-tab="still">КАДРЫ</button>
         <button data-image-tab="textless">TEXTLESS</button>
-        <button data-image-tab="logo">ЛОГОТИПЫ</button>
+        <button data-image-tab="logo">LOGOS</button>
       </div>
       <div class="source-filters">
         <label>Источник<select id="sourceFilter"><option value="all">Все</option><option value="tmdb">TMDB</option><option value="fanart.tv">Fanart.tv</option><option value="wikimediacommons">Wikimedia</option><option value="tvmaze">TVmaze</option><option value="wikidata">Wikidata</option></select></label>
@@ -506,7 +497,7 @@
       <div id="sourceGallery" class="source-gallery"></div>
       <button id="sourceLoadMoreBtn" class="wide" hidden>Показать ещё</button>
       <div class="reference-head"><strong>Внешние / reference источники</strong><span>Без обхода paywall, CAPTCHA и anti-bot</span></div>
-      <div id="sourceReferences" class="reference-sources"></div>
+      <div id="sourceReferences" class="reference-sources"></div>\n      <p class="tmdb-attribution">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
     </section>
   </div>
 
