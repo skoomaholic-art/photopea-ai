@@ -94,19 +94,22 @@
     return Boolean(hash && await window.SkoomaStore?.getAsset?.(deletedId(hash)));
   }
 
-  async function rawLogoAssets() {
+  async function localLogoAssets() {
     if (!window.AssetManager?.list) return [];
     return (await AssetManager.list()).filter(item => item?.imageType === "logo" && item.originalAsset);
+  }
+  async function rawLogoAssets() {
+    if (window.ServerLibrary?.listLogos) return ServerLibrary.listLogos();
+    return localLogoAssets();
   }
 
   async function rememberBlob(blob, options = {}) {
     if (!window.AssetManager) throw new Error("Локальное хранилище логотипов недоступно.");
     const png = await toPng(blob);
     const hash = await fingerprint(png);
-    // Autosave restoration must never undo an explicit archive deletion.
-    if (options.countUse === false && await isDeleted(hash)) return null;
-    // A new manual upload of the same PNG is an explicit request to archive it again.
-    if (options.countUse !== false && await isDeleted(hash)) {
+    // Local tombstones only apply to the legacy browser archive.
+    if (!window.ServerLibrary && options.countUse === false && await isDeleted(hash)) return null;
+    if (!window.ServerLibrary && options.countUse !== false && await isDeleted(hash)) {
       await window.SkoomaStore.deleteAsset(deletedId(hash));
     }
     const assets = await rawLogoAssets();
@@ -132,7 +135,7 @@
     }
 
     const time = Date.now();
-    const item = await AssetManager.save({
+    const payload = {
       ...(match || {}),
       id: match?.id || "asset-logo-archive-" + hash.slice(0, 32),
       source: match?.source || options.source || "logo-archive",
@@ -149,8 +152,11 @@
       lastUsedAt: options.countUse === false ? (match?.lastUsedAt || time) : time,
       useCount: Math.max(0, Number(match?.useCount) || 0) + (options.countUse === false ? 0 : 1),
       createdAt: match?.createdAt || time
-    });
-    window.dispatchEvent(new CustomEvent("logo-archive-changed", { detail: { id: item.id } }));
+    };
+    const item = window.ServerLibrary?.saveLogo
+      ? await ServerLibrary.saveLogo(payload)
+      : await AssetManager.save(payload);
+    window.dispatchEvent(new CustomEvent("logo-archive-changed", { detail: { id: item.id, server: Boolean(window.ServerLibrary) } }));
     return item;
   }
 
@@ -166,19 +172,23 @@
   async function migrateExisting() {
     if (migrationPromise) return migrationPromise;
     migrationPromise = (async () => {
-      const assets = await rawLogoAssets();
+      if (window.ServerLibrary?.migrationDone?.("logos")) return;
+      const assets = await localLogoAssets();
       for (const item of assets) {
-        if (item.archiveKind === "logo" && item.fingerprint && item.mimeType === "image/png") continue;
+        if (item.archiveKind !== "logo" || !item.originalAsset) continue;
         try {
-          await rememberBlob(item.editedAsset || item.originalAsset, {
-            sourceAssetId: item.id,
-            title: item.title,
-            source: item.source,
-            sourceId: item.sourceId,
-            countUse: false
+          const png = await toPng(item.editedAsset || item.originalAsset);
+          const hash = item.fingerprint || await fingerprint(png);
+          await ServerLibrary.saveLogo({
+            ...item,
+            id:item.id || "asset-logo-archive-" + hash.slice(0,32),
+            title:pngName(item.title),
+            imageType:"logo",mimeType:"image/png",archiveKind:"logo",fingerprint:hash,
+            originalAsset:png
           });
-        } catch {}
+        } catch(error) { console.warn("Logo server migration failed",error); }
       }
+      if(window.ServerLibrary?.markMigrated) ServerLibrary.markMigrated("logos");
     })();
     return migrationPromise;
   }
@@ -263,11 +273,13 @@
     if (!base || base.length > 100 || /[<>:"|?*\u0000-\u001f]/.test(base) || base.includes("/") || base.includes("\\")) {
       throw new Error("Введите название до 100 символов без запрещённых знаков.");
     }
-    const item = await AssetManager.get(id);
-    if (!item || item.archiveKind !== "logo" || await isDeleted(item.fingerprint)) {
+    const item = (await rawLogoAssets()).find(entry=>entry.id===id);
+    if (!item || item.archiveKind !== "logo" || (!window.ServerLibrary && await isDeleted(item.fingerprint))) {
       throw new Error("Логотип не найден в архиве.");
     }
-    const updated = await AssetManager.save({ ...item, title: base + ".png", archiveTitleLocked: true });
+    const updated = window.ServerLibrary?.renameLogo
+      ? await ServerLibrary.renameLogo(id, base + ".png")
+      : await AssetManager.save({ ...item, title: base + ".png", archiveTitleLocked: true });
     cachedItems = cachedItems.map(entry => entry.id === id ? updated : entry);
     await render();
     setStatus("Логотип переименован.", "ok");
@@ -275,21 +287,17 @@
   }
 
   async function remove(id, confirmDelete = true) {
-    const item = await AssetManager.get(id);
+    const item = (await rawLogoAssets()).find(entry=>entry.id===id);
     if (!item || item.archiveKind !== "logo") throw new Error("Логотип не найден в архиве.");
     if (confirmDelete && !window.confirm("Удалить «" + item.title + "» из архива? Это не удалит логотип из открытых макетов.")) return false;
-    if (!window.SkoomaStore?.saveAsset || !window.SkoomaStore?.deleteAsset) {
-      throw new Error("Хранилище архива недоступно.");
-    }
-    const hash = item.fingerprint || await fingerprint(await toPng(item.originalAsset));
-    await window.SkoomaStore.saveAsset({
-      id: deletedId(hash), imageType: "logo-deletion-marker", fingerprint: hash, createdAt: Date.now()
-    });
-    const assets = await rawLogoAssets();
-    for (const entry of assets) {
-      if (entry.archiveKind === "logo" && (entry.id === id || entry.fingerprint === hash)) {
-        await window.SkoomaStore.deleteAsset(entry.id);
-      }
+    if (window.ServerLibrary?.deleteLogo) {
+      await ServerLibrary.deleteLogo(id);
+    } else {
+      if (!window.SkoomaStore?.saveAsset || !window.SkoomaStore?.deleteAsset) throw new Error("Хранилище архива недоступно.");
+      const hash = item.fingerprint || await fingerprint(await toPng(item.originalAsset));
+      await window.SkoomaStore.saveAsset({id:deletedId(hash),imageType:"logo-deletion-marker",fingerprint:hash,createdAt:Date.now()});
+      const assets = await rawLogoAssets();
+      for (const entry of assets) if (entry.archiveKind === "logo" && (entry.id === id || entry.fingerprint === hash)) await window.SkoomaStore.deleteAsset(entry.id);
     }
     cachedItems = cachedItems.filter(entry => entry.id !== id && entry.fingerprint !== hash);
     window.dispatchEvent(new CustomEvent("logo-archive-changed", { detail: { id, deleted: true } }));
