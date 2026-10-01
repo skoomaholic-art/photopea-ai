@@ -30,3 +30,6 @@
 .weather-empty-state[data-orientation="horizontal"] .cat-room{transform:scale(1.05);transform-origin:60% 55%}.weather-empty-state[data-orientation="horizontal"] .cat-awake-wrap{left:20%;width:38%}
 #trainCanvasShell>.weather-empty-state .cat-room{transform:scale(1.32);transform-origin:60% 54%}#trainCanvasShell>.weather-empty-state .cat-scene-hud{padding:3px 7px;border-radius:7px;bottom:5%}#trainCanvasShell>.weather-empty-state .cat-scene-title{font-size:7px}#trainCanvasShell>.weather-empty-state .cat-scene-sub,#trainCanvasShell>.weather-empty-state .cat-scene-condition{font-size:6px}#trainCanvasShell>.weather-empty-state .cat-scene-temp{font-size:9px}
 @media(prefers-reduced-motion:reduce){.weather-empty-state,.weather-empty-state *{animation:none!important;transition:none!important}}
+
+/* Legacy poster placeholder is permanently retired; WeatherEmptyState owns the empty canvas. */
+#stage>#posterEmpty{display:none!important}
