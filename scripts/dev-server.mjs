@@ -441,8 +441,16 @@ export function createAppServer({
           const response=await secureImageProxy(new Request(url),url.searchParams.get("url")||"");
           res.writeHead(response.status,Object.fromEntries(response.headers));return res.end(Buffer.from(await response.arrayBuffer()));
         }
-        if(req.method==="GET" && url.pathname==="/api/library/status")
-          return json(res,200,{ok:true,server:libraryStore.ready()});
+        if(req.method==="GET" && url.pathname==="/api/library/status"){
+          if(!libraryStore.ready()) return json(res,200,{ok:true,server:false,reason:"library_not_configured"});
+          const key=String(req.headers["x-library-key"]||"");
+          try{
+            await libraryStore.list(key,"works");
+            return json(res,200,{ok:true,server:true,writable:true});
+          }catch(error){
+            return json(res,200,{ok:true,server:false,writable:false,reason:error.code||"storage_unavailable"});
+          }
+        }
         if(url.pathname.startsWith("/api/library/")){
           const key=String(req.headers["x-library-key"]||"");
           if(req.method==="GET" && url.pathname==="/api/library/logos"){
