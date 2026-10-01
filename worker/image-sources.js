@@ -111,49 +111,43 @@ async function tmdbJson(env, path, params = {}, ttlSeconds = 600) {
 
 async function searchTmdbCandidates(env, query, year) {
   const q = clean(query);
-  const [movies, tv] = await Promise.all([
-    tmdbJson(env, "/search/movie", {
-      query: q,
-      include_adult: "false",
-      language: "ru-RU",
-      year: year || undefined,
-      page: 1
-    }),
-    tmdbJson(env, "/search/tv", {
-      query: q,
-      include_adult: "false",
-      language: "ru-RU",
-      first_air_date_year: year || undefined,
-      page: 1
-    })
-  ]);
-
+  const data = await tmdbJson(env, "/search/multi", {
+    query: q,
+    include_adult: "false",
+    language: "ru-RU",
+    page: 1
+  });
   const normalized = q.toLowerCase();
-  return [
-    ...(movies.results || []).map(item => ({ ...item, media_type: "movie", titleText: item.title, originalTitle: item.original_title, date: item.release_date })),
-    ...(tv.results || []).map(item => ({ ...item, media_type: "tv", titleText: item.name, originalTitle: item.original_name, date: item.first_air_date }))
-  ].map(item => {
-    const candidateTitle = clean(item.titleText).toLowerCase();
-    const originalTitle = clean(item.originalTitle).toLowerCase();
-    const candidateYear = yearOf(item.date);
-    let score = Number(item.popularity) || 0;
-    if (candidateTitle === normalized || originalTitle === normalized) score += 10_000;
-    else if (candidateTitle.includes(normalized) || normalized.includes(candidateTitle) || originalTitle.includes(normalized) || normalized.includes(originalTitle)) score += 2_000;
-    if (year && candidateYear === String(year)) score += 8_000;
-    return {
-      tmdbId: item.id,
-      mediaType: item.media_type,
-      title: item.titleText,
-      originalTitle: item.originalTitle || "",
-      year: candidateYear,
-      overview: item.overview || "",
-      posterPath: item.poster_path || null,
-      popularity: Number(item.popularity) || 0,
-      score
-    };
-  }).sort((a, b) => b.score - a.score).slice(0, 12);
+  return (data.results || [])
+    .filter(item => item.media_type === "movie" || item.media_type === "tv")
+    .map(item => {
+      const isMovie = item.media_type === "movie";
+      const titleText = isMovie ? item.title : item.name;
+      const originalText = isMovie ? item.original_title : item.original_name;
+      const date = isMovie ? item.release_date : item.first_air_date;
+      const candidateTitle = clean(titleText).toLowerCase();
+      const originalTitle = clean(originalText).toLowerCase();
+      const candidateYear = yearOf(date);
+      let score = Number(item.popularity) || 0;
+      if (candidateTitle === normalized || originalTitle === normalized) score += 10_000;
+      else if (candidateTitle.includes(normalized) || normalized.includes(candidateTitle) || originalTitle.includes(normalized) || normalized.includes(originalTitle)) score += 2_000;
+      if (year && candidateYear === String(year)) score += 8_000;
+      else if (year && candidateYear && candidateYear !== String(year)) score -= 500;
+      return {
+        tmdbId: item.id,
+        mediaType: item.media_type,
+        title: titleText,
+        originalTitle: originalText || "",
+        year: candidateYear,
+        overview: item.overview || "",
+        posterPath: item.poster_path || null,
+        popularity: Number(item.popularity) || 0,
+        score
+      };
+    })
+    .sort((a,b) => b.score - a.score)
+    .slice(0,12);
 }
-
 async function resolveTmdbIdentity(env, query, year, forcedTmdbId = null, forcedMediaType = null) {
   const candidates = await searchTmdbCandidates(env, query, year);
   const forcedId = forcedTmdbId ? Number(forcedTmdbId) : null;
@@ -204,6 +198,8 @@ function baseAsset(request, identity, source, sourceId, type, originalUrl, thumb
     language,
     isTextless,
     voteAverage: metadata.voteAverage ?? null,
+    voteCount: metadata.voteCount ?? null,
+    filePath: metadata.filePath || null,
     fileSize: metadata.fileSize ?? null,
     mimeType: metadata.mimeType || null,
     license: metadata.license || null,
@@ -237,7 +233,7 @@ export class TMDBSource extends ImageSourceAdapter {
   async search(identity) {
     if (!identity) return [];
     const data = await tmdbJson(this.env, "/" + identity.mediaType + "/" + identity.tmdbId + "/images", {
-      include_image_language: "en,ru,kk,null"
+      include_image_language: "ru,kk,en,null"
     }, 900);
 
     const sourceUrl = "https://www.themoviedb.org/" + identity.mediaType + "/" + identity.tmdbId;
@@ -264,6 +260,9 @@ export class TMDBSource extends ImageSourceAdapter {
           height: item.height,
           language: item.iso_639_1,
           voteAverage: item.vote_average,
+          voteCount: item.vote_count,
+          filePath: item.file_path,
+          attribution: "This product uses the TMDB API but is not endorsed or certified by TMDB.",
           sourceUrl,
           mimeType: /\.png$/i.test(item.file_path) ? "image/png" : "image/jpeg",
           isTextless: item.iso_639_1 == null && type !== "logo"
@@ -592,15 +591,23 @@ export async function searchUnifiedImages(request, env, { query, year = "", sour
   const groups = await Promise.all(jobs);
   const seen = new Set();
   const priority = { "TMDB": 0, "Fanart.tv": 1, "Wikimedia Commons": 2, "TVmaze": 3 };
+  const languagePriority = value => value === "ru" ? 0 : value === "kk" ? 1 : value === "en" ? 2 : value == null ? 3 : 4;
   const results = groups.flat().filter(item => {
-    if (!item?.originalUrl || seen.has(item.originalUrl)) return false;
-    seen.add(item.originalUrl);
+    if (!item?.originalUrl) return false;
+    const dedupeKey = item.source === "TMDB" && item.filePath ? "tmdb:"+item.filePath : item.originalUrl;
+    if (seen.has(dedupeKey)) return false;
+    seen.add(dedupeKey);
     return true;
   }).sort((a,b) => {
     const pa = priority[a.source] ?? 9, pb = priority[b.source] ?? 9;
     if (pa !== pb) return pa - pb;
+    const la = languagePriority(a.language), lb = languagePriority(b.language);
+    if (la !== lb) return la - lb;
     const va = Number(a.voteAverage) || 0, vb = Number(b.voteAverage) || 0;
-    return vb - va;
+    if (va !== vb) return vb - va;
+    const ca = Number(a.voteCount) || 0, cb = Number(b.voteCount) || 0;
+    if (ca !== cb) return cb - ca;
+    return (Number(b.width)||0)*(Number(b.height)||0) - (Number(a.width)||0)*(Number(a.height)||0);
   }).slice(0, 240);
 
   return {
