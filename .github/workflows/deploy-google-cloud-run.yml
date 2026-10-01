@@ -20,7 +20,6 @@ jobs:
     env:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
-      DEPLOY_SA_EMAIL: ${{ vars.GCP_DEPLOY_SA }}
       TMDB_TOKEN_GH: ${{ secrets.TMDB_TOKEN }}
       TMDB_READ_ACCESS_TOKEN_GH: ${{ secrets.TMDB_READ_ACCESS_TOKEN }}
       TMDB_API_KEY_GH: ${{ secrets.TMDB_API_KEY }}
@@ -102,17 +101,12 @@ jobs:
         run: |
           set -euo pipefail
           ENV_VARS="AI_REQUESTS_ENABLED=false,LIBRARY_BUCKET=${LIBRARY_BUCKET}"
-          RUN_AS_SA="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-          if [ "${DEPLOYER_STORAGE_RW:-false}" = "true" ] && [ -n "${DEPLOY_SA_EMAIL:-}" ]; then
-            RUN_AS_SA="${DEPLOY_SA_EMAIL}"
-            echo "Using deployer service account as temporary runtime storage identity because dedicated runtime IAM cannot be granted by CI."
-          fi
           if [ -n "${TMDB_VALUE}" ]; then ENV_VARS="${ENV_VARS},TMDB_TOKEN=${TMDB_VALUE}"; fi
           if [ -n "${TMDB_KEY_VALUE}" ]; then ENV_VARS="${ENV_VARS},TMDB_API_KEY=${TMDB_KEY_VALUE}"; fi
           if [ -n "${FANART_VALUE}" ]; then ENV_VARS="${ENV_VARS},FANART_API_KEY=${FANART_VALUE}"; fi
           if [ -n "${FANART_CLIENT_VALUE}" ]; then ENV_VARS="${ENV_VARS},FANART_CLIENT_KEY=${FANART_CLIENT_VALUE}"; fi
 
-          gcloud run deploy poster-editor --project="${PROJECT_ID}" --region="${REGION}" --source=. --service-account="${RUN_AS_SA}" --build-service-account="projects/${PROJECT_ID}/serviceAccounts/poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com" --no-invoker-iam-check --ingress=all --min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --concurrency=80 --cpu-throttling --update-env-vars="${ENV_VARS}" --quiet
+          gcloud run deploy poster-editor --project="${PROJECT_ID}" --region="${REGION}" --source=. --service-account="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com" --build-service-account="projects/${PROJECT_ID}/serviceAccounts/poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com" --no-invoker-iam-check --ingress=all --min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --concurrency=80 --cpu-throttling --update-env-vars="${ENV_VARS}" --quiet
 
           URL=$(gcloud run services describe poster-editor --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')
           test -n "$URL"
