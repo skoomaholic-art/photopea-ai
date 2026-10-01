@@ -50,7 +50,7 @@ test('active TOP10: five layers, unlock number, exact master, filters isolated a
  assert.equal(a.el('top10Canvas').width,800);assert.equal(a.el('top10Canvas').height,1400);assert.equal(a.el('top10NumberScale').disabled,true);
  await a.input('top10numberLock',false,'change');await a.input('top10NumberScale',80);await a.input('top10NumberRotation',22);await a.click('top10NumberCenter');
  await a.input('top10PositionSelect','10','change');
- let model=await T.buildPhotopeaModel();assert.deepEqual(Array.from(model.layers,l=>l.name),['Canvas Background','Background Image','Bottom Darkening','Logo','TOP10 Number']);
+ let model=await T.buildPhotopeaModel();assert.deepEqual(Array.from(model.layers,l=>l.name),['Canvas Background','Background Image','Bottom Darkening','Logo','Digit Interior Gradient','TOP10 Number']);
  assert.equal(model.layers[4].rotation,22);assert.equal(model.layers[4].width,400);assert.equal(model.layers[4].locked,false);assert.equal(model.layers[4].y,700);
  const original=plain(T.getState()),changed=plain(original);changed.backgroundFilters.brightness=25;await T.restore(changed);
  model=await T.buildPhotopeaModel();assert.equal(model.layers[4].rotation,22);assert.equal(T.getState().logo,original.logo);assert.equal(T.getState().darkeningIntensity,original.darkeningIntensity);
