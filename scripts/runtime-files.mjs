@@ -5,7 +5,7 @@ export const runtimeFiles = [
   "local-background-removal.js", "image-filters.js", "poster-app.js", "train-editor.js", "top10-editor.js",
   "filter-studio.js", "public-image-search.js", "source-browser.js", "photopea-bridge.js", "range-number-sync.js", "workspace-tools.js",
   "poster-app.css", "poster-overrides.css", "ui-modern.css", "train-app.css",
-  "poster-archive.js", "library-transfer.js", "library-ui.js", "empty-pixel-art.js",
+  "poster-archive.js", "library-transfer.js", "library-ui.js", "empty-pixel-art.js", "empty-showcase.js",
   // Compatibility files retained for existing bookmarks; the application loads the editor modules above.
   "train-app.js", "top10-app.js",
 ];
