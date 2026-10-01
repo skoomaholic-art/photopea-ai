@@ -1,6 +1,5 @@
 name: Deploy Poster Editor to Google Cloud Run (manual)
 
-# First deploy on a specifically named merge commit. Subsequent deploys stay manual/gated.
 on:
   push:
     branches: [main]
@@ -16,52 +15,72 @@ concurrency:
 
 jobs:
   deploy:
-    # One-time initial deploy via the precisely named merge commit. Later deploys require owner-controlled flag.
     if: ${{ ((github.event_name == 'push' && startsWith(github.event.head_commit.message, 'Deploy Poster Editor to Google Cloud Run')) || (github.event_name == 'workflow_dispatch' && vars.GCP_DEPLOY_ENABLED == 'true')) && vars.GCP_PROJECT_ID != '' && vars.GCP_WIF_PROVIDER != '' && vars.GCP_DEPLOY_SA != '' }}
     runs-on: ubuntu-latest
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+      TMDB_TOKEN_GH: ${{ secrets.TMDB_TOKEN }}
+      TMDB_READ_ACCESS_TOKEN_GH: ${{ secrets.TMDB_READ_ACCESS_TOKEN }}
+      FANART_API_KEY_GH: ${{ secrets.FANART_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+
       - id: google-auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
+
       - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Ensure persistent server library bucket
+        run: |
+          set -euo pipefail
+          BUCKET="${PROJECT_ID}-poster-editor-library"
+          if ! gcloud storage buckets describe "gs://${BUCKET}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+            gcloud storage buckets create "gs://${BUCKET}"               --project="${PROJECT_ID}"               --location="${REGION}"               --uniform-bucket-level-access
+          fi
+          gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}"             --member="serviceAccount:poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com"             --role="roles/storage.objectAdmin"             --quiet
+          echo "LIBRARY_BUCKET=${BUCKET}" >> "$GITHUB_ENV"
+
       - name: Deploy existing UI and same-origin API
         id: deploy
         run: |
-          gcloud run deploy poster-editor \
-            --project="${{ vars.GCP_PROJECT_ID }}" \
-            --region="${{ vars.GCP_REGION || 'me-central1' }}" \
-            --source=. \
-            --service-account="poster-editor-runtime@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
-            --build-service-account="projects/${{ vars.GCP_PROJECT_ID }}/serviceAccounts/poster-editor-builder@${{ vars.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
-            --no-invoker-iam-check \
-            --ingress=all \
-            --min-instances=0 \
-            --max-instances=1 \
-            --cpu=1 \
-            --memory=512Mi \
-            --concurrency=80 \
-            --cpu-throttling \
-            --set-env-vars=AI_REQUESTS_ENABLED=false \
-            --quiet
-          URL=$(gcloud run services describe poster-editor \
-            --project="${{ vars.GCP_PROJECT_ID }}" \
-            --region="${{ vars.GCP_REGION || 'me-central1' }}" \
-            --format='value(status.url)')
+          set -euo pipefail
+          ENV_VARS="AI_REQUESTS_ENABLED=false,LIBRARY_BUCKET=${LIBRARY_BUCKET}"
+          if [ -n "${TMDB_TOKEN_GH}" ]; then
+            ENV_VARS="${ENV_VARS},TMDB_TOKEN=${TMDB_TOKEN_GH}"
+          elif [ -n "${TMDB_READ_ACCESS_TOKEN_GH}" ]; then
+            ENV_VARS="${ENV_VARS},TMDB_READ_ACCESS_TOKEN=${TMDB_READ_ACCESS_TOKEN_GH}"
+          fi
+          if [ -n "${FANART_API_KEY_GH}" ]; then
+            ENV_VARS="${ENV_VARS},FANART_API_KEY=${FANART_API_KEY_GH}"
+          fi
+
+          gcloud run deploy poster-editor             --project="${PROJECT_ID}"             --region="${REGION}"             --source=.             --service-account="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com"             --build-service-account="projects/${PROJECT_ID}/serviceAccounts/poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com"             --no-invoker-iam-check             --ingress=all             --min-instances=0             --max-instances=1             --cpu=1             --memory=512Mi             --concurrency=80             --cpu-throttling             --update-env-vars="${ENV_VARS}"             --quiet
+
+          URL=$(gcloud run services describe poster-editor             --project="${PROJECT_ID}"             --region="${REGION}"             --format='value(status.url)')
           test -n "$URL"
           echo "Deployed URL: $URL"
-          for attempt in 1 2 3 4 5; do
-            if curl -fsS --max-time 15 "$URL/api/status" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'; then
+
+          for attempt in 1 2 3 4 5 6; do
+            STATUS=$(curl -fsS --max-time 15 "$URL/api/status" || true)
+            if printf '%s' "$STATUS" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'               && printf '%s' "$STATUS" | grep -Eq '"library"[[:space:]]*:[[:space:]]*\{[[:space:]]*"server"[[:space:]]*:[[:space:]]*true'; then
               curl -fsS -o /dev/null --max-time 15 "$URL/"
               echo "url=$URL" >> "$GITHUB_OUTPUT"
-              echo "Verified: homepage 200 and API ok=true"
-          { echo "### Poster Editor Cloud Run release"; echo ""; echo "✅ Live and API status confirmed"; echo "URL: $URL"; echo "Commit: $GITHUB_SHA"; } >> "$GITHUB_STEP_SUMMARY"
+              echo "Verified: homepage 200, API ok=true, server library=true"
+              {
+                echo "### Poster Editor Cloud Run release"
+                echo ""
+                echo "Live and server library confirmed"
+                echo "URL: $URL"
+                echo "Commit: $GITHUB_SHA"
+              } >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             sleep 5
           done
-          echo "::error::Cloud Run did not return healthy /api/status"
-          exit 1
 
+          echo "::error::Cloud Run did not return healthy API with server library enabled"
+          exit 1
