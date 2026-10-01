@@ -48,6 +48,14 @@ jobs:
             echo "::warning::Bucket exists, but deployer cannot grant Storage IAM. Archive API will report unavailable until an owner grants roles/storage.objectAdmin to ${RUNTIME_SA} on gs://${BUCKET}."
           fi
           echo "LIBRARY_BUCKET=${BUCKET}" >> "$GITHUB_ENV"
+          DEPLOYER_STORAGE_RW="false"
+          PROBE_OBJECT="deploy-permission-probe-${GITHUB_RUN_ID}.txt"
+          if printf 'probe' | gcloud storage cp - "gs://${BUCKET}/${PROBE_OBJECT}" >/dev/null 2>&1; then
+            DEPLOYER_STORAGE_RW="true"
+            gcloud storage rm "gs://${BUCKET}/${PROBE_OBJECT}" >/dev/null 2>&1 || true
+          fi
+          echo "Deployer object read/write: ${DEPLOYER_STORAGE_RW}"
+          echo "DEPLOYER_STORAGE_RW=${DEPLOYER_STORAGE_RW}" >> "$GITHUB_ENV"
 
       - name: Recover existing provider configuration
         run: |
