@@ -39,13 +39,11 @@ jobs:
           set -euo pipefail
           BUCKET="${PROJECT_ID}-poster-editor-library"
           RUNTIME_SA="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-          gcloud services enable cloudresourcemanager.googleapis.com --project="${PROJECT_ID}" --quiet
           if ! gcloud storage buckets describe "gs://${BUCKET}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
             gcloud storage buckets create "gs://${BUCKET}" --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access
           fi
           if ! gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet; then
-            echo "Bucket-level IAM is unavailable to deployer. Trying project-level object access."
-            gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --condition=None --quiet
+            echo "::warning::Deployer cannot change bucket IAM. Continuing with existing runtime permissions and verifying through the live API."
           fi
           echo "LIBRARY_BUCKET=${BUCKET}" >> "$GITHUB_ENV"
 
