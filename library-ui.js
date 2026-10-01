@@ -2,7 +2,7 @@
   const $=id=>document.getElementById(id);
   const menu=$("libraryMenu");
   const toggle=$("libraryBtn");
-  const modalIds=["archiveModal","logoArchiveModal","posterArchiveModal"];
+  const modalIds=["archiveModal","logoArchiveModal","posterArchiveModal","movieParodiesModal"];
   function closeMenu(){menu.hidden=true;toggle.setAttribute("aria-expanded","false");}
   function destination(){
     const selected=document.querySelector(".workspace-tab.active")?.dataset.workspace || "vertical";
@@ -64,6 +64,16 @@
     try{await LibraryTransfer.importLibrary(file);}
     catch(error){const toast=$("toast");toast.textContent=error.message||"Не удалось импортировать библиотеку.";toast.className="toast error";toast.hidden=false;}
     finally{event.target.value="";}
+  });
+  $("movieParodiesCloseBtn")?.addEventListener("click",()=>{
+    $("movieParodiesModal").hidden=true;
+    document.body.classList.remove("modal-open");
+  });
+  $("movieParodiesModal")?.addEventListener("click",event=>{
+    if(event.target===$("movieParodiesModal")){
+      $("movieParodiesModal").hidden=true;
+      document.body.classList.remove("modal-open");
+    }
   });
   window.EditorLibrary={navigate};
 })();
