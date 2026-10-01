@@ -38,10 +38,14 @@ jobs:
         run: |
           set -euo pipefail
           BUCKET="${PROJECT_ID}-poster-editor-library"
+          RUNTIME_SA="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
           if ! gcloud storage buckets describe "gs://${BUCKET}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
-            gcloud storage buckets create "gs://${BUCKET}"               --project="${PROJECT_ID}"               --location="${REGION}"               --uniform-bucket-level-access
+            gcloud storage buckets create "gs://${BUCKET}" --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access
           fi
-          gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}"             --member="serviceAccount:poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com"             --role="roles/storage.objectAdmin"             --quiet
+          if ! gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet; then
+            echo "Bucket-level IAM is unavailable to deployer. Trying project-level object access."
+            gcloud projects add-iam-policy-binding "${PROJECT_ID}" --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --condition=None --quiet
+          fi
           echo "LIBRARY_BUCKET=${BUCKET}" >> "$GITHUB_ENV"
 
       - name: Deploy existing UI and same-origin API
@@ -58,22 +62,27 @@ jobs:
             ENV_VARS="${ENV_VARS},FANART_API_KEY=${FANART_API_KEY_GH}"
           fi
 
-          gcloud run deploy poster-editor             --project="${PROJECT_ID}"             --region="${REGION}"             --source=.             --service-account="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com"             --build-service-account="projects/${PROJECT_ID}/serviceAccounts/poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com"             --no-invoker-iam-check             --ingress=all             --min-instances=0             --max-instances=1             --cpu=1             --memory=512Mi             --concurrency=80             --cpu-throttling             --update-env-vars="${ENV_VARS}"             --quiet
+          gcloud run deploy poster-editor --project="${PROJECT_ID}" --region="${REGION}" --source=. --service-account="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com" --build-service-account="projects/${PROJECT_ID}/serviceAccounts/poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com" --no-invoker-iam-check --ingress=all --min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --concurrency=80 --cpu-throttling --update-env-vars="${ENV_VARS}" --quiet
 
-          URL=$(gcloud run services describe poster-editor             --project="${PROJECT_ID}"             --region="${REGION}"             --format='value(status.url)')
+          URL=$(gcloud run services describe poster-editor --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')
           test -n "$URL"
           echo "Deployed URL: $URL"
 
           for attempt in 1 2 3 4 5 6; do
             STATUS=$(curl -fsS --max-time 15 "$URL/api/status" || true)
-            if printf '%s' "$STATUS" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'               && printf '%s' "$STATUS" | grep -Eq '"library"[[:space:]]*:[[:space:]]*\{[[:space:]]*"server"[[:space:]]*:[[:space:]]*true'; then
+            if printf '%s' "$STATUS" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' && printf '%s' "$STATUS" | grep -Eq '"library"[[:space:]]*:[[:space:]]*\{[[:space:]]*"server"[[:space:]]*:[[:space:]]*true'; then
               curl -fsS -o /dev/null --max-time 15 "$URL/"
+              PROBE_KEY="deploy-check-${GITHUB_RUN_ID}-${GITHUB_SHA}"
+              PROBE_ID="probe-${GITHUB_RUN_ID}"
+              curl -fsS --max-time 20 -X POST "$URL/api/library/works" -H "Content-Type: application/json" -H "X-Library-Key: ${PROBE_KEY}" --data "{\"archiveId\":\"${PROBE_ID}\",\"workspace\":\"vertical\",\"title\":\"deployment probe\",\"createdAt\":0,\"updatedAt\":0}" >/dev/null
+              curl -fsS --max-time 20 "$URL/api/library/works/${PROBE_ID}" -H "X-Library-Key: ${PROBE_KEY}" | grep -q "${PROBE_ID}"
+              curl -fsS --max-time 20 -X DELETE "$URL/api/library/works/${PROBE_ID}" -H "X-Library-Key: ${PROBE_KEY}" >/dev/null
               echo "url=$URL" >> "$GITHUB_OUTPUT"
-              echo "Verified: homepage 200, API ok=true, server library=true"
+              echo "Verified: homepage 200, API ok=true, server library read/write=true"
               {
                 echo "### Poster Editor Cloud Run release"
                 echo ""
-                echo "Live and server library confirmed"
+                echo "Live UI and server library read/write confirmed"
                 echo "URL: $URL"
                 echo "Commit: $GITHUB_SHA"
               } >> "$GITHUB_STEP_SUMMARY"
@@ -82,5 +91,5 @@ jobs:
             sleep 5
           done
 
-          echo "::error::Cloud Run did not return healthy API with server library enabled"
+          echo "::error::Cloud Run did not return healthy API with writable server library"
           exit 1
