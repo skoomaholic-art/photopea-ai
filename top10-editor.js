@@ -18,6 +18,7 @@
   const NUMBER_Y = 1150;
   const NUMBER_SIZE = 500;
   const DEFAULT_NUMBER_SCALE = 60;
+  const TOP10_DEFAULTS_VERSION = 2;
   // Visible bounds of the supplied 10.svg are y=85..414 (329px).
   // Other digits occupy 491px vertically. Normalize visual height only
   // for 10, while keeping its center and the user's scale percentage.
@@ -54,7 +55,8 @@
     darkeningX:400,darkeningY:700,darkeningScale:100,darkeningRotation:0,darkeningLocked:true,canvasBackground:"#050505",
     ranking:"1", numberAsset:TOP10_NUMBER_ASSETS["1"],
     darkeningColor:"#000000", darkeningIntensity:100,
-    photopeaMasterId:null, photopeaComposite:false
+    photopeaMasterId:null, photopeaComposite:false,
+    defaultsVersion:TOP10_DEFAULTS_VERSION
   });
 
   let data=freshState();
@@ -831,9 +833,23 @@
     setStatus("ТОП10 сброшен до классического стиля.","ok");
   }
 
-  async function restore(saved){
-    data={...freshState(),...(saved||{})};
-    data.backgroundFilters={...DEFAULTS(),...(saved?.backgroundFilters||{})};
+  async function restore(saved,options={}){
+    const next=saved?clone(saved):null;
+    const migrateLegacyDefaults=!!options.migrateLegacyDefaults;
+    if(
+      next &&
+      migrateLegacyDefaults &&
+      Number(next.defaultsVersion||0)<TOP10_DEFAULTS_VERSION &&
+      String(next.ranking??"2")==="2" &&
+      Number(next.numberScale??100)===100
+    ){
+      next.ranking="1";
+      next.numberScale=DEFAULT_NUMBER_SCALE;
+      next.numberAsset=TOP10_NUMBER_ASSETS["1"];
+    }
+    data={...freshState(),...(next||{})};
+    data.defaultsVersion=TOP10_DEFAULTS_VERSION;
+    data.backgroundFilters={...DEFAULTS(),...(next?.backgroundFilters||{})};
     data.logoAboveDarkening=true;canvas.backgroundColor=data.canvasBackground;
     if(objects.background){canvas.remove(objects.background);objects.background=null;}
     if(objects.logo){canvas.remove(objects.logo);objects.logo=null;}

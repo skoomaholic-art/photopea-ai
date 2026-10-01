@@ -811,7 +811,7 @@
     showToast("Проект сохранён локально, в JSON и Архив работ.", "ok");
   }
 
-  async function restoreProject(project) {
+  async function restoreProject(project, options = {}) {
     if (!project || project.type !== "poster-editor-project" || !project.posters) throw new Error("Это не проект Poster Editor.");
     await window.WorkArchive?.restoreBundledAssets?.(project.assets||[]);
     for(const master of project.photopeaMasters||[]) if(master.masterId && master.dataUrl) await SkoomaStore.savePhotopeaMaster({...master,dataUrl:undefined,blob:await AssetManager.dataUrlToBlob(master.dataUrl)});
@@ -822,8 +822,13 @@
       if (window.TrainEditor?.restore) await window.TrainEditor.restore(project.train);
       else window.__pendingTrainProject = project.train;
     }
-    if (window.Top10Editor?.restore) await window.Top10Editor.restore(project.top10 || null);
-    else window.__pendingTop10Project = project.top10 || null;
+    if (window.Top10Editor?.restore) {
+      await window.Top10Editor.restore(project.top10 || null, {
+        migrateLegacyDefaults: !!options.migrateLegacyTop10Defaults
+      });
+    } else {
+      window.__pendingTop10Project = project.top10 || null;
+    }
     if($("projectTitle")) $("projectTitle").value=project.title||"";
     window.WorkHistory?.reset();
     syncAiPanel();
@@ -846,7 +851,7 @@
   async function restoreAutosave() {
     try {
       const project = await SkoomaStore?.getProject("poster-editor-autosave");
-      if (project) await restoreProject(project);
+      if (project) await restoreProject(project, { migrateLegacyTop10Defaults: true });
     } catch (error) {
       console.warn("Restore autosave failed", error);
     }
