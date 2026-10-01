@@ -37,15 +37,16 @@ jobs:
       - name: Ensure persistent server library bucket
         run: |
           set -euo pipefail
-          BUCKET="${PROJECT_ID}-poster-editor-library"
+          BUCKET="${PROJECT_ID}-poster-editor-library-data"
           RUNTIME_SA="poster-editor-runtime@${PROJECT_ID}.iam.gserviceaccount.com"
-          if ! gcloud storage buckets describe "gs://${BUCKET}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
-            gcloud storage buckets create "gs://${BUCKET}" --project="${PROJECT_ID}" --location="${REGION}" --uniform-bucket-level-access
-          fi
           RUN_AS_SA="${RUNTIME_SA}"
-          if ! gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" --member="serviceAccount:${RUNTIME_SA}" --role="roles/storage.objectAdmin" --quiet; then
-            echo "::warning::Deployer cannot change bucket IAM. Using the existing builder service account for runtime storage access."
-            RUN_AS_SA="poster-editor-builder@${PROJECT_ID}.iam.gserviceaccount.com"
+          if ! gcloud storage buckets describe "gs://${BUCKET}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
+            gcloud storage buckets create "gs://${BUCKET}" --project="${PROJECT_ID}" --location="${REGION}" --no-uniform-bucket-level-access
+          fi
+          if gsutil acl ch -u "${RUNTIME_SA}:W" "gs://${BUCKET}" >/dev/null 2>&1 && gsutil defacl ch -u "${RUNTIME_SA}:OWNER" "gs://${BUCKET}" >/dev/null 2>&1; then
+            echo "Fine-grained bucket ACL granted to runtime service account."
+          else
+            echo "::warning::Fine-grained ACL could not be changed. Keeping the existing runtime identity and verifying through the live API."
           fi
           echo "LIBRARY_BUCKET=${BUCKET}" >> "$GITHUB_ENV"
           echo "RUN_AS_SA=${RUN_AS_SA}" >> "$GITHUB_ENV"
