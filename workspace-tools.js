@@ -4,6 +4,24 @@
   let archiveWorkspace = "vertical";
   const LABELS = { vertical:"Вертикальный", horizontal:"Горизонтальный", train:"Паровозик", top10:"ТОП10" };
   const clone = value => JSON.parse(JSON.stringify(value));
+  let workMigrationPromise=null;
+  async function migrateWorkArchive(){
+    if(workMigrationPromise)return workMigrationPromise;
+    workMigrationPromise=(async()=>{
+      if(!window.ServerLibrary?.saveWork || ServerLibrary.migrationDone?.("works"))return;
+      try{
+        const local=await SkoomaStore.listArchiveEntries();
+        for(const entry of local)try{await ServerLibrary.saveWork(entry);}catch(error){console.warn("Work server migration failed",entry.archiveId,error);}
+        ServerLibrary.markMigrated?.("works");
+      }catch(error){console.warn("Work archive migration skipped",error);}
+    })();
+    return workMigrationPromise;
+  }
+  async function saveArchiveEntry(entry){if(window.ServerLibrary?.saveWork){await migrateWorkArchive();return ServerLibrary.saveWork(entry);}return SkoomaStore.saveArchiveEntry(entry);}
+  async function listArchiveEntries(workspace=null){if(window.ServerLibrary?.listWorks){await migrateWorkArchive();return ServerLibrary.listWorks(workspace);}return SkoomaStore.listArchiveEntries(workspace);}
+  async function getArchiveEntry(id){if(window.ServerLibrary?.getWork)return ServerLibrary.getWork(id);return SkoomaStore.getArchiveEntry(id);}
+  async function renameArchiveEntry(id,title){if(window.ServerLibrary?.renameWork)return ServerLibrary.renameWork(id,title);return SkoomaStore.renameArchiveEntry(id,title);}
+  async function deleteArchiveEntry(id){if(window.ServerLibrary?.deleteWork)return ServerLibrary.deleteWork(id);return SkoomaStore.deleteArchiveEntry(id);}
   const activePosterFormat = () => window.PosterApp?.getActiveFormat?.() || "vertical";
 
   function confirmAction({ title, message, confirmLabel="Да, сбросить" }) {
@@ -138,7 +156,6 @@
   }
 
   async function captureWorkspace(workspace, reason="export") {
-    if (!window.SkoomaStore?.saveArchiveEntry) return null;
     const snap = await workspaceSnapshot(workspace);
     const createdAt = Date.now();
     const entry = {
@@ -151,7 +168,7 @@
       assets:await bundleAssets(workspace,snap.projectState),
       photopeaMasterId:window.PhotopeaBridge?.getLayeredMasterId?.(workspace) || snap.projectState?.photopeaMasterId || null
     };
-    await SkoomaStore.saveArchiveEntry(entry);
+    await saveArchiveEntry(entry);
     return entry;
   }
 
@@ -184,7 +201,7 @@
   async function renderArchive() {
     const root=$("archiveList"); root.innerHTML=""; $("archiveStatus").textContent="Загрузка...";
     const selected=$("archiveWorkspaceFilter")?.value||archiveWorkspace;
-    const all=await SkoomaStore.listArchiveEntries(selected==="all"?null:selected);
+    const all=await listArchiveEntries(selected==="all"?null:selected);
     const query=String($("archiveSearch")?.value||"").trim().toLocaleLowerCase("ru");
     const entries=all.filter(item=>!query || String(item.title||"").toLocaleLowerCase("ru").includes(query));
     $("archiveStatus").textContent=entries.length
@@ -224,18 +241,18 @@
   $("archiveModal").addEventListener("click",e=>{if(e.target===$("archiveModal")) closeArchive();});
   $("archiveList").addEventListener("click",async e=>{
     const button=e.target.closest("[data-archive-action]"); if(!button) return;
-    const entry=await SkoomaStore.getArchiveEntry(button.dataset.archiveId); if(!entry) return;
+    const entry=await getArchiveEntry(button.dataset.archiveId); if(!entry) return;
     const action=button.dataset.archiveAction;
     if(action==="restore") return restoreEntry(entry);
     if(action==="download") return downloadJson(entry,(entry.workspace+"-"+entry.archiveId+".json"));
     if(action==="rename"){
       const title=window.prompt("Название архивной версии:",entry.title);
-      if(title?.trim()){await SkoomaStore.renameArchiveEntry(entry.archiveId,title);await renderArchive();}
+      if(title?.trim()){await renameArchiveEntry(entry.archiveId,title.trim());await renderArchive();}
       return;
     }
     if(action==="delete"){
       const ok=await confirmAction({title:"Удалить архивную версию",message:"Вы уверены, что хотите удалить «"+entry.title+"»? Текущая работа не будет затронута.",confirmLabel:"Да, удалить"});
-      if(ok){await SkoomaStore.deleteArchiveEntry(entry.archiveId);await renderArchive();}
+      if(ok){await deleteArchiveEntry(entry.archiveId);await renderArchive();}
     }
   });
 
@@ -247,7 +264,7 @@
   $("top10ResetClassicBtn").addEventListener("click",()=>resetWorkspace("top10"));
 
   window.WorkspaceTools={confirmAction,resetWorkspace};
-  window.WorkArchive={bundleAssets,restoreBundledAssets,captureWorkspace,captureAll,openArchive,restoreEntry,list:(workspace)=>SkoomaStore.listArchiveEntries(workspace)};
+  window.WorkArchive={bundleAssets,restoreBundledAssets,captureWorkspace,captureAll,openArchive,restoreEntry,list:listArchiveEntries};
 })();
 (() => {
   const $=id=>document.getElementById(id);
