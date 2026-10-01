@@ -2,7 +2,7 @@
   const $=id=>document.getElementById(id);
   const menu=$("libraryMenu");
   const toggle=$("libraryBtn");
-  const modalIds=["archiveModal","logoArchiveModal","posterArchiveModal","movieParodiesModal"];
+  const modalIds=["archiveModal","logoArchiveModal","posterArchiveModal"];
   function closeMenu(){menu.hidden=true;toggle.setAttribute("aria-expanded","false");}
   function destination(){
     const selected=document.querySelector(".workspace-tab.active")?.dataset.workspace || "vertical";
@@ -65,15 +65,24 @@
     catch(error){const toast=$("toast");toast.textContent=error.message||"Не удалось импортировать библиотеку.";toast.className="toast error";toast.hidden=false;}
     finally{event.target.value="";}
   });
-  $("movieParodiesCloseBtn")?.addEventListener("click",()=>{
-    $("movieParodiesModal").hidden=true;
-    document.body.classList.remove("modal-open");
-  });
   $("movieParodiesModal")?.addEventListener("click",event=>{
     if(event.target===$("movieParodiesModal")){
       $("movieParodiesModal").hidden=true;
       document.body.classList.remove("modal-open");
     }
+  });
+  $("libraryCopyKeyBtn")?.addEventListener("click",async()=>{
+    closeMenu();
+    try{
+      const key=await ServerLibrary.copyKey();
+      const toast=$("toast");toast.textContent="Ключ синхронизации скопирован. Сохраните его, чтобы открыть этот же серверный архив на другом устройстве.";toast.className="toast ok";toast.hidden=false;
+    }catch(error){const toast=$("toast");toast.textContent=error.message||"Не удалось скопировать ключ.";toast.className="toast error";toast.hidden=false;}
+  });
+  $("librarySetKeyBtn")?.addEventListener("click",()=>{
+    closeMenu();
+    const value=window.prompt("Введите ключ синхронизации серверного архива:");
+    if(value===null)return;
+    try{ServerLibrary.setKey(value);}catch(error){const toast=$("toast");toast.textContent=error.message;toast.className="toast error";toast.hidden=false;}
   });
   window.EditorLibrary={navigate};
 })();
