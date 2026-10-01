@@ -33,3 +33,5 @@
 
 /* Legacy poster placeholder is permanently retired; WeatherEmptyState owns the empty canvas. */
 #stage>#posterEmpty{display:none!important}
+
+.weather-empty-state.paused *{animation-play-state:paused!important}
