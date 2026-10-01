@@ -14,7 +14,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/dist/ ./
-COPY --from=builder /app/scripts/dev-server.mjs /app/scripts/runtime-files.mjs ./scripts/
+COPY --from=builder /app/scripts/dev-server.mjs /app/scripts/runtime-files.mjs /app/scripts/library-store.mjs ./scripts/
 COPY --from=builder /app/worker/image-sources.js ./worker/image-sources.js
 USER node
 EXPOSE 8080
