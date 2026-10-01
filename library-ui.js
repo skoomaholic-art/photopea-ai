@@ -4,6 +4,19 @@
   const toggle=$("libraryBtn");
   const modalIds=["archiveModal","logoArchiveModal","posterArchiveModal"];
   function closeMenu(){menu.hidden=true;toggle.setAttribute("aria-expanded","false");}
+  async function refreshServerStatus(){
+    const badge=$("libraryServerBadge");if(!badge)return;
+    badge.textContent="Проверка...";badge.className="library-server-badge";
+    try{
+      const info=await window.ServerLibrary?.status?.();
+      const ok=Boolean(info?.server);
+      badge.textContent=ok?"Сервер подключён":"Сервер не настроен";
+      badge.className="library-server-badge "+(ok?"ok":"error");
+      badge.title=ok?"Архив работ и логотипов хранится на сервере.":"Проверьте Cloud Storage / LIBRARY_BUCKET.";
+    }catch(error){
+      badge.textContent="Сервер недоступен";badge.className="library-server-badge error";badge.title=error.message||"Ошибка серверного архива";
+    }
+  }
   function destination(){
     const selected=document.querySelector(".workspace-tab.active")?.dataset.workspace || "vertical";
     return ["vertical","horizontal","train","top10"].includes(selected)?selected:"vertical";
@@ -29,7 +42,7 @@
   }
   toggle?.addEventListener("click",()=>{
     menu.hidden=!menu.hidden;toggle.setAttribute("aria-expanded",String(!menu.hidden));
-    if(!menu.hidden)menu.querySelector("button")?.focus();
+    if(!menu.hidden){void refreshServerStatus();menu.querySelector("button")?.focus();}
   });
   document.addEventListener("click",event=>{
     const btn=event.target.closest("[data-library-go]");
@@ -65,12 +78,6 @@
     catch(error){const toast=$("toast");toast.textContent=error.message||"Не удалось импортировать библиотеку.";toast.className="toast error";toast.hidden=false;}
     finally{event.target.value="";}
   });
-  $("movieParodiesModal")?.addEventListener("click",event=>{
-    if(event.target===$("movieParodiesModal")){
-      $("movieParodiesModal").hidden=true;
-      document.body.classList.remove("modal-open");
-    }
-  });
   $("libraryCopyKeyBtn")?.addEventListener("click",async()=>{
     closeMenu();
     try{
@@ -84,5 +91,6 @@
     if(value===null)return;
     try{ServerLibrary.setKey(value);}catch(error){const toast=$("toast");toast.textContent=error.message;toast.className="toast error";toast.hidden=false;}
   });
-  window.EditorLibrary={navigate};
+  void refreshServerStatus();
+  window.EditorLibrary={navigate,refreshServerStatus};
 })();
