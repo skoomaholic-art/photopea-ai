@@ -67,6 +67,7 @@ jobs:
 
   live-integrations:
     name: Live ${{ matrix.name }}
+    continue-on-error: ${{ matrix.optional }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -75,8 +76,10 @@ jobs:
         include:
           - name: Photopea
             test: tests/photopea-real.spec.mjs
+            optional: true
           - name: Local-ML
             test: tests/local-background.integration.spec.mjs
+            optional: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
