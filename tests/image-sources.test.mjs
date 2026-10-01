@@ -19,17 +19,16 @@ globalThis.fetch = async input => {
   const rawUrl = input instanceof URL ? input.href : (typeof input === "string" ? input : input.url);
   const url = new URL(rawUrl);
 
-  if (url.hostname === "api.themoviedb.org" && url.pathname === "/3/search/movie") {
+  if (url.hostname === "api.themoviedb.org" && url.pathname === "/3/search/multi") {
     return json({ results: [{
       id: 238,
+      media_type: "movie",
       title: "The Godfather",
+      original_title: "The Godfather",
       release_date: "1972-03-14",
       popularity: 100,
       overview: "Test"
     }] });
-  }
-  if (url.hostname === "api.themoviedb.org" && url.pathname === "/3/search/tv") {
-    return json({ results: [] });
   }
   if (url.hostname === "api.themoviedb.org" && url.pathname === "/3/movie/238/images") {
     return json({
