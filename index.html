@@ -59,7 +59,7 @@
           <button type="button" data-library-go="works"><strong>Архив работ</strong><small>Сохранённые версии по рабочим пространствам</small></button>
           <button type="button" data-library-go="logos"><strong>Архив логотипов</strong><small>PNG, поиск и повторное использование</small></button>
           <button type="button" data-library-go="posters"><strong>Архив постеров</strong><small>Оригиналы, переименование и загрузка</small></button>
-          <div class="library-server-state"><strong>Работы и логотипы: серверное хранение</strong><small>Данные не зависят от кэша браузера. Ключ нужен для доступа к своему архиву на другом устройстве.</small><button id="libraryCopyKeyBtn" type="button">Скопировать ключ синхронизации</button><button id="librarySetKeyBtn" type="button">Ввести ключ синхронизации</button></div>
+          <div class="library-server-state"><div class="library-server-copy"><strong>Серверный архив</strong><small>Работы и логотипы сохраняются на сервере и не зависят от кэша браузера.</small></div><span id="libraryServerBadge" class="library-server-badge">Проверка...</span><details class="library-sync-details"><summary>Синхронизация между устройствами</summary><button id="libraryCopyKeyBtn" type="button">Скопировать ключ</button><button id="librarySetKeyBtn" type="button">Ввести существующий ключ</button></details></div>
           <div class="library-transfer-actions"><button id="libraryExportBtn" type="button">Экспорт всей библиотеки (ZIP)</button><label class="file-button" for="libraryImportFile">Импорт библиотеки (ZIP)<input id="libraryImportFile" type="file" accept=".zip,application/zip" hidden></label></div>
         </div>
       </div>
