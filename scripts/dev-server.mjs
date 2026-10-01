@@ -1,6 +1,7 @@
 import http from "node:http";
 import {publicFiles} from "./runtime-files.mjs";
 import {searchUnifiedImages, secureImageProxy, imageProviderStatus} from "../worker/image-sources.js";
+import {createLibraryStore} from "./library-store.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -50,6 +51,7 @@ export function createAppServer({
   const permittedFiles = new Set(publicFiles(root));
   const tmdbToken=env.TMDB_READ_ACCESS_TOKEN||env.TMDB_ACCESS_TOKEN||env.TMDB_BEARER_TOKEN;
   env={...env,TMDB_READ_ACCESS_TOKEN:tmdbToken,TMDB_ACCESS_TOKEN:tmdbToken};
+  const libraryStore=createLibraryStore({env,fetchImpl});
   const timeoutMs = Number(env.API_TIMEOUT_MS) || 90000;
   const allowed = (env.ALLOWED_ORIGINS || "")
     .split(",")
@@ -363,6 +365,7 @@ export function createAppServer({
     openaiConfigured: Boolean(env.OPENAI_API_KEY),
     aiEnabled: env.AI_REQUESTS_ENABLED === "true",
     backgroundRemovalMode: "local-imgly",
+    library:{server:libraryStore.ready()},
     models: {
       grok: env.XAI_IMAGE_MODEL || "grok-imagine-image-2.0",
       gpt: env.OPENAI_IMAGE_MODEL || "gpt-image-2",
@@ -437,6 +440,56 @@ export function createAppServer({
         if(req.method==="GET" && url.pathname==="/api/images/proxy") {
           const response=await secureImageProxy(new Request(url),url.searchParams.get("url")||"");
           res.writeHead(response.status,Object.fromEntries(response.headers));return res.end(Buffer.from(await response.arrayBuffer()));
+        }
+        if(req.method==="GET" && url.pathname==="/api/library/status")
+          return json(res,200,{ok:true,server:libraryStore.ready()});
+        if(url.pathname.startsWith("/api/library/")){
+          const key=String(req.headers["x-library-key"]||"");
+          if(req.method==="GET" && url.pathname==="/api/library/logos"){
+            const items=await libraryStore.list(key,"logos");
+            items.sort((a,b)=>(b.lastUsedAt||b.updatedAt||b.createdAt||0)-(a.lastUsedAt||a.updatedAt||a.createdAt||0));
+            return json(res,200,{items});
+          }
+          if(req.method==="POST" && url.pathname==="/api/library/logos"){
+            const item=await body(req);
+            if(!/^data:image\/png;base64,/i.test(String(item.dataUrl||"")))throw new ApiError(400,"Архив логотипов принимает PNG.");
+            if(String(item.title||"").length>140)throw new ApiError(400,"Слишком длинное название.");
+            return json(res,200,{item:await libraryStore.put(key,"logos",item,"id")});
+          }
+          let match=url.pathname.match(/^\/api\/library\/logos\/([^/]+)$/);
+          if(match){
+            const id=decodeURIComponent(match[1]);
+            if(req.method==="PATCH"){
+              const patch=await body(req);const title=String(patch.title||"").trim();
+              if(!title||title.length>140)throw new ApiError(400,"Некорректное название.");
+              return json(res,200,{item:await libraryStore.patch(key,"logos",id,{title,archiveTitleLocked:true},"id")});
+            }
+            if(req.method==="DELETE"){await libraryStore.del(key,"logos",id);return json(res,200,{ok:true});}
+            if(req.method==="GET")return json(res,200,{item:await libraryStore.getObject(key,"logos",id)});
+          }
+          if(req.method==="GET" && url.pathname==="/api/library/works"){
+            let items=await libraryStore.list(key,"works");
+            const workspace=url.searchParams.get("workspace");
+            if(workspace)items=items.filter(item=>item.workspace===workspace);
+            items.sort((a,b)=>(b.updatedAt||b.createdAt||0)-(a.updatedAt||a.createdAt||0));
+            return json(res,200,{items});
+          }
+          if(req.method==="POST" && url.pathname==="/api/library/works"){
+            const item=await body(req);
+            if(!item||typeof item!=="object"||!item.workspace)throw new ApiError(400,"Некорректная версия проекта.");
+            return json(res,200,{item:await libraryStore.put(key,"works",item,"archiveId")});
+          }
+          match=url.pathname.match(/^\/api\/library\/works\/([^/]+)$/);
+          if(match){
+            const id=decodeURIComponent(match[1]);
+            if(req.method==="GET")return json(res,200,{item:await libraryStore.getObject(key,"works",id)});
+            if(req.method==="PATCH"){
+              const patch=await body(req);const title=String(patch.title||"").trim();
+              if(!title||title.length>180)throw new ApiError(400,"Некорректное название.");
+              return json(res,200,{item:await libraryStore.patch(key,"works",id,{title,updatedAt:Date.now()},"archiveId")});
+            }
+            if(req.method==="DELETE"){await libraryStore.del(key,"works",id);return json(res,200,{ok:true});}
+          }
         }
         if(req.method==="POST" && url.pathname==="/api/remove-background") throw new ApiError(503,"Удаление фона на этом сервере работает локально в браузере. Выберите «Локально (без API)».");
         throw new ApiError(404, "API-маршрут не найден");
