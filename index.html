@@ -19,6 +19,7 @@
   <script defer src="storage.js?v=20260923-layered-model"></script>
   <script defer src="zip-store.js?v=20260923b"></script>
   <script defer src="asset-manager.js?v=20261001-poster-archive"></script>
+  <script defer src="server-library.js?v=20261001-server-archives"></script>
   <script defer src="logo-archive.js?v=20260930-rename-delete"></script>
   <script defer src="local-background-removal.js?v=20260926-timeout"></script>
   <script defer src="image-filters.js?v=20260923b"></script>
@@ -58,6 +59,7 @@
           <button type="button" data-library-go="works"><strong>Архив работ</strong><small>Сохранённые версии по рабочим пространствам</small></button>
           <button type="button" data-library-go="logos"><strong>Архив логотипов</strong><small>PNG, поиск и повторное использование</small></button>
           <button type="button" data-library-go="posters"><strong>Архив постеров</strong><small>Оригиналы, переименование и загрузка</small></button>\n          <button type="button" data-library-go="parodies"><strong>Movie Parodies</strong><small>10 сюжетов · 20 изображений · вертикаль + горизонталь</small></button>
+          <div class="library-server-state"><strong>Работы и логотипы: серверное хранение</strong><small>Данные не зависят от кэша браузера. Ключ нужен для доступа к своему архиву на другом устройстве.</small><button id="libraryCopyKeyBtn" type="button">Скопировать ключ синхронизации</button><button id="librarySetKeyBtn" type="button">Ввести ключ синхронизации</button></div>
           <div class="library-transfer-actions"><button id="libraryExportBtn" type="button">Экспорт всей библиотеки (ZIP)</button><label class="file-button" for="libraryImportFile">Импорт библиотеки (ZIP)<input id="libraryImportFile" type="file" accept=".zip,application/zip" hidden></label></div>
         </div>
       </div>
@@ -575,7 +577,7 @@
         <button type="button" data-library-go="posters" class="">Постеры</button>
       </nav>
       <button class="library-export-inline" type="button" data-library-export="logos">Скачать архив логотипов (ZIP)</button>
-      <p class="muted logo-archive-note">Здесь автоматически сохраняются PNG-копии всех использованных логотипов. Архив доступен в этом браузере.</p>
+      <p class="muted logo-archive-note">PNG-копии автоматически сохраняются в серверном архиве. Кэш браузера не является основным хранилищем.</p>
       <div class="logo-archive-toolbar">
         <input id="logoArchiveSearch" type="search" placeholder="Найти логотип по названию" aria-label="Поиск в архиве логотипов">
         <span id="logoArchiveCount" class="mini-status"></span>
@@ -605,41 +607,6 @@
       </div>
       <div id="posterArchiveStatus" class="mini-status" role="status"></div>
       <div id="posterArchiveList" class="logo-archive-list"></div>
-    </section>
-  </div>
-
-  <div id="movieParodiesModal" class="modal-backdrop" hidden>
-    <section class="modal-card movie-parodies-card" role="dialog" aria-modal="true" aria-labelledby="movieParodiesTitle">
-      <header class="modal-head">
-        <div><small>PROJECT ASSETS</small><h2 id="movieParodiesTitle">Movie Parodies</h2></div>
-        <button id="movieParodiesCloseBtn" type="button" aria-label="Закрыть Movie Parodies">×</button>
-      </header>
-      <p class="muted movie-parodies-note">Комплект перенесён в проект: 10 сюжетов, для каждого есть вертикальная и горизонтальная версия. Полные оригиналы сохранены без изменений в проектной библиотеке.</p>
-      <div class="movie-parodies-visual" aria-label="Превью коллекции Movie Parodies">
-        <div><span>01</span><b>The Furlowship</b></div>
-        <div><span>02</span><b>Pawminator</b></div>
-        <div><span>03</span><b>Harry Pawtter</b></div>
-        <div><span>04</span><b>The Catfather</b></div>
-        <div><span>05</span><b>Jurassic Bark</b></div>
-        <div><span>06</span><b>Paws of the Caribbean</b></div>
-        <div><span>07</span><b>The Meowtrix</b></div>
-        <div><span>08</span><b>Mission: ImPAWssible</b></div>
-        <div><span>09</span><b>Back to the Fur</b></div>
-        <div><span>10</span><b>The Fast and the Furriest</b></div>
-      </div>
-      <div class="movie-parodies-grid">
-        <article><b>01</b><strong>The Furlowship</strong><span>Vertical · Horizontal</span></article>
-        <article><b>02</b><strong>Pawminator</strong><span>Vertical · Horizontal</span></article>
-        <article><b>03</b><strong>Harry Pawtter</strong><span>Vertical · Horizontal</span></article>
-        <article><b>04</b><strong>The Catfather</strong><span>Vertical · Horizontal</span></article>
-        <article><b>05</b><strong>Jurassic Bark</strong><span>Vertical · Horizontal</span></article>
-        <article><b>06</b><strong>Paws of the Caribbean</strong><span>Vertical · Horizontal</span></article>
-        <article><b>07</b><strong>The Meowtrix</strong><span>Vertical · Horizontal</span></article>
-        <article><b>08</b><strong>Mission: ImPAWssible</strong><span>Vertical · Horizontal</span></article>
-        <article><b>09</b><strong>Back to the Fur</strong><span>Vertical · Horizontal</span></article>
-        <article><b>10</b><strong>The Fast and the Furriest</strong><span>Vertical · Horizontal</span></article>
-      </div>
-      <div class="movie-parodies-summary"><strong>20 файлов готовы</strong><span>Оригиналы: PNG · отдельные V/H версии</span></div>
     </section>
   </div>
 
