@@ -19,6 +19,8 @@ const rangeNumberSync = read("range-number-sync.js");
 const envExample = read(".env.example");
 const zip = read("zip-store.js");
 const icon = read("app-icon.svg");
+const weatherEmptyState = read("weather-empty-state.js");
+const weatherEmptyCss = read("weather-empty-state.css");
 
 function requireAll(label, haystack, needles) {
   const missing = needles.filter(item => !haystack.includes(item));
@@ -31,11 +33,11 @@ requireAll("workspace UI", html, [
   'data-workspace="train"',
   'data-workspace="top10"',
   "Показать постеры",
-  "ПОСТЕРЫ",
-  "ГОРИЗОНТАЛЬНЫЕ",
+  "POSTERS",
+  "BACKDROPS",
   "КАДРЫ",
   "TEXTLESS",
-  "ЛОГОТИПЫ",
+  "LOGOS",
   "Фильтры",
   "Редактировать в Photopea",
   "В вертикальный",
@@ -115,6 +117,14 @@ requireAll("filter processing", filters, [
 
 requireAll("filter studio", filterStudio, [
   "renderPreview","Применяю фильтры в полном разрешении","updateEdited","setImageLayer"
+]);
+
+requireAll("weather empty state", weatherEmptyState, [
+  "api.open-meteo.com/v1/forecast","Asia/Almaty","temperature_2m","weather_code","cloud_cover","precipitation","rain","snowfall","sunrise","sunset",
+  "cat-room","cat-window","cat-awake-wrap","cat-sleep-wrap","cold-night","hasUserImages"
+]);
+requireAll("weather empty state css", weatherEmptyCss, [
+  ".weather-empty-state",".cat-rain",".cat-snow",".cat-blanket.warm","data-period=\"night\"","prefers-reduced-motion"
 ]);
 
 requireAll("source browser", sourceBrowser, [
